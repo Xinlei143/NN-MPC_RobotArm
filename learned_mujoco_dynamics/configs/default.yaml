@@ -1,0 +1,26 @@
+model_xml: ABB_IRB2400.xml
+n_joints: 6
+frame_skip: 5
+collection:
+  num_episodes: 20
+  episode_len: 200
+  action_std: "0.2,0.2,0.3,0.4,0.4,0.6"
+  num_envs: 1
+  save_path: outputs/datasets/arm_data.npz
+training:
+  model_type: mlp
+  history_len: 1
+  target_mode: delta_state
+  control_dt: 0.01
+  loss_type: mse
+  batch_size: 1024
+  epochs: 100
+  lr: 0.001
+  save_dir: outputs/checkpoints
+  num_workers: 0
+  pin_memory: false
+  amp: false
+evaluation:
+  rollout_len: 200
+  num_rollouts: 3
+  save_dir: outputs/figures

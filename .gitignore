@@ -1,0 +1,9 @@
+/.agents
+/.codex
+/.vscode
+
+/learned_mujoco_dynamics/.agents
+/learned_mujoco_dynamics/.codex
+/learned_mujoco_dynamics/.vscode
+/learned_mujoco_dynamics/outputs
+

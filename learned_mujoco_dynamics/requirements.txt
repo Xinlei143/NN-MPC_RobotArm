@@ -1,0 +1,30 @@
+# Python dependencies for learned_mujoco_dynamics.
+#
+# Recommended Python version: 3.10 or newer.
+# Install from the project directory with:
+#   pip install -r requirements.txt
+#
+# Note about PyTorch:
+# The plain "torch" package below installs the default wheel selected by pip.
+# If you need a specific CUDA build, install PyTorch from the official command
+# generator first, then install the remaining packages from this file.
+
+# MuJoCo simulator and optional interactive viewer used by:
+#   learned_dynamics/mujoco_env.py
+#   scripts/rollout_visualize.py
+mujoco>=2.3.7,<4.0
+
+# Neural network models, training loops, datasets, checkpoints, and evaluation.
+torch>=2.0,<3.0
+
+# Array storage and .npz dataset manipulation.
+numpy>=1.21,<3.0
+
+# Plot generation in evaluation scripts.
+matplotlib>=3.5,<4.0
+
+# Progress bars for data collection and training.
+tqdm>=4.64,<5.0
+
+# YAML config/checkpoint metadata loading and saving.
+PyYAML>=5.4.1,<7.0
