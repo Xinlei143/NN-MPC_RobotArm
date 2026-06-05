@@ -87,18 +87,18 @@ Saved dataset to outputs/datasets/abb_smoke.npz with states=(3, 12), actions=(3,
 - `actions=(3, 6)` 表示每条动作是 6 维目标关节角 `q_ref`，单位为 rad。
 - `next_states=(3, 12)` 表示下一时刻状态。
 
-## 4. 可视化机械臂随机运动
+## 4. 可视化结构化闭环 q_ref 运动
 
 如果当前机器支持图形界面，可以运行：
 
 ```bash
-python scripts/rollout_visualize.py \
+ python scripts/rollout_visualize.py \
   --n_joints 6 \
   --episode_len 5000 \
   --action_std 0.5
 ```
 
-这个脚本会打开 MuJoCo viewer，并用平滑随机动作驱动 ABB IRB 2400。可视化只使用单环境，不会启动多进程。
+这个脚本会打开 MuJoCo viewer，先安全 reset 和 settle，然后按 hold、小阶跃、平滑随机 waypoint、正弦四段生成目标关节角 `q_ref`。可视化只使用单环境，不会启动多进程。
 
 如果你在无显示器或远程终端环境中运行，viewer 可能无法打开。数据采集和训练不需要 viewer。
 
@@ -200,6 +200,9 @@ python scripts/collect_data.py \
 - 旧的 velocity/motor/torque 数据集和 checkpoint 不能和当前 position-actuator XML 混用；改 actuator 或 action 采样语义后需要重新采集数据。
 - `--action_std` 是归一化关节坐标中的随机目标标准差，不是 rad。每个关节先按自身 `ctrlrange` 映射到 `[-1, 1]`，采样后再映射回实际目标角 `q_ref`。
 - 例如 `--action_std 0.5` 表示所有关节都使用 normalized std 0.5；也支持 6 个逗号分隔的 normalized std。
+- 数据采集的是闭环位置伺服系统：`x_next = f(x, q_ref)`，不是 velocity command 数据，也不是直接 torque command 数据。
+- 每个 episode 会先在安全工作空间 reset，随后用 `q_ref = q` settle 默认 50 个 control step，再开始记录训练样本。
+- `q_ref` 由 hold、小阶跃、平滑随机 waypoint 和正弦轨迹混合生成，并经过一阶滤波，避免每步随机跳目标。
 - 环境会在每次 `step()` 后检查真实 `qpos` 是否仍在 XML joint limit 内；越界会直接报错，避免保存坏数据。
 - 如果 XML 的 actuator 数量不足，代码会直接报清晰错误。
 
@@ -303,9 +306,28 @@ states
 actions
 next_states
 episode_ids
+q_ref
+delta_q_ref
+tau_actuator
+tau_gravity
+tau_total
+action_std_normalized
+settle_steps
+motion_mode_ids
+termination_reasons
 ```
 
-其中 `episode_ids` 用于保证 GRU/Transformer 的历史序列只来自同一个 episode。推荐从 `history_len=16` 开始训练；当前 MuJoCo `timestep=0.002` 且 `frame_skip=5`，每条样本间隔约 `0.01s`，16 步约覆盖 `0.16s` 历史。
+其中 `actions` 和 `q_ref` 相同，都是写入 `data.ctrl[:n_joints]` 的目标关节角。`delta_q_ref` 目前不作为第一版模型输入，但会保存给后续 MPC 或参考轨迹建模使用。`action_std_normalized` 记录每条样本来自哪个归一化采样强度，`settle_steps` 记录 episode 开始前稳定了多少 control step；如果 append 到旧数据集，旧样本这两个字段会填 `-1` 表示未知。`episode_ids` 用于保证 GRU/Transformer 的历史序列只来自同一个 episode。推荐从 `history_len=16` 开始训练；当前 MuJoCo `timestep=0.002` 且 `frame_skip=5`，每条样本间隔约 `0.01s`，16 步约覆盖 `0.16s` 历史。
+
+采集后先跑覆盖诊断：
+
+```bash
+python scripts/diagnose_dynamics_data.py \
+  --data_path outputs/datasets/irb2400_parallel_data_transformer.npz \
+  --coverage_dir outputs/figures/irb2400_parallel_data_transformer_diagnose
+```
+
+重点检查 `q_norm_hist.png`、`q_ref_norm_hist.png`、`q_ref_tracking_first2.png`、`tau_total_hist.png`、`action_std_normalized_hist.png`、`termination_summary.csv` 和 `settle_steps_summary.csv`。诊断脚本会优先从 `--model_xml` 对应 XML 读取真实 joint limit 后再计算 normalized joint value。
 
 推荐训练命令：
 
@@ -515,6 +537,7 @@ action_dim = 6
 
 ```text
 state = concat(qpos[:n_joints], qvel[:n_joints])
+action = q_ref[:n_joints]
 ```
 
 模型训练目标：

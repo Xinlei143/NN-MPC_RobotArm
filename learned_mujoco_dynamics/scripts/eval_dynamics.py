@@ -15,7 +15,12 @@ import torch
 
 from learned_dynamics.mujoco_env import MuJoCoArmEnv
 from learned_dynamics.normalization import StandardNormalizer
-from learned_dynamics.parallel_collector import parse_action_std, sample_smooth_action
+from learned_dynamics.parallel_collector import (
+    MOTION_MODE_NAMES,
+    generate_q_ref_sequence,
+    parse_action_std,
+    reset_safe_workspace,
+)
 from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 from learned_dynamics.train_utils import build_model, load_checkpoint, set_seed
 from learned_dynamics.integration import reconstruct_next_state
@@ -37,6 +42,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--save_dir", default="outputs/figures", type=str)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--action_std", default=0.3, type=str)
+    parser.add_argument("--settle_steps", default=50, type=int, help="Steps to hold q_ref=q after reset before evaluation")
     parser.add_argument("--warmup_steps", default=0, type=int)
     parser.add_argument("--horizons", default="1,5,10,20,50,200", type=str)
     parser.add_argument("--teacher_forcing", action="store_true")
@@ -229,30 +235,28 @@ def collect_truth_rollout(
     n_joints: int,
     total_steps: int,
     action_std: float | np.ndarray,
+    settle_steps: int = 50,
+    mode_id: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    true_states: list[np.ndarray] = []
-    true_next_states: list[np.ndarray] = []
-    actions: list[np.ndarray] = []
-    state = env.reset_random()
-    action = np.zeros(n_joints, dtype=np.float32)
-    for _ in range(total_steps):
-        action = sample_smooth_action(
-            rng,
-            action,
-            action_std,
-            n_joints,
-            action_low=env.action_low,
-            action_high=env.action_high,
-        )
-        actions.append(action.copy())
-        true_states.append(state.copy())
-        state = env.step(action)
-        true_next_states.append(state.copy())
-    return (
-        np.asarray(true_states, dtype=np.float32),
-        np.asarray(actions, dtype=np.float32),
-        np.asarray(true_next_states, dtype=np.float32),
+    true_states, actions, true_next_states, _torque = collect_truth_rollout_with_torque(
+        env,
+        rng,
+        n_joints,
+        total_steps,
+        action_std,
+        settle_steps=settle_steps,
+        mode_id=mode_id,
     )
+    return true_states, actions, true_next_states
+
+
+def action_std_array(action_std: float | np.ndarray, n_joints: int) -> np.ndarray:
+    if np.isscalar(action_std):
+        return np.full(n_joints, float(action_std), dtype=np.float32)
+    array = np.asarray(action_std, dtype=np.float32)
+    if array.shape != (n_joints,):
+        raise ValueError(f"action_std must be scalar or shape ({n_joints},), got {array.shape}")
+    return array
 
 
 def collect_truth_rollout_with_torque(
@@ -261,7 +265,11 @@ def collect_truth_rollout_with_torque(
     n_joints: int,
     total_steps: int,
     action_std: float | np.ndarray,
+    settle_steps: int = 50,
+    mode_id: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    if settle_steps < 0:
+        raise ValueError(f"settle_steps must be non-negative, got {settle_steps}")
     true_states: list[np.ndarray] = []
     true_next_states: list[np.ndarray] = []
     actions: list[np.ndarray] = []
@@ -270,23 +278,26 @@ def collect_truth_rollout_with_torque(
         "actuator_tau": [],
         "gravity_tau": [],
     }
-    state = env.reset_random()
-    action = np.zeros(n_joints, dtype=np.float32)
-    for _ in range(total_steps):
-        action = sample_smooth_action(
-            rng,
-            action,
-            action_std,
-            n_joints,
-            action_low=env.action_low,
-            action_high=env.action_high,
-        )
-        torque = env.compute_torque_components(action)
+    state = reset_safe_workspace(env, rng, n_joints)
+    q_ref = np.asarray(state[:n_joints], dtype=np.float32).copy()
+    for _ in range(settle_steps):
+        state = env.step(q_ref)
+    q_ref_sequence = generate_q_ref_sequence(
+        rng,
+        q_ref,
+        env.action_low,
+        env.action_high,
+        total_steps,
+        action_std_array(action_std, n_joints),
+        mode_id % len(MOTION_MODE_NAMES),
+    )
+    for q_ref in q_ref_sequence:
+        torque = env.compute_torque_components(q_ref)
         for key in torque_records:
             torque_records[key].append(torque[key])
-        actions.append(action.copy())
+        actions.append(q_ref.copy())
         true_states.append(state.copy())
-        state = env.step(action)
+        state = env.step(q_ref)
         true_next_states.append(state.copy())
     return (
         np.asarray(true_states, dtype=np.float32),
@@ -376,6 +387,8 @@ def main() -> None:
         raise ValueError("rollout_len and num_rollouts must be positive")
     if args.warmup_steps < 0:
         raise ValueError(f"warmup_steps must be non-negative, got {args.warmup_steps}")
+    if args.settle_steps < 0:
+        raise ValueError(f"settle_steps must be non-negative, got {args.settle_steps}")
     action_std = parse_action_std(args.action_std, args.n_joints)
     horizons = parse_horizons(args.horizons)
     set_seed(args.seed)
@@ -407,7 +420,13 @@ def main() -> None:
         for rollout_idx in range(args.num_rollouts):
             total_steps = args.warmup_steps + max(args.rollout_len, max(horizons))
             true_states_all, actions, true_next_states_all, torque_all = collect_truth_rollout_with_torque(
-                env, rng, args.n_joints, total_steps, action_std
+                env,
+                rng,
+                args.n_joints,
+                total_steps,
+                action_std,
+                settle_steps=args.settle_steps,
+                mode_id=rollout_idx,
             )
             true_states = true_states_all[args.warmup_steps : args.warmup_steps + args.rollout_len]
             torque_components = {

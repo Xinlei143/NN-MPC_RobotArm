@@ -15,7 +15,12 @@ from learned_dynamics.dataset_merge import merge_npz_datasets
 from learned_dynamics.models import GRUDynamics, MLPDynamics, TransformerDynamics
 from learned_dynamics.mujoco_env import MuJoCoArmEnv
 from learned_dynamics.normalization import StandardNormalizer
-from learned_dynamics.parallel_collector import sample_smooth_action, save_dataset, validate_append_dataset
+from learned_dynamics.parallel_collector import (
+    collect_rollouts_detailed,
+    sample_smooth_action,
+    save_dataset,
+    validate_append_dataset,
+)
 from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 from learned_dynamics.train_utils import load_checkpoint, require_resume_checkpoint, save_checkpoint
 from learned_dynamics2.mujoco_env import MuJoCoArmEnv as MuJoCoArmEnvV2
@@ -836,12 +841,268 @@ class CoreBehaviorTests(unittest.TestCase):
 
         self.assertEqual(args.target_mode, "delta_dq")
         self.assertEqual(args_v2.target_mode, "delta_dq")
+        self.assertFalse(args.no_require_q_ref_dataset)
+        self.assertFalse(args_v2.no_require_q_ref_dataset)
+
+    def test_train_dataset_validation_rejects_legacy_non_q_ref_data(self) -> None:
+        states = np.zeros((2, 4), dtype=np.float32)
+        actions = np.ones((2, 2), dtype=np.float32)
+        next_states = states + 0.1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.npz"
+            np.savez(path, states=states, actions=actions, next_states=next_states)
+
+            with self.assertRaisesRegex(KeyError, "q_ref"):
+                TRAIN_DYNAMICS.validate_q_ref_dataset(path, model_type="mlp")
+
+    def test_train_dataset_validation_accepts_current_q_ref_data(self) -> None:
+        states = np.zeros((2, 4), dtype=np.float32)
+        actions = np.ones((2, 2), dtype=np.float32)
+        next_states = states + 0.1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "current.npz"
+            np.savez(
+                path,
+                states=states,
+                actions=actions,
+                next_states=next_states,
+                q_ref=actions.copy(),
+                delta_q_ref=np.zeros((2, 2), dtype=np.float32),
+                episode_ids=np.array([0, 0], dtype=np.int64),
+            )
+
+            TRAIN_DYNAMICS.validate_q_ref_dataset(path, model_type="transformer")
 
     def test_default_config_uses_delta_dq_target_mode(self) -> None:
         config_text = (ROOT / "configs" / "default.yaml").read_text(encoding="utf-8")
 
         self.assertIn("target_mode: delta_dq", config_text)
         self.assertNotIn("target_mode: delta_state", config_text)
+
+    def test_detailed_collector_records_closed_loop_diagnostics(self) -> None:
+        data = collect_rollouts_detailed(
+            model_xml=str(ROOT / "ABB_IRB2400.xml"),
+            n_joints=6,
+            num_episodes=4,
+            episode_len=8,
+            action_std=0.4,
+            seed=3,
+            settle_steps=2,
+            worker_id=0,
+            episode_id_offset=10,
+        )
+
+        required = {
+            "states",
+            "actions",
+            "next_states",
+            "q_ref",
+            "delta_q_ref",
+            "tau_actuator",
+            "tau_gravity",
+            "tau_total",
+            "action_std_normalized",
+            "settle_steps",
+            "episode_ids",
+            "motion_mode_ids",
+            "termination_reasons",
+        }
+        self.assertTrue(required.issubset(data))
+        self.assertEqual(data["states"].shape, (32, 12))
+        self.assertEqual(data["q_ref"].shape, (32, 6))
+        self.assertEqual(data["action_std_normalized"].shape, (32, 6))
+        self.assertTrue(np.allclose(data["action_std_normalized"], 0.4))
+        self.assertTrue(np.all(data["settle_steps"] == 2))
+        self.assertTrue(np.allclose(data["actions"], data["q_ref"]))
+        self.assertTrue(np.allclose(data["tau_total"], data["tau_actuator"] + data["tau_gravity"], atol=2e-4))
+        self.assertTrue(np.all(data["termination_reasons"] == 0))
+        self.assertEqual(set(data["episode_ids"].tolist()), {10, 11, 12, 13})
+        self.assertGreaterEqual(len(set(data["motion_mode_ids"].tolist())), 4)
+        self.assertTrue(np.any(np.abs(data["delta_q_ref"]) > 0.0))
+        action_low = np.array([-3.1416, -1.7453, -1.0472, -3.49, -2.0944, -6.9813], dtype=np.float32)
+        action_high = np.array([3.1416, 1.9199, 1.1345, 3.49, 2.0944, 6.9813], dtype=np.float32)
+        half_range = (action_high - action_low) / 2.0
+        normalized_delta_q_ref = data["delta_q_ref"] / half_range
+        self.assertLess(float(np.max(np.abs(normalized_delta_q_ref))), 0.25)
+
+    def test_detailed_collector_reset_keeps_joint2_away_from_upper_limit(self) -> None:
+        data = collect_rollouts_detailed(
+            model_xml=str(ROOT / "ABB_IRB2400.xml"),
+            n_joints=6,
+            num_episodes=3,
+            episode_len=4,
+            action_std=0.3,
+            seed=7,
+            settle_steps=1,
+            worker_id=0,
+        )
+        joint2 = data["states"][:, 1]
+        joint2_low = -1.7453
+        joint2_high = 1.9199
+        joint2_norm = (joint2 - (joint2_high + joint2_low) / 2.0) / ((joint2_high - joint2_low) / 2.0)
+
+        self.assertLess(float(np.max(joint2_norm)), 0.55)
+
+    def test_save_dataset_preserves_detailed_fields(self) -> None:
+        states = np.zeros((2, 4), dtype=np.float32)
+        actions = np.ones((2, 2), dtype=np.float32)
+        next_states = states + 0.1
+        extras = {
+            "q_ref": actions.copy(),
+            "delta_q_ref": np.zeros((2, 2), dtype=np.float32),
+            "tau_total": np.ones((2, 2), dtype=np.float32),
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "detailed.npz"
+            save_dataset(path, states, actions, next_states, extra_arrays=extras)
+            loaded = np.load(path)
+
+        self.assertTrue(np.allclose(loaded["q_ref"], actions))
+        self.assertIn("delta_q_ref", loaded.files)
+        self.assertIn("tau_total", loaded.files)
+
+    def test_save_dataset_fills_new_metadata_when_appending_to_legacy_dataset(self) -> None:
+        states = np.zeros((2, 4), dtype=np.float32)
+        actions = np.ones((2, 2), dtype=np.float32)
+        next_states = states + 0.1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.npz"
+            np.savez(
+                path,
+                states=states,
+                actions=actions,
+                next_states=next_states,
+                episode_ids=np.array([0, 0], dtype=np.int64),
+            )
+
+            save_dataset(
+                path,
+                states + 1.0,
+                actions + 1.0,
+                next_states + 1.0,
+                append=True,
+                episode_ids=np.array([0, 0], dtype=np.int64),
+                extra_arrays={
+                    "action_std_normalized": np.full((2, 2), 0.8, dtype=np.float32),
+                    "settle_steps": np.full(2, 50, dtype=np.int64),
+                },
+            )
+            loaded = np.load(path)
+
+        self.assertEqual(loaded["states"].shape, (4, 4))
+        self.assertTrue(np.allclose(loaded["action_std_normalized"][:2], -1.0))
+        self.assertTrue(np.allclose(loaded["action_std_normalized"][2:], 0.8))
+        self.assertTrue(np.all(loaded["settle_steps"][:2] == -1))
+        self.assertTrue(np.all(loaded["settle_steps"][2:] == 50))
+
+    def test_save_dataset_still_rejects_missing_non_metadata_extra_on_append(self) -> None:
+        states = np.zeros((2, 4), dtype=np.float32)
+        actions = np.ones((2, 2), dtype=np.float32)
+        next_states = states + 0.1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.npz"
+            np.savez(path, states=states, actions=actions, next_states=next_states)
+
+            with self.assertRaisesRegex(ValueError, "q_ref"):
+                save_dataset(
+                    path,
+                    states + 1.0,
+                    actions + 1.0,
+                    next_states + 1.0,
+                    append=True,
+                    extra_arrays={"q_ref": actions + 1.0},
+                )
+
+    def test_diagnose_dynamics_data_writes_extended_coverage_outputs(self) -> None:
+        states = np.array(
+            [
+                [0.0, -0.2, 0.0, 0.0],
+                [0.1, -0.1, 0.2, -0.2],
+                [0.2, 0.0, 0.1, -0.1],
+            ],
+            dtype=np.float32,
+        )
+        actions = np.array([[0.1, -0.1], [0.2, 0.0], [0.3, 0.1]], dtype=np.float32)
+        next_states = states + 0.01
+        tau = np.ones((3, 2), dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_path = tmp_path / "dataset.npz"
+            np.savez(
+                data_path,
+                states=states,
+                actions=actions,
+                next_states=next_states,
+                q_ref=actions,
+                delta_q_ref=np.diff(np.vstack([actions[0], actions]), axis=0).astype(np.float32),
+                tau_total=tau,
+                tau_actuator=tau * 0.25,
+                tau_gravity=tau * 0.75,
+                action_std_normalized=np.full((3, 2), 0.5, dtype=np.float32),
+                settle_steps=np.full(3, 50, dtype=np.int64),
+                termination_reasons=np.zeros(3, dtype=np.int64),
+                motion_mode_ids=np.array([0, 1, 2], dtype=np.int64),
+            )
+            rows = DIAG_DYNAMICS.write_coverage_diagnostics(data_path, n_joints=2, save_dir=tmp_path / "figures")
+
+            self.assertTrue((tmp_path / "figures" / "coverage_summary.csv").exists())
+            self.assertTrue((tmp_path / "figures" / "q_hist.png").exists())
+            self.assertTrue((tmp_path / "figures" / "q_ref_hist.png").exists())
+            self.assertTrue((tmp_path / "figures" / "q_norm_trajectories_first8.png").exists())
+            self.assertTrue((tmp_path / "figures" / "q_ref_tracking_first2.png").exists())
+            self.assertTrue((tmp_path / "figures" / "tau_total_hist.png").exists())
+            self.assertTrue((tmp_path / "figures" / "action_std_normalized_hist.png").exists())
+            self.assertTrue((tmp_path / "figures" / "termination_summary.csv").exists())
+            self.assertTrue((tmp_path / "figures" / "settle_steps_summary.csv").exists())
+            self.assertTrue((tmp_path / "figures" / "joint_limit_margin_summary.csv").exists())
+            termination_summary = (tmp_path / "figures" / "termination_summary.csv").read_text(encoding="utf-8")
+            motion_mode_summary = (tmp_path / "figures" / "motion_mode_summary.csv").read_text(encoding="utf-8")
+            joint_limit_summary = (tmp_path / "figures" / "joint_limit_margin_summary.csv").read_text(encoding="utf-8")
+            self.assertIn("ok", termination_summary)
+            self.assertIn("hold", motion_mode_summary)
+            self.assertIn("smooth_random", motion_mode_summary)
+            self.assertIn("q_near_limit_fraction", joint_limit_summary)
+            self.assertIn("q_ref_outside_limit_count", joint_limit_summary)
+            self.assertTrue(any(row["field"] == "q_ref" for row in rows))
+            self.assertTrue(any(row["field"] == "action_std_normalized" for row in rows))
+
+    def test_diagnose_dynamics_data_resolves_joint_limits_from_xml(self) -> None:
+        env = MuJoCoArmEnv(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6)
+        try:
+            low, high = DIAG_DYNAMICS.resolve_joint_limits(6, str(ROOT / "ABB_IRB2400.xml"))
+            self.assertTrue(np.allclose(low, env.joint_low))
+            self.assertTrue(np.allclose(high, env.joint_high))
+        finally:
+            env.close()
+
+    def test_eval_truth_rollout_uses_safe_q_ref_distribution_with_torque(self) -> None:
+        env = MuJoCoArmEnv(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, seed=5)
+        try:
+            states, actions, next_states, torque = EVAL_DYNAMICS.collect_truth_rollout_with_torque(
+                env,
+                np.random.default_rng(5),
+                n_joints=6,
+                total_steps=8,
+                action_std=0.3,
+                settle_steps=1,
+                mode_id=1,
+            )
+        finally:
+            env.close()
+
+        self.assertEqual(states.shape, (8, 12))
+        self.assertEqual(actions.shape, (8, 6))
+        self.assertEqual(next_states.shape, (8, 12))
+        self.assertTrue(np.all(actions >= env.action_low - 1e-6))
+        self.assertTrue(np.all(actions <= env.action_high + 1e-6))
+        self.assertTrue(np.allclose(torque["total_tau"], torque["actuator_tau"] + torque["gravity_tau"], atol=2e-4))
+        self.assertAlmostEqual(float(np.max(np.abs(torque["gravity_tau"][:, 5]))), 0.0, places=9)
 
     def test_checkpoint_round_trips_full_training_state(self) -> None:
         model = MLPDynamics(state_dim=2, action_dim=1)
@@ -1099,6 +1360,7 @@ class CoreBehaviorTests(unittest.TestCase):
         )
 
         self.assertEqual(args.action_std, 0.3)
+        self.assertEqual(args.settle_steps, 50)
         self.assertEqual(args.warmup_steps, 0)
         self.assertEqual(args.horizons, "1,5,10,20,50,200")
         self.assertFalse(args.teacher_forcing)
@@ -1383,6 +1645,14 @@ class CoreBehaviorTests(unittest.TestCase):
         states = np.arange(80, dtype=np.float32).reshape(40, 2) / 100.0
         actions = np.linspace(-0.5, 0.5, 40, dtype=np.float32).reshape(40, 1)
         next_states = states + np.concatenate([actions, -actions], axis=1) * 0.01
+        q_ref = actions.copy()
+        delta_q_ref = np.diff(np.vstack([q_ref[0], q_ref]), axis=0).astype(np.float32)
+        extra_arrays = {
+            "q_ref": q_ref,
+            "delta_q_ref": delta_q_ref,
+            "action_std_normalized": np.full((40, 1), 0.3, dtype=np.float32),
+            "settle_steps": np.full(40, 50, dtype=np.int64),
+        }
         if include_episode_ids:
             np.savez(
                 path,
@@ -1390,9 +1660,10 @@ class CoreBehaviorTests(unittest.TestCase):
                 actions=actions,
                 next_states=next_states,
                 episode_ids=np.zeros(40, dtype=np.int64),
+                **extra_arrays,
             )
         else:
-            np.savez(path, states=states, actions=actions, next_states=next_states)
+            np.savez(path, states=states, actions=actions, next_states=next_states, **extra_arrays)
 
     @staticmethod
     def _run_train(data_path: Path, save_dir: Path, *extra_args: str) -> None:

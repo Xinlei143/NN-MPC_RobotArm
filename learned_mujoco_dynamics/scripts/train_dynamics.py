@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import torch
+import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -55,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollout_loss_discount", default=1.0, type=float)
     parser.add_argument("--train_sample_stride", default=1, type=int)
     parser.add_argument("--val_sample_stride", default=1, type=int)
+    parser.add_argument(
+        "--no_require_q_ref_dataset",
+        action="store_true",
+        help="Allow legacy datasets without q_ref diagnostics. Not recommended for current position-control data.",
+    )
     return parser.parse_args()
 
 
@@ -116,6 +122,22 @@ def parse_extra_weights(value: str | None, n_joints: int, name: str) -> torch.Te
     if any(weight < 0 for weight in weights):
         raise ValueError(f"{name} values must be non-negative, got {value!r}")
     return torch.tensor(weights, dtype=torch.float32)
+
+
+def validate_q_ref_dataset(data_path: Path, model_type: str) -> None:
+    data = np.load(data_path)
+    required = {"states", "actions", "next_states", "q_ref", "delta_q_ref"}
+    missing = required.difference(data.files)
+    if missing:
+        raise KeyError(
+            f"Dataset {data_path} is missing q_ref position-control arrays: {sorted(missing)}. "
+            "Use a dataset collected with the current closed-loop q_ref collector, or pass "
+            "--no_require_q_ref_dataset only for legacy experiments."
+        )
+    if data["actions"].shape != data["q_ref"].shape or not np.allclose(data["actions"], data["q_ref"], atol=1e-6):
+        raise ValueError("Current position-control training expects actions == q_ref for every sample.")
+    if model_type != "mlp" and "episode_ids" not in data.files:
+        raise KeyError("Sequence models require episode_ids so history windows do not cross reset boundaries.")
 
 
 def weighted_delta_loss(
@@ -416,6 +438,8 @@ def main() -> None:
     if args.q_weight == 0 and args.dq_weight == 0:
         raise ValueError("At least one of q_weight or dq_weight must be positive")
     use_rollout_loss = bool(args.rollout_loss_steps > 1 and args.rollout_loss_weight > 0.0)
+    if not args.no_require_q_ref_dataset:
+        validate_q_ref_dataset(Path(args.data_path), args.model_type)
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

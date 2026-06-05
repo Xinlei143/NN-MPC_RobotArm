@@ -9,8 +9,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from learned_dynamics.parallel_collector import (
-    collect_parallel_with_episode_ids,
-    collect_rollouts_with_episode_ids,
+    collect_parallel_detailed,
+    collect_rollouts_detailed,
     save_dataset,
     validate_append_dataset,
 )
@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--num_envs", default=32, type=int)
     parser.add_argument("--history_len", default=16, type=int, help="Recommended Transformer history length")
+    parser.add_argument("--settle_steps", default=50, type=int, help="Steps to hold q_ref=q after reset before recording")
     parser.add_argument("--append", action="store_true", help="Append new samples to save_path if it already exists")
     return parser.parse_args()
 
@@ -53,18 +54,19 @@ def main() -> None:
 
     model_xml = str(resolve_project_path(args.model_xml, ROOT))
     if args.num_envs == 1:
-        states, actions, next_states, episode_ids = collect_rollouts_with_episode_ids(
+        data = collect_rollouts_detailed(
             model_xml=model_xml,
             n_joints=args.n_joints,
             num_episodes=args.num_episodes,
             episode_len=args.episode_len,
             action_std=args.action_std,
             seed=args.seed,
-            episode_id_offset=0,
             worker_id=0,
+            episode_id_offset=0,
+            settle_steps=args.settle_steps,
         )
     else:
-        states, actions, next_states, episode_ids = collect_parallel_with_episode_ids(
+        data = collect_parallel_detailed(
             model_xml=model_xml,
             n_joints=args.n_joints,
             num_episodes=args.num_episodes,
@@ -72,15 +74,18 @@ def main() -> None:
             action_std=args.action_std,
             seed=args.seed,
             num_envs=args.num_envs,
+            settle_steps=args.settle_steps,
         )
 
+    extra_arrays = {key: value for key, value in data.items() if key not in {"states", "actions", "next_states", "episode_ids"}}
     states, actions, next_states, episode_ids = save_dataset(
         save_path,
-        states,
-        actions,
-        next_states,
+        data["states"],
+        data["actions"],
+        data["next_states"],
         append=args.append,
-        episode_ids=episode_ids,
+        episode_ids=data["episode_ids"],
+        extra_arrays=extra_arrays,
     )
     action = "Appended Transformer dataset to" if args.append else "Saved Transformer dataset to"
     print(
