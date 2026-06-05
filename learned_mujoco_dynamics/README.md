@@ -197,8 +197,10 @@ python scripts/collect_data.py \
 - XML 中的 `<geom>` 默认 `mass="0"`、`contype="0"`、`conaffinity="0"`，所以 STL mesh 只用于显示，不再参与质量、惯量或碰撞计算。
 - 机器人总质量按 ABB IRB 2400 规格近似设置为 380 kg；`link_5/link_6` 显式设置为 12 kg / 8 kg，避免粗糙 STL 自动惯性导致腕部 `dq4` 尖峰。
 - 旧的粗糙 STL 仍保留在 `abb_irb2400_assets/` 中，但当前 XML 引用的是 `base_link_visual.stl`、`link_1_visual.stl` 到 `link_6_visual.stl` 和两个 lever visual STL。
-- 旧的 velocity/motor/torque 数据集和 checkpoint 不能和当前 position-actuator XML 混用；改 actuator 后需要重新采集数据。
-- `--action_std` 是目标关节角扰动尺度，支持单个数，也支持 6 个逗号分隔值，例如 `--action_std 0.2,0.2,0.3,0.4,0.4,0.6`。
+- 旧的 velocity/motor/torque 数据集和 checkpoint 不能和当前 position-actuator XML 混用；改 actuator 或 action 采样语义后需要重新采集数据。
+- `--action_std` 是归一化关节坐标中的随机目标标准差，不是 rad。每个关节先按自身 `ctrlrange` 映射到 `[-1, 1]`，采样后再映射回实际目标角 `q_ref`。
+- 例如 `--action_std 0.5` 表示所有关节都使用 normalized std 0.5；也支持 6 个逗号分隔的 normalized std。
+- 环境会在每次 `step()` 后检查真实 `qpos` 是否仍在 XML joint limit 内；越界会直接报错，避免保存坏数据。
 - 如果 XML 的 actuator 数量不足，代码会直接报清晰错误。
 
 ## 8. 训练 MLP 动力学模型
@@ -288,7 +290,7 @@ python scripts/collect_transformer_data.py \
   --num_episodes 10000 \
   --episode_len 600 \
   --num_envs 10 \
-  --action_std 0.2,0.2,0.3,0.4,0.4,0.6 \
+  --action_std 0.5 \
   --seed 0 \
   --history_len 16 \
   --save_path outputs/datasets/irb2400_parallel_data_transformer.npz
@@ -551,7 +553,7 @@ python scripts/diagnose_dynamics_data.py \
   --save_csv outputs/diagnostics/qref_delta_stats.csv \
   --lag_csv outputs/diagnostics/qref_lag_corr.csv \
   --qacc_rollout_steps 10 \
-  --action_std 0.2,0.2,0.3,0.4,0.4,0.6
+  --action_std 0.5
 ```
 
 注意不要用最后一个 substep 的 `qacc * control_dt` 直接判断对齐；RK4 和 `frame_skip` 会让这个近似在腕部关节上非常误导。脚本会同时输出精确 substep `qvel` 累加误差和 post-step `qacc` Euler 近似误差。

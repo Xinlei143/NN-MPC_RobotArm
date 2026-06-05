@@ -12,6 +12,7 @@ class MuJoCoArmEnv:
 
     _EE_NAMES = ("ee_site", "tool0", "flange", "end_effector")
     _ZERO_GRAVITY_COMPENSATION_JOINT_INDICES = (5,)
+    _JOINT_LIMIT_TOLERANCE = 1e-6
 
     def __init__(
         self,
@@ -61,6 +62,13 @@ class MuJoCoArmEnv:
             self.model.opt.timestep = float(dt)
         self.action_low = np.asarray(self.model.actuator_ctrlrange[: self.n_joints, 0], dtype=np.float32)
         self.action_high = np.asarray(self.model.actuator_ctrlrange[: self.n_joints, 1], dtype=np.float32)
+        self.joint_low = self.action_low.copy()
+        self.joint_high = self.action_high.copy()
+        if self.model.njnt >= self.n_joints:
+            joint_limited = np.asarray(self.model.jnt_limited[: self.n_joints], dtype=bool)
+            joint_range = np.asarray(self.model.jnt_range[: self.n_joints], dtype=np.float32)
+            self.joint_low = np.where(joint_limited, joint_range[:, 0], self.joint_low).astype(np.float32)
+            self.joint_high = np.where(joint_limited, joint_range[:, 1], self.joint_high).astype(np.float32)
 
     @property
     def state_dim(self) -> int:
@@ -78,6 +86,20 @@ class MuJoCoArmEnv:
         qpos = np.asarray(self.data.qpos[: self.n_joints], dtype=np.float64)
         qvel = np.asarray(self.data.qvel[: self.n_joints], dtype=np.float64)
         return np.concatenate([qpos, qvel]).astype(np.float32)
+
+    def validate_joint_positions(self, context: str = "step") -> None:
+        qpos = np.asarray(self.data.qpos[: self.n_joints], dtype=np.float64)
+        low = np.asarray(self.joint_low, dtype=np.float64) - self._JOINT_LIMIT_TOLERANCE
+        high = np.asarray(self.joint_high, dtype=np.float64) + self._JOINT_LIMIT_TOLERANCE
+        violations = np.where((qpos < low) | (qpos > high))[0]
+        if violations.size == 0:
+            return
+        joint_idx = int(violations[0])
+        raise RuntimeError(
+            f"Joint position limit violation during {context}: joint {joint_idx} "
+            f"qpos={qpos[joint_idx]:.8f}, limit=[{self.joint_low[joint_idx]:.8f}, "
+            f"{self.joint_high[joint_idx]:.8f}]"
+        )
 
     def _gravity_compensation_force(self) -> np.ndarray:
         if self._gravity_data is None:
@@ -123,6 +145,7 @@ class MuJoCoArmEnv:
             if self.gravity_compensation:
                 self.data.qfrc_applied[: self.n_joints] = self._gravity_compensation_force()
             mujoco.mj_step(self.model, self.data)
+        self.validate_joint_positions("step")
         return self.get_state()
 
     def reset_random(self) -> np.ndarray:
@@ -132,6 +155,7 @@ class MuJoCoArmEnv:
         self.data.ctrl[: self.n_joints] = 0.0
         self.data.qfrc_applied[: self.n_joints] = 0.0
         mujoco.mj_forward(self.model, self.data)
+        self.validate_joint_positions("reset_random")
         return self.get_state()
 
     def get_ee_position(self) -> Optional[np.ndarray]:

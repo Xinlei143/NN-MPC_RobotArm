@@ -4,7 +4,7 @@ frame_skip: 5
 collection:
   num_episodes: 20
   episode_len: 200
-  action_std: "0.2,0.2,0.3,0.4,0.4,0.6"
+  action_std: "0.5"
   num_envs: 1
   save_path: outputs/datasets/arm_data.npz
 training:

@@ -208,6 +208,19 @@ class CoreBehaviorTests(unittest.TestCase):
             finally:
                 env.close()
 
+    def test_envs_validate_joint_position_limits(self) -> None:
+        for env_class in (MuJoCoArmEnv, MuJoCoArmEnvV2):
+            env = env_class(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, frame_skip=1)
+            try:
+                env.reset_random()
+                env.validate_joint_positions("test")
+
+                env.data.qpos[0] = float(env.joint_high[0] + 1e-3)
+                with self.assertRaisesRegex(RuntimeError, "joint 0.*limit"):
+                    env.validate_joint_positions("forced limit violation")
+            finally:
+                env.close()
+
     def test_collada_converter_applies_node_matrix_to_polylist_vertices(self) -> None:
         dae = """<?xml version="1.0"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema">
@@ -740,6 +753,43 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertGreaterEqual(action[0], -0.2)
         self.assertLessEqual(action[1], 2.0)
         self.assertGreaterEqual(action[1], -2.0)
+
+    def test_sample_smooth_action_requires_joint_ranges_for_normalized_sampling(self) -> None:
+        rng = np.random.default_rng(0)
+        previous = np.array([0.0, 0.0], dtype=np.float32)
+
+        with self.assertRaisesRegex(ValueError, "action_low/action_high"):
+            sample_smooth_action(rng, previous, action_std=0.5, n_joints=2)
+
+    def test_sample_smooth_action_interprets_std_in_normalized_joint_space(self) -> None:
+        class OneSigmaRng:
+            def normal(self, loc: float, scale: float | np.ndarray, size: int) -> np.ndarray:
+                return np.asarray(scale, dtype=np.float64)
+
+        low = np.array([1.0, 10.0], dtype=np.float32)
+        high = np.array([3.0, 30.0], dtype=np.float32)
+        previous = np.array([2.0, 20.0], dtype=np.float32)
+
+        action = sample_smooth_action(
+            OneSigmaRng(),
+            previous,
+            action_std=0.5,
+            n_joints=2,
+            action_low=low,
+            action_high=high,
+        )
+
+        self.assertTrue(np.allclose(action, np.array([2.1, 21.0], dtype=np.float32)))
+
+    def test_sample_smooth_action_smooths_previous_action_in_normalized_space(self) -> None:
+        rng = np.random.default_rng(0)
+        low = np.array([1.0, 10.0], dtype=np.float32)
+        high = np.array([3.0, 30.0], dtype=np.float32)
+        previous = np.array([2.5, 25.0], dtype=np.float32)
+
+        action = sample_smooth_action(rng, previous, action_std=0.0, n_joints=2, action_low=low, action_high=high)
+
+        self.assertTrue(np.allclose(action, np.array([2.4, 24.0], dtype=np.float32)))
 
     def test_rollout_visualization_samples_position_targets_with_env_action_range(self) -> None:
         rng = np.random.default_rng(0)

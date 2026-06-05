@@ -20,12 +20,25 @@ def sample_smooth_action(
     action_low: np.ndarray | None = None,
     action_high: np.ndarray | None = None,
 ) -> np.ndarray:
-    noise = rng.normal(loc=0.0, scale=action_std, size=n_joints)
-    action = 0.8 * previous_action + 0.2 * noise
-    low = -np.ones(n_joints, dtype=np.float32) if action_low is None else np.asarray(action_low, dtype=np.float32)
-    high = np.ones(n_joints, dtype=np.float32) if action_high is None else np.asarray(action_high, dtype=np.float32)
+    if action_low is None or action_high is None:
+        raise ValueError("action_low/action_high are required for normalized action_std sampling")
+    low = np.asarray(action_low, dtype=np.float64)
+    high = np.asarray(action_high, dtype=np.float64)
     if low.shape != (n_joints,) or high.shape != (n_joints,):
         raise ValueError(f"action_low/action_high must have shape ({n_joints},), got {low.shape} and {high.shape}")
+    half_range = (high - low) / 2.0
+    if np.any(half_range <= 0.0):
+        raise ValueError(f"action ranges must have positive width, got low={low} high={high}")
+
+    center = (high + low) / 2.0
+    previous = np.asarray(previous_action, dtype=np.float64)
+    if previous.shape != (n_joints,):
+        raise ValueError(f"previous_action must have shape ({n_joints},), got {previous.shape}")
+
+    previous_norm = (np.clip(previous, low, high) - center) / half_range
+    noise_norm = rng.normal(loc=0.0, scale=action_std, size=n_joints)
+    action_norm = np.clip(0.8 * previous_norm + 0.2 * noise_norm, -1.0, 1.0)
+    action = center + action_norm * half_range
     return np.clip(action, low, high).astype(np.float32)
 
 
