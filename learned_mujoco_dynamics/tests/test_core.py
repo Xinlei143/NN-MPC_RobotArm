@@ -18,6 +18,7 @@ from learned_dynamics.normalization import StandardNormalizer
 from learned_dynamics.parallel_collector import sample_smooth_action, save_dataset, validate_append_dataset
 from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 from learned_dynamics.train_utils import load_checkpoint, require_resume_checkpoint, save_checkpoint
+from learned_dynamics2.mujoco_env import MuJoCoArmEnv as MuJoCoArmEnvV2
 from learned_dynamics2.dataset import (
     DynamicsDataset as DynamicsDatasetV2,
     RolloutDynamicsDataset as RolloutDynamicsDatasetV2,
@@ -39,6 +40,42 @@ build_sequence_history = EVAL_DYNAMICS.build_sequence_history
 predict_open_loop_segment = EVAL_DYNAMICS.predict_open_loop_segment
 summarize_prediction = EVAL_DYNAMICS.summarize_prediction
 
+EVAL_DYNAMICS2_SPEC = importlib.util.spec_from_file_location("eval_dynamics2", ROOT / "scripts2" / "eval_dynamics.py")
+if EVAL_DYNAMICS2_SPEC is None or EVAL_DYNAMICS2_SPEC.loader is None:
+    raise RuntimeError("Could not load scripts2/eval_dynamics.py")
+EVAL_DYNAMICS2 = importlib.util.module_from_spec(EVAL_DYNAMICS2_SPEC)
+EVAL_DYNAMICS2_SPEC.loader.exec_module(EVAL_DYNAMICS2)
+
+DIAG_ROLLOUT_SPIKES_SPEC = importlib.util.spec_from_file_location(
+    "diagnose_rollout_spikes", ROOT / "scripts" / "diagnose_rollout_spikes.py"
+)
+if DIAG_ROLLOUT_SPIKES_SPEC is None or DIAG_ROLLOUT_SPIKES_SPEC.loader is None:
+    raise RuntimeError("Could not load scripts/diagnose_rollout_spikes.py")
+DIAG_ROLLOUT_SPIKES = importlib.util.module_from_spec(DIAG_ROLLOUT_SPIKES_SPEC)
+DIAG_ROLLOUT_SPIKES_SPEC.loader.exec_module(DIAG_ROLLOUT_SPIKES)
+
+DIAG_DYNAMICS_SPEC = importlib.util.spec_from_file_location(
+    "diagnose_dynamics_data", ROOT / "scripts" / "diagnose_dynamics_data.py"
+)
+if DIAG_DYNAMICS_SPEC is None or DIAG_DYNAMICS_SPEC.loader is None:
+    raise RuntimeError("Could not load scripts/diagnose_dynamics_data.py")
+DIAG_DYNAMICS = importlib.util.module_from_spec(DIAG_DYNAMICS_SPEC)
+DIAG_DYNAMICS_SPEC.loader.exec_module(DIAG_DYNAMICS)
+
+ROLLOUT_VISUALIZE_SPEC = importlib.util.spec_from_file_location(
+    "rollout_visualize", ROOT / "scripts" / "rollout_visualize.py"
+)
+if ROLLOUT_VISUALIZE_SPEC is None or ROLLOUT_VISUALIZE_SPEC.loader is None:
+    raise RuntimeError("Could not load scripts/rollout_visualize.py")
+ROLLOUT_VISUALIZE = importlib.util.module_from_spec(ROLLOUT_VISUALIZE_SPEC)
+ROLLOUT_VISUALIZE_SPEC.loader.exec_module(ROLLOUT_VISUALIZE)
+
+TUNE_POSITION_KP_SPEC = importlib.util.spec_from_file_location("tune_position_kp", ROOT / "tests" / "tune_position_kp.py")
+if TUNE_POSITION_KP_SPEC is None or TUNE_POSITION_KP_SPEC.loader is None:
+    raise RuntimeError("Could not load tests/tune_position_kp.py")
+TUNE_POSITION_KP = importlib.util.module_from_spec(TUNE_POSITION_KP_SPEC)
+TUNE_POSITION_KP_SPEC.loader.exec_module(TUNE_POSITION_KP)
+
 TRAIN_DYNAMICS_SPEC = importlib.util.spec_from_file_location("train_dynamics", ROOT / "scripts" / "train_dynamics.py")
 if TRAIN_DYNAMICS_SPEC is None or TRAIN_DYNAMICS_SPEC.loader is None:
     raise RuntimeError("Could not load scripts/train_dynamics.py")
@@ -49,6 +86,12 @@ rollout_state_loss = TRAIN_DYNAMICS.rollout_state_loss
 format_delta_rmse = TRAIN_DYNAMICS.format_delta_rmse
 parse_extra_weights = TRAIN_DYNAMICS.parse_extra_weights
 reconstruct_next_state = TRAIN_DYNAMICS.reconstruct_next_state
+
+TRAIN_DYNAMICS2_SPEC = importlib.util.spec_from_file_location("train_dynamics2", ROOT / "scripts2" / "train_dynamics.py")
+if TRAIN_DYNAMICS2_SPEC is None or TRAIN_DYNAMICS2_SPEC.loader is None:
+    raise RuntimeError("Could not load scripts2/train_dynamics.py")
+TRAIN_DYNAMICS2 = importlib.util.module_from_spec(TRAIN_DYNAMICS2_SPEC)
+TRAIN_DYNAMICS2_SPEC.loader.exec_module(TRAIN_DYNAMICS2)
 
 CONVERT_DAE_SPEC = importlib.util.spec_from_file_location(
     "convert_collada_to_stl", ROOT / "scripts" / "convert_collada_to_stl.py"
@@ -100,6 +143,70 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertIn('file="link_6_visual.stl"', xml)
         self.assertTrue((ROOT / "abb_irb2400_assets" / "link_5_visual.stl").exists())
         self.assertTrue((ROOT / "abb_irb2400_assets" / "link_6_visual.stl").exists())
+
+    def test_irb2400_xml_uses_position_actuators_matching_joint_ranges(self) -> None:
+        xml = (ROOT / "ABB_IRB2400.xml").read_text(encoding="utf-8")
+        joint_names, joint_ranges = TUNE_POSITION_KP.joint_specs_from_xml(xml)
+        model = mujoco.MjModel.from_xml_path(str(ROOT / "ABB_IRB2400.xml"))
+
+        self.assertEqual(xml.count("<position "), 6)
+        self.assertNotIn("<velocity", xml)
+        self.assertEqual(model.nu, 6)
+        for actuator_id, (joint_name, joint_range) in enumerate(zip(joint_names, joint_ranges)):
+            actuator_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_id)
+            self.assertEqual(actuator_name, f"{joint_name}_position")
+            self.assertTrue(np.allclose(model.actuator_ctrlrange[actuator_id], np.asarray(joint_range)))
+
+    def test_default_envs_apply_gravity_compensation_for_position_control(self) -> None:
+        for env_class in (MuJoCoArmEnv, MuJoCoArmEnvV2):
+            env = env_class(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, frame_skip=1)
+            try:
+                self.assertEqual(env.control_mode, "position")
+                self.assertTrue(env.gravity_compensation)
+
+                mujoco.mj_resetData(env.model, env.data)
+                env.data.qpos[:6] = np.asarray([0.0, 0.45, -0.2, 0.1, -0.15, 0.2])
+                env.data.qvel[:6] = 0.0
+                mujoco.mj_forward(env.model, env.data)
+                q_ref = np.asarray(env.data.qpos[:6], dtype=np.float64).copy()
+                expected = env._gravity_compensation_force()
+
+                env.step(q_ref)
+
+                self.assertTrue(np.allclose(env.data.qfrc_applied[:6], expected, rtol=1e-6, atol=1e-6))
+                self.assertEqual(expected[5], 0.0)
+                self.assertEqual(env.data.qfrc_applied[5], 0.0)
+            finally:
+                env.close()
+
+    def test_envs_reject_velocity_control_mode(self) -> None:
+        for env_class in (MuJoCoArmEnv, MuJoCoArmEnvV2):
+            with self.assertRaisesRegex(ValueError, "position"):
+                env_class(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, control_mode="velocity")
+
+    def test_envs_report_bottom_controller_torque_components(self) -> None:
+        for env_class in (MuJoCoArmEnv, MuJoCoArmEnvV2):
+            env = env_class(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, frame_skip=1)
+            try:
+                env.reset_random()
+                q_ref = np.asarray(env.data.qpos[:6], dtype=np.float64) + np.asarray(
+                    [0.05, -0.04, 0.03, -0.02, 0.01, -0.005],
+                    dtype=np.float64,
+                )
+
+                components = env.compute_torque_components(q_ref)
+
+                self.assertEqual(set(components), {"actuator_tau", "gravity_tau", "total_tau"})
+                for value in components.values():
+                    self.assertEqual(value.shape, (6,))
+                    self.assertEqual(value.dtype, np.dtype("float64"))
+                self.assertTrue(
+                    np.allclose(components["total_tau"], components["actuator_tau"] + components["gravity_tau"])
+                )
+                self.assertEqual(components["gravity_tau"][5], 0.0)
+                self.assertEqual(components["total_tau"][5], components["actuator_tau"][5])
+            finally:
+                env.close()
 
     def test_collada_converter_applies_node_matrix_to_polylist_vertices(self) -> None:
         dae = """<?xml version="1.0"?>
@@ -634,6 +741,58 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertLessEqual(action[1], 2.0)
         self.assertGreaterEqual(action[1], -2.0)
 
+    def test_rollout_visualization_samples_position_targets_with_env_action_range(self) -> None:
+        rng = np.random.default_rng(0)
+        previous = np.array([0.0, 0.0], dtype=np.float32)
+        action_low = np.array([-0.2, -2.0], dtype=np.float32)
+        action_high = np.array([0.2, 2.0], dtype=np.float32)
+
+        action = ROLLOUT_VISUALIZE.sample_visualization_action(
+            rng,
+            previous,
+            action_std=100.0,
+            n_joints=2,
+            action_low=action_low,
+            action_high=action_high,
+        )
+
+        self.assertLessEqual(action[0], 0.2)
+        self.assertGreaterEqual(action[0], -0.2)
+        self.assertLessEqual(action[1], 2.0)
+        self.assertGreaterEqual(action[1], -2.0)
+
+    def test_diagnose_qacc_substep_records_apply_gravity_compensation(self) -> None:
+        env = MuJoCoArmEnv(model_xml=str(ROOT / "ABB_IRB2400.xml"), n_joints=6, frame_skip=2, seed=0)
+        try:
+            env.reset_random()
+            action = np.asarray(env.data.qpos[:6], dtype=np.float64).copy()
+
+            record = DIAG_DYNAMICS.step_with_alignment_records(env, action, 6)
+
+            self.assertEqual(record.control_delta.shape, (6,))
+            self.assertEqual(record.summed_substep_delta.shape, (6,))
+            self.assertEqual(record.post_step_qacc_delta.shape, (6,))
+            self.assertEqual(env.data.qfrc_applied[5], 0.0)
+            self.assertTrue(np.any(np.abs(env.data.qfrc_applied[:5]) > 1e-9))
+        finally:
+            env.close()
+
+    def test_train_scripts_default_to_delta_dq_targets(self) -> None:
+        argv = ["train_dynamics.py", "--data_path", "dummy.npz"]
+        with patch.object(sys, "argv", argv):
+            args = TRAIN_DYNAMICS.parse_args()
+        with patch.object(sys, "argv", argv):
+            args_v2 = TRAIN_DYNAMICS2.parse_args()
+
+        self.assertEqual(args.target_mode, "delta_dq")
+        self.assertEqual(args_v2.target_mode, "delta_dq")
+
+    def test_default_config_uses_delta_dq_target_mode(self) -> None:
+        config_text = (ROOT / "configs" / "default.yaml").read_text(encoding="utf-8")
+
+        self.assertIn("target_mode: delta_dq", config_text)
+        self.assertNotIn("target_mode: delta_state", config_text)
+
     def test_checkpoint_round_trips_full_training_state(self) -> None:
         model = MLPDynamics(state_dim=2, action_dim=1)
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
@@ -998,6 +1157,176 @@ class CoreBehaviorTests(unittest.TestCase):
             self.assertTrue((save_dir / "teacher_forcing_007_q.png").exists())
             self.assertTrue((save_dir / "teacher_forcing_007_dq.png").exists())
             self.assertTrue((save_dir / "teacher_forcing_007_error.png").exists())
+
+    def test_eval_scripts_plot_bottom_controller_torque_components(self) -> None:
+        torque_components = {
+            "total_tau": np.array([[1.0, 2.0], [1.5, 2.5]], dtype=np.float64),
+            "actuator_tau": np.array([[0.25, 0.5], [0.75, 1.0]], dtype=np.float64),
+            "gravity_tau": np.array([[0.75, 1.5], [0.75, 1.5]], dtype=np.float64),
+        }
+
+        for module, prefix in ((EVAL_DYNAMICS, "rollout"), (EVAL_DYNAMICS2, "rollout_v2")):
+            with tempfile.TemporaryDirectory() as tmp:
+                save_dir = Path(tmp)
+
+                module.plot_torque_components(torque_components, n_joints=2, rollout_idx=7, save_dir=save_dir, prefix=prefix)
+
+                self.assertTrue((save_dir / f"{prefix}_007_torque.png").exists())
+
+    def test_diagnostic_joint_limit_summary_reports_near_limit_and_violation_rates(self) -> None:
+        states = np.array(
+            [
+                [0.0, 1.00, 0.0, 0.0],
+                [0.1, 1.86, 0.2, 0.0],
+                [0.2, 1.95, 0.4, 0.0],
+                [0.3, -1.76, 0.6, 0.0],
+            ],
+            dtype=np.float32,
+        )
+        joint_ranges = np.array([[-3.0, 3.0], [-1.7453, 1.9199]], dtype=np.float32)
+
+        summary = DIAG_ROLLOUT_SPIKES.summarize_joint_limits(
+            states,
+            joint_ranges,
+            n_joints=2,
+            limit_margin=0.05,
+            near_limit_overrides={1: 1.85},
+        )
+
+        self.assertAlmostEqual(summary["q1_near_upper_rate"], 0.5)
+        self.assertAlmostEqual(summary["q1_violation_rate"], 0.5)
+        self.assertLess(summary["q1_min_limit_distance"], 0.0)
+        self.assertAlmostEqual(summary["q0_near_upper_rate"], 0.0)
+
+    def test_diagnostic_dataset_summary_handles_bad_npz_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_path = Path(tmp) / "bad.npz"
+            bad_path.write_text("not a npz", encoding="utf-8")
+            joint_ranges = np.array([[-1.0, 1.0]], dtype=np.float32)
+
+            summary = DIAG_ROLLOUT_SPIKES.summarize_dataset_file(
+                bad_path,
+                n_joints=1,
+                joint_ranges=joint_ranges,
+                limit_margin=0.05,
+                near_limit_overrides={},
+                max_dataset_samples=None,
+            )
+
+        self.assertEqual(summary["status"], "bad_npz")
+        self.assertEqual(summary["path"], str(bad_path))
+
+    def test_diagnostic_spike_summary_identifies_dominant_error_and_causes(self) -> None:
+        truth = np.array(
+            [
+                [0.0, 1.00, 0.0, 0.0],
+                [0.0, 1.91, 0.1, 5.0],
+                [0.0, 1.92, 0.1, 4.0],
+            ],
+            dtype=np.float32,
+        )
+        pred = np.array(
+            [
+                [0.0, 1.00, 0.0, 0.0],
+                [0.0, 1.80, 0.1, 2.0],
+                [0.0, 1.81, 0.1, 3.0],
+            ],
+            dtype=np.float32,
+        )
+        actions = np.array([[0.0], [0.2], [0.21]], dtype=np.float32)
+        teacher_pred = truth.copy()
+        teacher_pred[1, 3] = 4.9
+        teacher_pred[2, 3] = 3.0
+        joint_ranges = np.array([[-3.0, 3.0], [-1.7453, 1.9199]], dtype=np.float32)
+        jacobian = {"sigma_min": np.array([0.1, 0.005, 0.2]), "condition": np.array([10.0, 250.0, 8.0])}
+
+        summary = DIAG_ROLLOUT_SPIKES.summarize_rollout_spike(
+            rollout_idx=7,
+            truth=truth,
+            pred=pred,
+            actions=actions,
+            joint_ranges=joint_ranges,
+            labels=["q0", "q1", "dq0", "dq1"],
+            jacobian=jacobian,
+            teacher_pred=teacher_pred,
+            limit_margin=0.05,
+            action_jump_percentile=95.0,
+            high_speed_percentile=90.0,
+            singularity_cond_threshold=200.0,
+            singularity_sigma_threshold=0.01,
+        )
+
+        self.assertEqual(summary["rollout"], 7)
+        self.assertEqual(summary["peak_step"], 1)
+        self.assertEqual(summary["dominant_error_0"], "dq1")
+        self.assertTrue(summary["near_joint_limit"])
+        self.assertTrue(summary["high_speed"])
+        self.assertTrue(summary["possible_singularity"])
+        self.assertFalse(summary["teacher_forcing_bad"])
+
+    def test_kp_tuning_parses_human_joint_selection(self) -> None:
+        self.assertEqual(TUNE_POSITION_KP.parse_joint_selection("all", n_joints=6), [0, 1, 2, 3, 4, 5])
+        self.assertEqual(TUNE_POSITION_KP.parse_joint_selection("2,4", n_joints=6), [1, 3])
+
+        with self.assertRaisesRegex(ValueError, "between 1 and 6"):
+            TUNE_POSITION_KP.parse_joint_selection("0", n_joints=6)
+
+    def test_kp_tuning_builds_position_actuators_with_unit_damping_ratio(self) -> None:
+        source = """
+<mujoco model="tiny">
+  <worldbody>
+    <body name="b">
+      <joint name="joint_1" type="hinge" range="-1 1"/>
+      <joint name="joint_2" type="hinge" range="-2 2"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <velocity name="joint_1_velocity" joint="joint_1" kv="40" ctrllimited="true" ctrlrange="-1 1"/>
+    <velocity name="joint_2_velocity" joint="joint_2" kv="40" ctrllimited="true" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>
+"""
+        xml = TUNE_POSITION_KP.build_position_actuator_xml(
+            source,
+            joint_names=["joint_1", "joint_2"],
+            joint_ranges=[(-1.0, 1.0), (-2.0, 2.0)],
+            kps=[800.0, 1200.0],
+        )
+
+        self.assertIn('<position name="joint_1_position" joint="joint_1" kp="800', xml)
+        self.assertIn('dampratio="1"', xml)
+        self.assertIn('ctrlrange="-2 2"', xml)
+        self.assertNotIn("<velocity", xml)
+
+    def test_kp_tuning_records_and_plots_torque_components(self) -> None:
+        response = TUNE_POSITION_KP.run_response(
+            ROOT / "ABB_IRB2400.xml",
+            joint_idx=1,
+            kp=1200.0,
+            base_kp=1200.0,
+            duration=0.01,
+            frame_skip=1,
+            step_fraction=0.02,
+            gravity_compensation=True,
+        )
+
+        for key in ("total_tau", "actuator_tau", "gravity_tau"):
+            self.assertIn(key, response)
+            self.assertEqual(response[key].shape, response["q"].shape)
+        self.assertTrue(np.allclose(response["total_tau"], response["actuator_tau"] + response["gravity_tau"]))
+        self.assertTrue(np.all(response["gravity_tau"][:, 5] == 0.0))
+        self.assertTrue(np.all(response["applied"][:, 5] == 0.0))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            TUNE_POSITION_KP.plot_joint_torque_sweep(
+                output_dir,
+                joint_idx=1,
+                responses=[response],
+                metrics=[{"kp": 1200.0}],
+            )
+
+            self.assertTrue((output_dir / "joint_02_kp_sweep_torque_gravity_comp.png").exists())
 
     @staticmethod
     def _write_tiny_dataset(path: Path, include_episode_ids: bool = False) -> None:

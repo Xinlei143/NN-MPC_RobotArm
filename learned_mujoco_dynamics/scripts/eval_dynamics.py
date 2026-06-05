@@ -162,6 +162,30 @@ def plot_rollout(
     plt.close(fig_err)
 
 
+def plot_torque_components(
+    torque_components: dict[str, np.ndarray],
+    n_joints: int,
+    rollout_idx: int,
+    save_dir: Path,
+    prefix: str = "rollout",
+) -> None:
+    time = np.arange(torque_components["total_tau"].shape[0])
+    fig, axes = plt.subplots(n_joints, 1, figsize=(10, 2.0 * n_joints), sharex=True)
+    if n_joints == 1:
+        axes = [axes]
+    for idx in range(n_joints):
+        axes[idx].plot(time, torque_components["total_tau"][:, idx], label="total_tau")
+        axes[idx].plot(time, torque_components["actuator_tau"][:, idx], label="actuator_tau", linestyle="--")
+        axes[idx].plot(time, torque_components["gravity_tau"][:, idx], label="gravity_tau", linestyle=":")
+        axes[idx].set_ylabel(f"tau{idx} Nm")
+        axes[idx].grid(True, alpha=0.3)
+        axes[idx].legend(fontsize=8)
+    axes[-1].set_xlabel("step")
+    fig.tight_layout()
+    fig.savefig(save_dir / f"{prefix}_{rollout_idx:03d}_torque.png", dpi=150)
+    plt.close(fig)
+
+
 def write_metric_rows(path: Path, fieldnames: list[str], rows: list[dict[str, float | int | str]]) -> None:
     if not rows:
         return
@@ -228,6 +252,47 @@ def collect_truth_rollout(
         np.asarray(true_states, dtype=np.float32),
         np.asarray(actions, dtype=np.float32),
         np.asarray(true_next_states, dtype=np.float32),
+    )
+
+
+def collect_truth_rollout_with_torque(
+    env: MuJoCoArmEnv,
+    rng: np.random.Generator,
+    n_joints: int,
+    total_steps: int,
+    action_std: float | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    true_states: list[np.ndarray] = []
+    true_next_states: list[np.ndarray] = []
+    actions: list[np.ndarray] = []
+    torque_records: dict[str, list[np.ndarray]] = {
+        "total_tau": [],
+        "actuator_tau": [],
+        "gravity_tau": [],
+    }
+    state = env.reset_random()
+    action = np.zeros(n_joints, dtype=np.float32)
+    for _ in range(total_steps):
+        action = sample_smooth_action(
+            rng,
+            action,
+            action_std,
+            n_joints,
+            action_low=env.action_low,
+            action_high=env.action_high,
+        )
+        torque = env.compute_torque_components(action)
+        for key in torque_records:
+            torque_records[key].append(torque[key])
+        actions.append(action.copy())
+        true_states.append(state.copy())
+        state = env.step(action)
+        true_next_states.append(state.copy())
+    return (
+        np.asarray(true_states, dtype=np.float32),
+        np.asarray(actions, dtype=np.float32),
+        np.asarray(true_next_states, dtype=np.float32),
+        {key: np.asarray(value, dtype=np.float64) for key, value in torque_records.items()},
     )
 
 
@@ -341,10 +406,14 @@ def main() -> None:
     try:
         for rollout_idx in range(args.num_rollouts):
             total_steps = args.warmup_steps + max(args.rollout_len, max(horizons))
-            true_states_all, actions, true_next_states_all = collect_truth_rollout(
+            true_states_all, actions, true_next_states_all, torque_all = collect_truth_rollout_with_torque(
                 env, rng, args.n_joints, total_steps, action_std
             )
             true_states = true_states_all[args.warmup_steps : args.warmup_steps + args.rollout_len]
+            torque_components = {
+                key: value[args.warmup_steps : args.warmup_steps + args.rollout_len]
+                for key, value in torque_all.items()
+            }
             pred_states = predict_open_loop_segment(
                 model,
                 normalizer,
@@ -367,6 +436,7 @@ def main() -> None:
                 rollout_idx,
                 save_dir,
             )
+            plot_torque_components(torque_components, args.n_joints, rollout_idx, save_dir)
             print(f"saved rollout figures for rollout {rollout_idx} to {save_dir}")
 
             for horizon in horizons:

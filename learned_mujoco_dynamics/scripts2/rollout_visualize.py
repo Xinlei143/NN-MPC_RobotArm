@@ -17,6 +17,24 @@ from learned_dynamics2.parallel_collector import sample_smooth_action
 from learned_dynamics2.paths import DEFAULT_MODEL_XML, resolve_project_path
 
 
+def sample_visualization_action(
+    rng: np.random.Generator,
+    previous_action: np.ndarray,
+    action_std: float,
+    n_joints: int,
+    action_low: np.ndarray,
+    action_high: np.ndarray,
+) -> np.ndarray:
+    return sample_smooth_action(
+        rng,
+        previous_action,
+        action_std,
+        n_joints,
+        action_low=action_low,
+        action_high=action_high,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Visualize random MuJoCo arm rollouts.",
@@ -34,14 +52,21 @@ def main() -> None:
     args = parse_args()
     rng = np.random.default_rng(args.seed)
     env = MuJoCoArmEnv(str(resolve_project_path(args.model_xml, ROOT)), n_joints=args.n_joints, seed=args.seed)
-    action = np.zeros(args.n_joints, dtype=np.float32)
     env.reset_random()
+    action = np.asarray(env.data.qpos[: args.n_joints], dtype=np.float32).copy()
     try:
         with mujoco.viewer.launch_passive(env.model, env.data) as viewer:
             for _ in range(args.episode_len):
                 if not viewer.is_running():
                     break
-                action = sample_smooth_action(rng, action, args.action_std, args.n_joints)
+                action = sample_visualization_action(
+                    rng,
+                    action,
+                    args.action_std,
+                    args.n_joints,
+                    env.action_low,
+                    env.action_high,
+                )
                 env.step(action)
                 viewer.sync()
                 time.sleep(env.model.opt.timestep * env.frame_skip)

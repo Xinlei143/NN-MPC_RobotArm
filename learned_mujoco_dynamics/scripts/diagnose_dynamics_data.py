@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,13 @@ import numpy as np
 from learned_dynamics.mujoco_env import MuJoCoArmEnv
 from learned_dynamics.parallel_collector import parse_action_std, sample_smooth_action
 from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
+
+
+@dataclass(frozen=True)
+class QaccAlignmentRecord:
+    control_delta: np.ndarray
+    summed_substep_delta: np.ndarray
+    post_step_qacc_delta: np.ndarray
 
 
 def parse_args() -> argparse.Namespace:
@@ -110,6 +118,31 @@ def lag_correlation_rows(
     return rows
 
 
+def step_with_alignment_records(env: MuJoCoArmEnv, action: np.ndarray, n_joints: int) -> QaccAlignmentRecord:
+    action_array = np.asarray(action, dtype=np.float64)
+    if action_array.shape != (n_joints,):
+        raise ValueError(f"Action must have shape ({n_joints},), got {action_array.shape}")
+
+    env.data.ctrl[:n_joints] = np.clip(action_array, env.action_low, env.action_high)
+    qvel_before = env.data.qvel[:n_joints].copy()
+    summed_substep_delta = np.zeros(n_joints, dtype=np.float64)
+    post_step_qacc_delta = np.zeros(n_joints, dtype=np.float64)
+    for _substep in range(env.frame_skip):
+        substep_qvel_before = env.data.qvel[:n_joints].copy()
+        if env.gravity_compensation:
+            env.data.qfrc_applied[:n_joints] = env._gravity_compensation_force()
+        mujoco.mj_step(env.model, env.data)
+        substep_qvel_after = env.data.qvel[:n_joints].copy()
+        summed_substep_delta += substep_qvel_after - substep_qvel_before
+        post_step_qacc_delta += env.data.qacc[:n_joints] * env.model.opt.timestep
+    qvel_after = env.data.qvel[:n_joints].copy()
+    return QaccAlignmentRecord(
+        control_delta=qvel_after - qvel_before,
+        summed_substep_delta=summed_substep_delta,
+        post_step_qacc_delta=post_step_qacc_delta,
+    )
+
+
 def run_qacc_alignment_check(model_xml: str, n_joints: int, rollout_steps: int, action_std: str, seed: int) -> None:
     if rollout_steps <= 0:
         return
@@ -130,20 +163,9 @@ def run_qacc_alignment_check(model_xml: str, n_joints: int, rollout_steps: int, 
                 action_low=env.action_low,
                 action_high=env.action_high,
             )
-            qvel_before = env.data.qvel[:n_joints].copy()
-            summed_substep_delta = np.zeros(n_joints, dtype=np.float64)
-            post_step_qacc_delta = np.zeros(n_joints, dtype=np.float64)
-            env.data.ctrl[:n_joints] = action
-            for _substep in range(env.frame_skip):
-                substep_qvel_before = env.data.qvel[:n_joints].copy()
-                mujoco.mj_step(env.model, env.data)
-                substep_qvel_after = env.data.qvel[:n_joints].copy()
-                summed_substep_delta += substep_qvel_after - substep_qvel_before
-                post_step_qacc_delta += env.data.qacc[:n_joints] * env.model.opt.timestep
-            qvel_after = env.data.qvel[:n_joints].copy()
-            control_delta = qvel_after - qvel_before
-            exact_errors.append(control_delta - summed_substep_delta)
-            euler_qacc_errors.append(control_delta - post_step_qacc_delta)
+            record = step_with_alignment_records(env, action, n_joints)
+            exact_errors.append(record.control_delta - record.summed_substep_delta)
+            euler_qacc_errors.append(record.control_delta - record.post_step_qacc_delta)
             state = env.get_state()
         exact_abs_error = np.abs(np.asarray(exact_errors))
         euler_abs_error = np.abs(np.asarray(euler_qacc_errors))

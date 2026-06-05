@@ -76,11 +76,11 @@
   </worldbody>
 
   <actuator>
-    <velocity name="joint_1_velocity" joint="joint_1" kv="40" ctrllimited="true" ctrlrange="-1 1"/>
-    <velocity name="joint_2_velocity" joint="joint_2" kv="40" ctrllimited="true" ctrlrange="-1 1"/>
-    <velocity name="joint_3_velocity" joint="joint_3" kv="30" ctrllimited="true" ctrlrange="-1.5 1.5"/>
-    <velocity name="joint_4_velocity" joint="joint_4" kv="15" ctrllimited="true" ctrlrange="-2 2"/>
-    <velocity name="joint_5_velocity" joint="joint_5" kv="15" ctrllimited="true" ctrlrange="-2 2"/>
-    <velocity name="joint_6_velocity" joint="joint_6" kv="10" ctrllimited="true" ctrlrange="-3 3"/>
+    <position name="joint_1_position" joint="joint_1" kp="1000" dampratio="1" ctrllimited="true" ctrlrange="-3.1416 3.1416"/>
+    <position name="joint_2_position" joint="joint_2" kp="1900" dampratio="1" ctrllimited="true" ctrlrange="-1.7453 1.9199"/>
+    <position name="joint_3_position" joint="joint_3" kp="1600" dampratio="1" ctrllimited="true" ctrlrange="-1.0472 1.1345"/>
+    <position name="joint_4_position" joint="joint_4" kp="1200" dampratio="1" ctrllimited="true" ctrlrange="-3.49 3.49"/>
+    <position name="joint_5_position" joint="joint_5" kp="500" dampratio="1" ctrllimited="true" ctrlrange="-2.0944 2.0944"/>
+    <position name="joint_6_position" joint="joint_6" kp="150" dampratio="1" ctrllimited="true" ctrlrange="-6.9813 6.9813"/>
   </actuator>
 </mujoco>

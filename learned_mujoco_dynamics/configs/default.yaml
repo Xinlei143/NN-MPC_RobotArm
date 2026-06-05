@@ -10,7 +10,7 @@ collection:
 training:
   model_type: mlp
   history_len: 1
-  target_mode: delta_state
+  target_mode: delta_dq
   control_dt: 0.01
   loss_type: mse
   batch_size: 1024

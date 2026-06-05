@@ -11,12 +11,14 @@ class MuJoCoArmEnv:
     """Small MuJoCo wrapper for joint-space arm dynamics collection."""
 
     _EE_NAMES = ("ee_site", "tool0", "flange", "end_effector")
+    _ZERO_GRAVITY_COMPENSATION_JOINT_INDICES = (5,)
 
     def __init__(
         self,
         model_xml: str,
         n_joints: int = 6,
-        control_mode: str = "velocity",
+        control_mode: str = "position",
+        gravity_compensation: bool = True,
         frame_skip: int = 5,
         dt: Optional[float] = None,
         seed: Optional[int] = None,
@@ -28,16 +30,21 @@ class MuJoCoArmEnv:
             raise ValueError(f"n_joints must be positive, got {n_joints}")
         if frame_skip <= 0:
             raise ValueError(f"frame_skip must be positive, got {frame_skip}")
-        if control_mode not in {"velocity", "position"}:
-            raise ValueError(f"control_mode must be 'velocity' or 'position', got {control_mode!r}")
+        if control_mode != "position":
+            raise ValueError(
+                "control_mode must be 'position'. Velocity control is no longer supported by this "
+                f"position-actuator environment, got {control_mode!r}."
+            )
 
         self.n_joints = int(n_joints)
         self.control_mode = control_mode
+        self.gravity_compensation = bool(gravity_compensation)
         self.frame_skip = int(frame_skip)
         self.rng = np.random.default_rng(seed)
 
         self.model = mujoco.MjModel.from_xml_path(str(self.model_xml))
         self.data = mujoco.MjData(self.model)
+        self._gravity_data = mujoco.MjData(self.model) if self.gravity_compensation else None
         if self.model.nu < self.n_joints:
             raise ValueError(
                 f"Actuator count mismatch: model has {self.model.nu} actuators, "
@@ -72,6 +79,39 @@ class MuJoCoArmEnv:
         qvel = np.asarray(self.data.qvel[: self.n_joints], dtype=np.float64)
         return np.concatenate([qpos, qvel]).astype(np.float32)
 
+    def _gravity_compensation_force(self) -> np.ndarray:
+        if self._gravity_data is None:
+            return np.zeros(self.n_joints, dtype=np.float64)
+        mujoco.mj_resetData(self.model, self._gravity_data)
+        self._gravity_data.qpos[: self.model.nq] = self.data.qpos[: self.model.nq]
+        self._gravity_data.qvel[: self.model.nv] = 0.0
+        mujoco.mj_forward(self.model, self._gravity_data)
+        gravity_tau = np.asarray(self._gravity_data.qfrc_bias[: self.n_joints], dtype=np.float64).copy()
+        for joint_idx in self._ZERO_GRAVITY_COMPENSATION_JOINT_INDICES:
+            if joint_idx < self.n_joints:
+                gravity_tau[joint_idx] = 0.0
+        return gravity_tau
+
+    def compute_torque_components(self, action: np.ndarray | None = None) -> dict[str, np.ndarray]:
+        if action is not None:
+            action_array = np.asarray(action, dtype=np.float64)
+            if action_array.shape != (self.n_joints,):
+                raise ValueError(f"Action must have shape ({self.n_joints},), got {action_array.shape}")
+            self.data.ctrl[: self.n_joints] = np.clip(action_array, self.action_low, self.action_high)
+
+        if self.gravity_compensation:
+            gravity_tau = self._gravity_compensation_force()
+        else:
+            gravity_tau = np.zeros(self.n_joints, dtype=np.float64)
+        self.data.qfrc_applied[: self.n_joints] = gravity_tau
+        mujoco.mj_forward(self.model, self.data)
+        actuator_tau = np.asarray(self.data.qfrc_actuator[: self.n_joints], dtype=np.float64).copy()
+        return {
+            "actuator_tau": actuator_tau,
+            "gravity_tau": gravity_tau.copy(),
+            "total_tau": actuator_tau + gravity_tau,
+        }
+
     def step(self, action: np.ndarray) -> np.ndarray:
         action_array = np.asarray(action, dtype=np.float64)
         if action_array.shape != (self.n_joints,):
@@ -80,6 +120,8 @@ class MuJoCoArmEnv:
         action_array = np.clip(action_array, self.action_low, self.action_high)
         self.data.ctrl[: self.n_joints] = action_array
         for _ in range(self.frame_skip):
+            if self.gravity_compensation:
+                self.data.qfrc_applied[: self.n_joints] = self._gravity_compensation_force()
             mujoco.mj_step(self.model, self.data)
         return self.get_state()
 
@@ -88,6 +130,7 @@ class MuJoCoArmEnv:
         self.data.qpos[: self.n_joints] = self.rng.uniform(-0.25, 0.25, size=self.n_joints)
         self.data.qvel[: self.n_joints] = self.rng.uniform(-0.05, 0.05, size=self.n_joints)
         self.data.ctrl[: self.n_joints] = 0.0
+        self.data.qfrc_applied[: self.n_joints] = 0.0
         mujoco.mj_forward(self.model, self.data)
         return self.get_state()
 

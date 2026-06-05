@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dq_weight", default=1.0, type=float)
     parser.add_argument("--q_extra_weights", default=None, type=str)
     parser.add_argument("--dq_extra_weights", default=None, type=str)
-    parser.add_argument("--target_mode", choices=["delta_state", "delta_dq"], default="delta_state", type=str)
+    parser.add_argument("--target_mode", choices=["delta_state", "delta_dq"], default="delta_dq", type=str)
     parser.add_argument("--control_dt", default=0.01, type=float)
     parser.add_argument("--loss_type", choices=["mse", "huber"], default="mse", type=str)
     parser.add_argument("--huber_delta", default=1.0, type=float)
@@ -361,7 +361,7 @@ def run_epoch(
     dq_weight: float = 1.0,
     q_extra_weights: torch.Tensor | None = None,
     dq_extra_weights: torch.Tensor | None = None,
-    target_mode: str = "delta_state",
+    target_mode: str = "delta_dq",
     control_dt: float = 0.01,
     loss_type: str = "mse",
     huber_delta: float = 1.0,

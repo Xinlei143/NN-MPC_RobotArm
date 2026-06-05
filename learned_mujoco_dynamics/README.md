@@ -84,7 +84,7 @@ Saved dataset to outputs/datasets/abb_smoke.npz with states=(3, 12), actions=(3,
 这里：
 
 - `states=(3, 12)` 表示 3 条样本，每条状态为 6 个关节角度加 6 个关节速度。
-- `actions=(3, 6)` 表示每条动作是 6 维关节速度命令。
+- `actions=(3, 6)` 表示每条动作是 6 维目标关节角 `q_ref`，单位为 rad。
 - `next_states=(3, 12)` 表示下一时刻状态。
 
 ## 4. 可视化机械臂随机运动
@@ -94,7 +94,7 @@ Saved dataset to outputs/datasets/abb_smoke.npz with states=(3, 12), actions=(3,
 ```bash
 python scripts/rollout_visualize.py \
   --n_joints 6 \
-  --episode_len 1000 \
+  --episode_len 5000 \
   --action_std 0.5
 ```
 
@@ -190,14 +190,15 @@ python scripts/collect_data.py \
 
 - 相对路径会按项目根目录 `learned_mujoco_dynamics/` 解析。
 - XML 中 actuator 数量必须至少等于 `--n_joints`。
-- 当前 `ABB_IRB2400.xml` 使用 MuJoCo `<velocity>` actuator，动作会写入 `data.ctrl[:n_joints]`，语义是每个关节的目标速度，单位约为 rad/s。
-- actuator 的目标速度范围来自 XML 的 `ctrlrange`：`[-1,1]`, `[-1,1]`, `[-1.5,1.5]`, `[-2,2]`, `[-2,2]`, `[-3,3]`。
+- 当前 `ABB_IRB2400.xml` 使用 MuJoCo `<position>` actuator，动作会写入 `data.ctrl[:n_joints]`，语义是每个关节的目标角 `q_ref`，单位为 rad。
+- actuator 的目标角范围来自 XML 的 `ctrlrange`，并与 6 个 joint 的 `range` 保持一致。
+- 默认 MuJoCo 环境会在每个仿真 substep 前用当前姿态计算 `qfrc_bias`，并写入 `data.qfrc_applied[:n_joints]` 做重力补偿，所以总输入近似为位置伺服力矩加重力前馈。
 - 当前 `abb_irb2400_assets/*_visual.stl` 来自 ROS-Industrial ABB IRB2400 per-link visual DAE mesh，并通过 `scripts/convert_collada_to_stl.py` 转成 MuJoCo 可加载的 binary STL。来源仓库是 `https://github.com/ros-industrial/abb`。
 - XML 中的 `<geom>` 默认 `mass="0"`、`contype="0"`、`conaffinity="0"`，所以 STL mesh 只用于显示，不再参与质量、惯量或碰撞计算。
 - 机器人总质量按 ABB IRB 2400 规格近似设置为 380 kg；`link_5/link_6` 显式设置为 12 kg / 8 kg，避免粗糙 STL 自动惯性导致腕部 `dq4` 尖峰。
 - 旧的粗糙 STL 仍保留在 `abb_irb2400_assets/` 中，但当前 XML 引用的是 `base_link_visual.stl`、`link_1_visual.stl` 到 `link_6_visual.stl` 和两个 lever visual STL。
-- 旧的 motor/torque 数据集和 checkpoint 不能和当前 velocity-actuator XML 混用；改 actuator 后需要重新采集数据。
-- `--action_std` 支持单个数，也支持 6 个逗号分隔值，例如 `--action_std 0.2,0.2,0.3,0.4,0.4,0.6`。
+- 旧的 velocity/motor/torque 数据集和 checkpoint 不能和当前 position-actuator XML 混用；改 actuator 后需要重新采集数据。
+- `--action_std` 是目标关节角扰动尺度，支持单个数，也支持 6 个逗号分隔值，例如 `--action_std 0.2,0.2,0.3,0.4,0.4,0.6`。
 - 如果 XML 的 actuator 数量不足，代码会直接报清晰错误。
 
 ## 8. 训练 MLP 动力学模型
@@ -205,7 +206,7 @@ python scripts/collect_data.py \
 MLP 使用单步输入：
 
 ```text
-[state_t, action_t] -> delta_state_t
+[q_t, dq_t, q_ref_t] -> delta_dq_t
 ```
 
 训练命令：
@@ -245,7 +246,7 @@ config.yaml
 GRU 使用历史序列输入：
 
 ```text
-过去 history_len 步的 [state, action] -> 当前 delta_state
+过去 history_len 步的 [q, dq, q_ref] -> 当前 delta_dq
 ```
 
 训练命令：
@@ -439,8 +440,8 @@ python scripts2/eval_dynamics.py \
   --horizons 1,5,10,20,50,100,200 
 
 python scripts/eval_dynamics.py \
-  --checkpoint outputs/checkpoints_transformer/transformer_20260604_153548/best_model.pt \
-  --normalizer outputs/checkpoints_transformer/transformer_20260604_153548/normalizer.pt \
+  --checkpoint outputs/checkpoints_transformer/transformer_20260604_212044/best_model.pt \
+  --normalizer outputs/checkpoints_transformer/transformer_20260604_212044/normalizer.pt \
   --model_type transformer \
   --n_joints 6 \
   --history_len 16 \
@@ -450,7 +451,7 @@ python scripts/eval_dynamics.py \
   --warmup_steps 50 \
   --horizons 1,5,10,20,50,100,200 \
   --teacher_forcing \
-  --save_dir outputs/figures/transformer_20260604_153548
+  --save_dir outputs/figures/transformer_20260604_212044
 
 ```
 
@@ -474,6 +475,7 @@ python scripts/eval_dynamics.py \
 - 每个关节角度 `q` 的真实轨迹和预测轨迹。
 - 每个关节速度 `dq` 的真实轨迹和预测轨迹。
 - 状态预测误差随时间变化曲线。
+- `collect_truth_rollout_with_torque` 路径还会保存 `total_tau`、`actuator_tau` 和 `gravity_tau` 的力矩曲线。
 
 ## 14. 数据格式
 
@@ -516,20 +518,20 @@ state = concat(qpos[:n_joints], qvel[:n_joints])
 模型训练目标：
 
 ```text
-delta_state = next_state - state
+delta_dq = dq_next - dq
 ```
 
-也可以只预测速度增量：
+当前推荐只预测速度增量：
 
 ```bash
 python scripts/train_dynamics.py \
-  --data_path outputs/datasets/irb2400_velocity_data.npz \
+  --data_path outputs/datasets/irb2400_qref_data.npz \
   --model_type mlp \
   --target_mode delta_dq \
   --control_dt 0.01 \
   --loss_type huber \
   --dq_extra_weights 1,1,1,1,2,2 \
-  --save_dir outputs/checkpoints_velocity
+  --save_dir outputs/checkpoints_qref
 ```
 
 `delta_dq` 模式输出 6 维 `dq_next - dq`，再用半隐式积分恢复完整 next state：
@@ -545,9 +547,9 @@ q_next  = q + dq_next * control_dt
 
 ```bash
 python scripts/diagnose_dynamics_data.py \
-  --data_path outputs/datasets/irb2400_velocity_data.npz \
-  --save_csv outputs/diagnostics/velocity_delta_stats.csv \
-  --lag_csv outputs/diagnostics/velocity_lag_corr.csv \
+  --data_path outputs/datasets/irb2400_qref_data.npz \
+  --save_csv outputs/diagnostics/qref_delta_stats.csv \
+  --lag_csv outputs/diagnostics/qref_lag_corr.csv \
   --qacc_rollout_steps 10 \
   --action_std 0.2,0.2,0.3,0.4,0.4,0.6
 ```
