@@ -94,8 +94,8 @@ Saved dataset to outputs/datasets/abb_smoke.npz with states=(3, 12), actions=(3,
 ```bash
  python scripts/rollout_visualize.py \
   --n_joints 6 \
-  --episode_len 5000 \
-  --action_std 0.5
+  --episode_len 10000 \
+  --action_std 0.9
 ```
 
 这个脚本会打开 MuJoCo viewer，先安全 reset 和 settle，然后按 hold、小阶跃、平滑随机 waypoint、正弦四段生成目标关节角 `q_ref`。可视化只使用单环境，不会启动多进程。
@@ -463,19 +463,19 @@ python scripts2/eval_dynamics.py \
   --action_std 0.3 \
   --horizons 1,5,10,20,50,100,200 
 
-python scripts/eval_dynamics.py \
-  --checkpoint outputs/checkpoints_transformer/transformer_20260604_212044/best_model.pt \
-  --normalizer outputs/checkpoints_transformer/transformer_20260604_212044/normalizer.pt \
+python scripts2/eval_dynamics.py \
+  --checkpoint outputs/checkpoints_transformer_v2/transformer_20260606_193925/best_model.pt \
+  --normalizer outputs/checkpoints_transformer_v2/transformer_20260606_193925/normalizer.pt \
   --model_type transformer \
   --n_joints 6 \
   --history_len 16 \
   --rollout_len 200 \
   --num_rollouts 10 \
-  --action_std 0.3 \
+  --action_std 0.95 \
   --warmup_steps 50 \
   --horizons 1,5,10,20,50,100,200 \
   --teacher_forcing \
-  --save_dir outputs/figures/transformer_20260604_212044
+  --save_dir outputs/figures/transformer_20260606_193925
 
 ```
 
@@ -670,13 +670,109 @@ Matplotlib created a temporary cache directory at /tmp/...
 export MPLCONFIGDIR=/tmp/matplotlib
 ```
 
-## 17. 当前阶段范围
+## 17. Learned CEM-MPC
 
-当前只完成 dynamics learning：
+MPC 代码位于 Git 仓库顶层，和 `learned_mujoco_dynamics/` 同级：
 
-- MuJoCo 数据采集
-- MLP / GRU / Transformer 动力学模型训练
-- open-loop 预测评估
-- rollout 可视化
+```text
+MPC_RL_RobotArm/
+├── learned_mujoco_dynamics/
+├── mpc/
+├── scripts/
+└── tests/
+```
 
-暂时不包含 MPC。等 learned dynamics 的预测效果稳定后，再单独新增 `mpc_controller.py`。
+训练、数据采集、open-loop 评估仍从 `learned_mujoco_dynamics/` 目录运行；MPC 脚本从 Git 顶层运行。`learned_dynamics/` 仍只负责模型、normalizer、数据集和 learned rollout；CEM、cost、constraint、planner rollout 等控制逻辑都在顶层 `mpc/` 中。
+
+命名约定很重要：
+
+- `q_ref` / `actuator_q_ref` 表示发送给 MuJoCo position actuator 的绝对目标关节角，也是 dynamics 模型训练时 `actions` 字段的语义。
+- `q_des` 表示希望真实机械臂关节角跟踪的任务参考轨迹。
+- CEM 默认优化 `delta_q_ref`，但 planner 会先把它按 horizon 累积成绝对 `actuator_q_ref`，然后再喂给 learned dynamics。不要把 raw `delta_q_ref` 直接作为模型 action 输入。
+
+闭环运行示例：
+
+```bash
+cd /home/xinlei/Data/RL_Projects/MPC_RL_RobotArm
+
+python scripts/run_cem_mpc.py \
+  --checkpoint learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
+  --normalizer learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
+  --model_type transformer \
+  --horizon 20 \
+  --num_samples 1024 \
+  --cem_iters 4 \
+  --rollout_batch_size 256 \
+  --reference_mode multi_joint_sine \
+  --save_dir outputs/mpc/transformer_20260606_154206
+```
+
+输出包括：
+
+- `rollout.npz`：actual state、`q_des`、selected `actuator_q_ref`、selected `delta_q_ref`、planning time、best/elite cost、failure flags 等。
+- `rollout.csv`：逐步标量诊断。
+- `q_tracking.png`、`dq.png`、`control.png`、`tracking_error.png`、`planning_diagnostics.png`。
+
+采集 MPC-induced 数据用于 Model C：
+
+```bash
+cd /home/xinlei/Data/RL_Projects/MPC_RL_RobotArm
+
+python scripts/collect_mpc_data.py \
+  --checkpoint learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
+  --normalizer learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
+  --model_type transformer \
+  --episode_len 200 \
+  --save_path outputs/datasets/mpc_induced_data.npz
+```
+
+该数据集保持 `train_dynamics.py` 可读取的核心 schema：
+
+```text
+states
+actions
+next_states
+episode_ids
+q_ref
+delta_q_ref
+motion_mode_ids
+tau_actuator
+tau_gravity
+tau_total
+```
+
+额外的 `mpc_cost`、`planning_time`、`failure_flags`、`source_policy`、`reference_mode_ids` 只作为实验元数据。
+
+## 18. Model A/B/C 实验框架
+
+默认 A/B/C 定义为数据来源对比：
+
+- Model A：原始四类 motion modes（`hold`、`step`、`smooth_random`、`sine`）。
+- Model B：Model A 数据加扩展 collector modes（`delta_ref_random`、`mpc_correlated_random`）。
+- Model C：Model B 数据加 MPC-induced closed-loop 数据。
+
+统一闭环评估：
+
+```bash
+cd /home/xinlei/Data/RL_Projects/MPC_RL_RobotArm
+
+python scripts/evaluate_model_abc.py \
+  --model_spec A,learned_mujoco_dynamics/outputs/checkpoints_A/best_model.pt,learned_mujoco_dynamics/outputs/checkpoints_A/normalizer.pt,transformer,learned_mujoco_dynamics/outputs/datasets/model_a.npz \
+  --model_spec B,learned_mujoco_dynamics/outputs/checkpoints_B/best_model.pt,learned_mujoco_dynamics/outputs/checkpoints_B/normalizer.pt,transformer,learned_mujoco_dynamics/outputs/datasets/model_b.npz \
+  --model_spec C,learned_mujoco_dynamics/outputs/checkpoints_C/best_model.pt,learned_mujoco_dynamics/outputs/checkpoints_C/normalizer.pt,transformer,learned_mujoco_dynamics/outputs/datasets/model_c.npz \
+  --reference_mode multi_joint_sine \
+  --save_dir outputs/mpc/model_abc
+```
+
+OOD 分析按每个模型自己的训练集统计，同时可选使用 Dataset A 作为公共 baseline：
+
+```bash
+cd /home/xinlei/Data/RL_Projects/MPC_RL_RobotArm
+
+python scripts/analyze_ood_mpc.py \
+  --pair A,learned_mujoco_dynamics/outputs/mpc/model_abc/A/rollout.npz,learned_mujoco_dynamics/outputs/datasets/model_a.npz \
+  --pair B,learned_mujoco_dynamics/outputs/mpc/model_abc/B/rollout.npz,learned_mujoco_dynamics/outputs/datasets/model_b.npz \
+  --pair C,learned_mujoco_dynamics/outputs/mpc/model_abc/C/rollout.npz,learned_mujoco_dynamics/outputs/datasets/model_c.npz \
+  --baseline_dataset learned_mujoco_dynamics/outputs/datasets/model_a.npz \
+  --save_csv outputs/mpc/model_abc/ood_summary.csv
+```

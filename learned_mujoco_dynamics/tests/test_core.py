@@ -149,6 +149,12 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertTrue((ROOT / "abb_irb2400_assets" / "link_5_visual.stl").exists())
         self.assertTrue((ROOT / "abb_irb2400_assets" / "link_6_visual.stl").exists())
 
+    def test_irb2400_xml_includes_visual_ground_plane(self) -> None:
+        xml = (ROOT / "ABB_IRB2400.xml").read_text(encoding="utf-8")
+
+        self.assertIn('geom name="ground"', xml)
+        self.assertIn('type="plane"', xml)
+
     def test_irb2400_xml_uses_position_actuators_matching_joint_ranges(self) -> None:
         xml = (ROOT / "ABB_IRB2400.xml").read_text(encoding="utf-8")
         joint_names, joint_ranges = TUNE_POSITION_KP.joint_specs_from_xml(xml)

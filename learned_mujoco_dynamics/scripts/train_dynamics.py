@@ -18,6 +18,7 @@ from tqdm import tqdm
 from learned_dynamics.dataset import load_npz_dataset, load_rollout_npz_dataset, split_dataset
 from learned_dynamics.integration import reconstruct_next_state
 from learned_dynamics.normalization import StandardNormalizer
+from learned_dynamics.rollout import rollout_dynamics_batch
 from learned_dynamics.train_utils import (
     build_model,
     load_checkpoint,
@@ -219,35 +220,18 @@ def predict_rollout_states(
 ) -> torch.Tensor:
     if rollout_actions.ndim != 3:
         raise ValueError(f"rollout_actions must have shape [batch, steps, action_dim], got {rollout_actions.shape}")
-    if model_type == "mlp":
-        pred_state = initial_input[:, :state_dim]
-        history = None
-    else:
-        pred_state = initial_input[:, -1, :state_dim]
-        history = initial_input
-    pred_states: list[torch.Tensor] = []
-    for step_idx in range(rollout_actions.shape[1]):
-        action_i = rollout_actions[:, step_idx]
-        if model_type == "mlp":
-            model_input = normalizer.normalize_single_input(pred_state, action_i)
-        else:
-            if history is None:
-                raise RuntimeError("Sequence model rollout expected history tensor")
-            model_input = normalizer.normalize_sequence_input(history, state_dim)
-        pred_target = normalizer.denormalize_delta(model(model_input))
-        pred_state = reconstruct_next_state(
-            pred_state,
-            pred_target,
-            target_mode,
-            control_dt,
-            state_dim // 2,
-        )
-        pred_states.append(pred_state)
-        if model_type != "mlp" and step_idx + 1 < rollout_actions.shape[1]:
-            next_action = rollout_actions[:, step_idx + 1]
-            next_entry = torch.cat([pred_state, next_action], dim=-1).unsqueeze(1)
-            history = torch.cat([history[:, 1:], next_entry], dim=1)
-    return torch.stack(pred_states, dim=1)
+    initial_history = initial_input.unsqueeze(1) if model_type == "mlp" and initial_input.ndim == 2 else initial_input
+    pred_states = rollout_dynamics_batch(
+        model=model,
+        normalizer=normalizer,
+        model_type=model_type,
+        initial_history=initial_history,
+        future_q_ref=rollout_actions,
+        state_dim=state_dim,
+        target_mode=target_mode,
+        control_dt=control_dt,
+    )
+    return pred_states[:, 1:]
 
 
 def format_epoch_header(epoch: int, train_loss: float, val_loss: float, is_best: bool) -> str:

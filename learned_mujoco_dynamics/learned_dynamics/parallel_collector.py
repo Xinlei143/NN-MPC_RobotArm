@@ -10,7 +10,7 @@ from tqdm import tqdm
 from learned_dynamics.mujoco_env import MuJoCoArmEnv
 
 REQUIRED_DATASET_ARRAYS = ("states", "actions", "next_states")
-MOTION_MODE_NAMES = ("hold", "step", "smooth_random", "sine")
+MOTION_MODE_NAMES = ("hold", "step", "smooth_random", "sine", "delta_ref_random", "mpc_correlated_random")
 TERMINATION_REASON_CODES = {
     "ok": 0,
     "nan": 1,
@@ -185,7 +185,7 @@ def generate_q_ref_sequence(
             knot_idx = min(step // segment_len, len(knots) - 2)
             alpha = (step % segment_len) / float(segment_len)
             sequence_norm[step] = (1.0 - alpha) * knots[knot_idx] + alpha * knots[knot_idx + 1]
-    else:
+    elif mode == "sine":
         base = _sample_target_norm(rng, low_norm * 0.5, high_norm * 0.5)
         amplitude = np.minimum(np.abs(high_norm - low_norm) * 0.25, 0.35)
         phase = rng.uniform(0.0, 2.0 * np.pi, size=n_joints)
@@ -193,6 +193,23 @@ def generate_q_ref_sequence(
         steps = np.arange(episode_len, dtype=np.float64)[:, None]
         sequence_norm = base + amplitude * np.sin(2.0 * np.pi * steps * cycles / max(episode_len, 1) + phase)
         sequence_norm = np.clip(sequence_norm, low_norm, high_norm)
+    elif mode == "delta_ref_random":
+        delta_scale = np.maximum(action_std * 0.04, 0.01)
+        deltas = rng.normal(loc=0.0, scale=delta_scale, size=(episode_len, n_joints))
+        sequence_norm = np.cumsum(deltas, axis=0) + start_norm
+        sequence_norm = np.clip(sequence_norm, low_norm, high_norm)
+    elif mode == "mpc_correlated_random":
+        delta_scale = np.maximum(action_std * 0.035, 0.008)
+        noise = rng.normal(loc=0.0, scale=delta_scale, size=(episode_len, n_joints))
+        correlated = np.zeros_like(noise)
+        previous_delta = np.zeros(n_joints, dtype=np.float64)
+        for step in range(episode_len):
+            previous_delta = 0.85 * previous_delta + 0.15 * noise[step]
+            correlated[step] = previous_delta
+        sequence_norm = np.cumsum(correlated, axis=0) + start_norm
+        sequence_norm = np.clip(sequence_norm, low_norm, high_norm)
+    else:
+        raise ValueError(f"Unknown motion mode: {mode!r}")
 
     sequence_norm = _filter_normalized_sequence(sequence_norm, start_norm)
     return _normalized_to_action(sequence_norm, action_low, action_high)

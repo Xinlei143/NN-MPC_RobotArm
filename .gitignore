@@ -1,9 +1,21 @@
 /.agents
 /.codex
 /.vscode
+/.pytest_cache
 
-/learned_mujoco_dynamics/.agents
+/learned_mujoco_dynamics/__py/cache__
 /learned_mujoco_dynamics/.codex
 /learned_mujoco_dynamics/.vscode
 /learned_mujoco_dynamics/outputs
+/learned_mujoco_dynamics/.pytest_cache
+/learned_mujoco_dynamics/learned_dynamics/__pycache__
+/learned_mujoco_dynamics/learned_dynamics2/__pycache__
+/learned_mujoco_dynamics/scripts/__pycache__
+/learned_mujoco_dynamics/scripts2/__pycache__
+/learned_mujoco_dynamics/tests/__pycache__
+/learned_mujoco_dynamics/README.md
 
+
+/mpc/__pycache__
+/scripts/__pycache__
+/tests/__pycache__
