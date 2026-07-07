@@ -80,6 +80,29 @@ class MPCPipelineTests(unittest.TestCase):
 
         self.assertEqual(resolved, ROOT / "outputs" / "mpc" / "ood_summary.csv")
 
+    def test_run_cem_mpc_parser_accepts_renamed_cost_weights(self) -> None:
+        args = RUN_CEM_MPC.parse_args(
+            [
+                "--checkpoint",
+                "model.pt",
+                "--normalizer",
+                "normalizer.npz",
+                "--w_u_offset",
+                "0.2",
+                "--w_dqref",
+                "0.3",
+                "--w_ddqref",
+                "0.4",
+                "--velocity_cost_mode",
+                "damping",
+            ]
+        )
+
+        self.assertEqual(args.w_u_offset, 0.2)
+        self.assertEqual(args.w_dqref, 0.3)
+        self.assertEqual(args.w_ddqref, 0.4)
+        self.assertEqual(args.velocity_cost_mode, "damping")
+
     def test_delta_q_ref_is_converted_to_cumulative_absolute_actuator_targets(self) -> None:
         from mpc.planner_rollout import construct_actuator_q_ref_sequence
 

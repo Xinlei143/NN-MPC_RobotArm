@@ -81,11 +81,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--joint_limit_margin", default=0.02, type=float)
 
     parser.add_argument("--w_q", default=1.0, type=float)
-    parser.add_argument("--w_dq", default=0.01, type=float)
-    parser.add_argument("--w_u", default=0.001, type=float)
-    parser.add_argument("--w_du", default=0.001, type=float)
-    parser.add_argument("--w_terminal", default=1.0, type=float)
-    parser.add_argument("--w_joint_limit", default=10.0, type=float)
+    parser.add_argument("--w_dq", default=0.05, type=float)
+    parser.add_argument("--w_u_offset", default=0.05, type=float)
+    parser.add_argument("--w_dqref", default=0.05, type=float)
+    parser.add_argument("--w_ddqref", default=0.02, type=float)
+    parser.add_argument("--w_terminal", default=0.5, type=float)
+    parser.add_argument("--w_joint_limit", default=2.0, type=float)
+    parser.add_argument("--q_amp_fraction", default=0.2, type=float)
+    parser.add_argument("--q_tol", default=0.04, type=float)
+    parser.add_argument("--dq_scale", default=0.5, type=float)
+    parser.add_argument("--u_offset_scale", default=0.2, type=float)
+    parser.add_argument("--dqref_scale", default=0.08, type=float)
+    parser.add_argument("--ddqref_scale", default=0.05, type=float)
+    parser.add_argument("--joint_limit_safe_margin", default=0.08, type=float)
+    parser.add_argument("--joint_limit_temp", default=0.02, type=float)
+    parser.add_argument("--velocity_cost_mode", choices=["track", "damping"], default="track")
     return parser
 
 
@@ -162,10 +172,20 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         cost_config = JointSpaceCostConfig(
             w_q=args.w_q,
             w_dq=args.w_dq,
-            w_u=args.w_u,
-            w_du=args.w_du,
+            w_u_offset=args.w_u_offset,
+            w_dqref=args.w_dqref,
+            w_ddqref=args.w_ddqref,
             w_terminal=args.w_terminal,
             w_joint_limit=args.w_joint_limit,
+            q_amp_fraction=args.q_amp_fraction,
+            q_tol=args.q_tol,
+            dq_scale=args.dq_scale,
+            u_offset_scale=args.u_offset_scale,
+            dqref_scale=args.dqref_scale,
+            ddqref_scale=args.ddqref_scale,
+            joint_limit_safe_margin=args.joint_limit_safe_margin,
+            joint_limit_temp=args.joint_limit_temp,
+            velocity_cost_mode=args.velocity_cost_mode,
         )
         rollout_config = PlannerRolloutConfig(
             mode=args.ref_mode,
