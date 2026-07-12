@@ -4,8 +4,9 @@
 /.pytest_cache
 /outputs
 /docs
+/tests
 
-/learned_mujoco_dynamics/__py/cache__
+/learned_mujoco_dynamics/__pycache__
 /learned_mujoco_dynamics/.codex
 /learned_mujoco_dynamics/.vscode
 /learned_mujoco_dynamics/outputs

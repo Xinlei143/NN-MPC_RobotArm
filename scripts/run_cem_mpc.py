@@ -15,16 +15,20 @@ import numpy as np
 import torch
 
 from learned_dynamics.mujoco_env import MuJoCoArmEnv
-from learned_dynamics.parallel_collector import reset_safe_workspace
 from learned_dynamics.paths import DEFAULT_MODEL_XML
 from learned_dynamics.rollout import load_dynamics_bundle
 from learned_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
+from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.reference import finite_difference_dq, generate_joint_reference
+from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.utils import build_history_tensor
+
+
+MPC_HOME_Q = np.zeros(6, dtype=np.float32)
 
 
 def resolve_runtime_path(path: str) -> Path:
@@ -57,7 +61,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--episode_len", default=200, type=int)
     parser.add_argument("--settle_steps", default=50, type=int)
-    parser.add_argument("--reference_mode", choices=["hold", "step", "joint_sine", "multi_joint_sine"], default="multi_joint_sine")
+    parser.add_argument(
+        "--reference_mode",
+        choices=["hold", "step", "joint_sine", "multi_joint_sine", "task"],
+        default="multi_joint_sine",
+    )
+    parser.add_argument(
+        "--reference_file",
+        default=None,
+        type=str,
+        help="Validated task-space ReferenceBundle .npz file. Required when --reference_mode task.",
+    )
+    parser.add_argument("--ee_site_name", default="ee_site", type=str)
     parser.add_argument("--reference_amplitude", default=0.15, type=float)
     parser.add_argument("--save_dir", default="outputs/mpc/cem_run", type=str)
     parser.add_argument("--fail_on_limit_violation", action="store_true")
@@ -115,11 +130,96 @@ def _stack_records(records: list[np.ndarray], dtype: np.dtype = np.float32) -> n
     return np.asarray(records, dtype=dtype)
 
 
+def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, horizon: int) -> None:
+    """Validate the subset of ReferenceBundle invariants required by receding-horizon MPC."""
+    q_des = np.asarray(bundle.q_des)
+    dq_des = np.asarray(bundle.dq_des)
+    if q_des.ndim != 2 or q_des.shape[1] != n_joints:
+        raise ValueError(f"Task reference q_des must have shape [N, {n_joints}], got {q_des.shape}")
+    if dq_des.shape != q_des.shape:
+        raise ValueError(f"Task reference dq_des must match q_des shape {q_des.shape}, got {dq_des.shape}")
+    if bundle.execution_steps <= 0:
+        raise ValueError(f"Task reference execution_steps must be positive, got {bundle.execution_steps}")
+    minimum_length = int(bundle.execution_steps) + int(horizon) + 1
+    if q_des.shape[0] < minimum_length:
+        raise ValueError(
+            "Task reference is too short for the requested MPC horizon: "
+            f"need at least execution_steps + horizon + 1 = {minimum_length} points, got {q_des.shape[0]}"
+        )
+
+    expected_task_shapes = {
+        "task_positions_des": (q_des.shape[0], 3),
+        "task_rotations_des": (q_des.shape[0], 3, 3),
+        "segment_ids": (q_des.shape[0],),
+        "lap_ids": (q_des.shape[0],),
+    }
+    for name, expected_shape in expected_task_shapes.items():
+        value = getattr(bundle, name, None)
+        if value is None or np.asarray(value).shape != expected_shape:
+            actual_shape = None if value is None else np.asarray(value).shape
+            raise ValueError(f"Task reference {name} must have shape {expected_shape}, got {actual_shape}")
+
+
+def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
+    if not args.reference_file:
+        raise ValueError("--reference_file is required when --reference_mode task")
+    bundle = load_reference_bundle(
+        resolve_runtime_path(args.reference_file),
+        expected_n_joints=args.n_joints,
+        min_horizon=args.horizon,
+    )
+    _validate_task_reference(bundle, args.n_joints, args.horizon)
+    return bundle
+
+
+def _reference_for_run(
+    args: argparse.Namespace,
+    state: np.ndarray,
+    env: MuJoCoArmEnv,
+    control_dt: float,
+) -> tuple[np.ndarray, np.ndarray, int, ReferenceBundle | None]:
+    """Return the reference arrays and the number of closed-loop control steps."""
+    if args.reference_mode == "task":
+        bundle = _load_task_reference(args)
+        expected_initial_q = MPC_HOME_Q[: args.n_joints]
+        if not np.allclose(bundle.q_des[0], expected_initial_q, atol=1e-6, rtol=0.0):
+            raise ValueError(
+                "Task reference must start at the fixed MPC home pose "
+                f"{expected_initial_q.tolist()}, got {np.asarray(bundle.q_des[0]).tolist()}"
+            )
+        return (
+            np.asarray(bundle.q_des, dtype=np.float32),
+            np.asarray(bundle.dq_des, dtype=np.float32),
+            int(bundle.execution_steps),
+            bundle,
+        )
+
+    reference = generate_joint_reference(
+        args.reference_mode,
+        state[: args.n_joints],
+        env.joint_low + args.joint_limit_margin,
+        env.joint_high - args.joint_limit_margin,
+        args.episode_len + args.horizon + 1,
+        control_dt,
+        seed=args.seed,
+        amplitude=args.reference_amplitude,
+    )
+    return reference, finite_difference_dq(reference, control_dt), args.episode_len, None
+
+
+def _orientation_error(desired_rotation: np.ndarray, actual_rotation: np.ndarray) -> float:
+    """Return the geodesic orientation error in radians."""
+    relative_rotation = np.asarray(desired_rotation, dtype=np.float64) @ np.asarray(actual_rotation, dtype=np.float64).T
+    cosine = np.clip((np.trace(relative_rotation) - 1.0) * 0.5, -1.0, 1.0)
+    return float(np.arccos(cosine))
+
+
 def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
-    if args.episode_len <= 0:
+    if args.reference_mode != "task" and args.episode_len <= 0:
         raise ValueError(f"episode_len must be positive, got {args.episode_len}")
+    if args.horizon <= 0:
+        raise ValueError(f"horizon must be positive, got {args.horizon}")
     set_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
     device = resolve_device(args.device)
     bundle = load_dynamics_bundle(
         checkpoint_path=resolve_runtime_path(args.checkpoint),
@@ -148,27 +248,34 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     realized_tracking_errors: list[float] = []
     predicted_real_error_gaps: list[float] = []
     torque_records: dict[str, list[np.ndarray]] = {"tau_actuator": [], "tau_gravity": [], "tau_total": []}
+    desired_ee_positions: list[np.ndarray] = []
+    desired_ee_rotations: list[np.ndarray] = []
+    actual_ee_positions: list[np.ndarray] = []
+    actual_ee_rotations: list[np.ndarray] = []
+    ee_position_errors: list[float] = []
+    ee_orientation_errors: list[float] = []
+    segment_ids: list[int] = []
+    lap_ids: list[int] = []
     rows: list[dict[str, Any]] = []
+    task_reference: ReferenceBundle | None = None
+    execution_steps = args.episode_len
 
     try:
-        state = reset_safe_workspace(env, rng, args.n_joints)
+        if args.n_joints > MPC_HOME_Q.shape[0]:
+            raise ValueError(f"MPC home pose supports at most {MPC_HOME_Q.shape[0]} joints, got {args.n_joints}")
+        state = env.reset_to_configuration(MPC_HOME_Q[: args.n_joints])
         previous_q_ref = np.asarray(state[: args.n_joints], dtype=np.float32).copy()
         for _ in range(args.settle_steps):
             state = env.step(previous_q_ref)
         states_history.append(state.copy())
         q_ref_history.append(previous_q_ref.copy())
 
-        reference = generate_joint_reference(
-            args.reference_mode,
-            state[: args.n_joints],
-            env.joint_low + args.joint_limit_margin,
-            env.joint_high - args.joint_limit_margin,
-            args.episode_len + args.horizon + 1,
-            bundle.control_dt,
-            seed=args.seed,
-            amplitude=args.reference_amplitude,
+        reference, dq_reference, execution_steps, task_reference = _reference_for_run(
+            args=args,
+            state=state,
+            env=env,
+            control_dt=bundle.control_dt,
         )
-        dq_reference = finite_difference_dq(reference, bundle.control_dt)
         cost_config = JointSpaceCostConfig(
             w_q=args.w_q,
             w_dq=args.w_dq,
@@ -198,7 +305,7 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         )
         controller: CEMMPCController | None = None
 
-        for step_idx in range(args.episode_len):
+        for step_idx in range(execution_steps):
             initial_history = build_history_tensor(states_history, q_ref_history, bundle.history_len, device)
             planner = LearnedDynamicsPlanner(
                 model=bundle.model,
@@ -245,6 +352,20 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             actual_states.append(state.copy())
             q_des_records.append(reference[step_idx].copy())
             dq_des_records.append(dq_reference[step_idx].copy())
+            if task_reference is not None:
+                desired_position = np.asarray(task_reference.task_positions_des[step_idx], dtype=np.float32)
+                desired_rotation = np.asarray(task_reference.task_rotations_des[step_idx], dtype=np.float32)
+                actual_position, actual_rotation = site_pose(env.model, env.data, args.ee_site_name)
+                actual_position = np.asarray(actual_position, dtype=np.float32)
+                actual_rotation = np.asarray(actual_rotation, dtype=np.float32)
+                desired_ee_positions.append(desired_position)
+                desired_ee_rotations.append(desired_rotation)
+                actual_ee_positions.append(actual_position)
+                actual_ee_rotations.append(actual_rotation)
+                ee_position_errors.append(float(np.linalg.norm(actual_position - desired_position)))
+                ee_orientation_errors.append(_orientation_error(desired_rotation, actual_rotation))
+                segment_ids.append(int(task_reference.segment_ids[step_idx]))
+                lap_ids.append(int(task_reference.lap_ids[step_idx]))
             selected_q_refs.append(q_ref_command.copy())
             selected_delta_q_refs.append(result.delta_q_ref.copy())
             planning_times.append(result.planning_time)
@@ -271,19 +392,27 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             realized_error = float(np.linalg.norm(state[: args.n_joints] - reference[step_idx + 1]))
             realized_tracking_errors.append(realized_error)
             predicted_real_error_gaps.append(float(result.best_cost - realized_error))
-            rows.append(
-                {
-                    "step": step_idx,
-                    "tracking_error": realized_error,
-                    "planning_time": result.planning_time,
-                    "best_cost": result.best_cost,
-                    "elite_mean_cost": result.elite_mean_cost,
-                    "failure": int(result.failure),
-                    "failure_reason": result.failure_reason,
-                    "joint_limit_violation": joint_limit_violations[-1],
-                    "predicted_real_error_gap": predicted_real_error_gaps[-1],
-                }
-            )
+            row: dict[str, Any] = {
+                "step": step_idx,
+                "tracking_error": realized_error,
+                "planning_time": result.planning_time,
+                "best_cost": result.best_cost,
+                "elite_mean_cost": result.elite_mean_cost,
+                "failure": int(result.failure),
+                "failure_reason": result.failure_reason,
+                "joint_limit_violation": joint_limit_violations[-1],
+                "predicted_real_error_gap": predicted_real_error_gaps[-1],
+            }
+            if task_reference is not None:
+                row.update(
+                    {
+                        "ee_position_error": ee_position_errors[-1],
+                        "ee_orientation_error": ee_orientation_errors[-1],
+                        "segment_id": segment_ids[-1],
+                        "lap_id": lap_ids[-1],
+                    }
+                )
+            rows.append(row)
     finally:
         env.close()
 
@@ -303,6 +432,20 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         "predicted_real_error_gap": np.asarray(predicted_real_error_gaps, dtype=np.float32),
         **{key: _stack_records(value) for key, value in torque_records.items()},
     }
+    if task_reference is not None:
+        arrays.update(
+            {
+                "desired_ee_positions": _stack_records(desired_ee_positions),
+                "desired_ee_rotations": _stack_records(desired_ee_rotations),
+                "actual_ee_positions": _stack_records(actual_ee_positions),
+                "actual_ee_rotations": _stack_records(actual_ee_rotations),
+                "ee_position_errors": np.asarray(ee_position_errors, dtype=np.float32),
+                "ee_orientation_errors": np.asarray(ee_orientation_errors, dtype=np.float32),
+                "segment_ids": _stack_records(segment_ids, dtype=np.int64),
+                "lap_ids": _stack_records(lap_ids, dtype=np.int64),
+                "execution_steps": np.asarray(execution_steps, dtype=np.int64),
+            }
+        )
     return {"arrays": arrays, "rows": rows, "failure_reasons": failure_reasons}
 
 

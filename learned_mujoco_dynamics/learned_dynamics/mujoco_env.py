@@ -158,6 +158,20 @@ class MuJoCoArmEnv:
         self.validate_joint_positions("reset_random")
         return self.get_state()
 
+    def reset_to_configuration(self, qpos: np.ndarray) -> np.ndarray:
+        qpos_array = np.asarray(qpos, dtype=np.float64)
+        if qpos_array.shape != (self.n_joints,):
+            raise ValueError(f"qpos must have shape ({self.n_joints},), got {qpos_array.shape}")
+
+        mujoco.mj_resetData(self.model, self.data)
+        self.data.qpos[: self.n_joints] = qpos_array
+        self.data.qvel[: self.n_joints] = 0.0
+        self.data.ctrl[: self.n_joints] = np.clip(qpos_array, self.action_low, self.action_high)
+        self.data.qfrc_applied[: self.n_joints] = 0.0
+        mujoco.mj_forward(self.model, self.data)
+        self.validate_joint_positions("reset_to_configuration")
+        return self.get_state()
+
     def get_ee_position(self) -> Optional[np.ndarray]:
         for name in self._EE_NAMES:
             site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, name)
