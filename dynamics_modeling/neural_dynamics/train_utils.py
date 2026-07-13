@@ -9,7 +9,7 @@ import torch
 import yaml
 from torch import nn
 
-from learned_dynamics.models import GRUDynamics, MLPDynamics, TransformerDynamics
+from neural_dynamics.models import GRUDynamics, MLPDynamics, TransformerDynamics
 
 
 def set_seed(seed: int) -> None:

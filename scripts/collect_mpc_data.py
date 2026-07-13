@@ -6,14 +6,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DYNAMICS_ROOT = ROOT / "learned_mujoco_dynamics"
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
 for path in (ROOT, DYNAMICS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
 import numpy as np
 
-from learned_dynamics.parallel_collector import save_dataset, validate_append_dataset
+from neural_dynamics.parallel_collector import save_dataset, validate_append_dataset
 
 
 def load_run_cem_mpc_module():

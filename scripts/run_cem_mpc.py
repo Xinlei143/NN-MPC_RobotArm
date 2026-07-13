@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DYNAMICS_ROOT = ROOT / "learned_mujoco_dynamics"
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
 for path in (ROOT, DYNAMICS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -14,10 +14,10 @@ for path in (ROOT, DYNAMICS_ROOT):
 import numpy as np
 import torch
 
-from learned_dynamics.mujoco_env import MuJoCoArmEnv
-from learned_dynamics.paths import DEFAULT_MODEL_XML
-from learned_dynamics.rollout import load_dynamics_bundle
-from learned_dynamics.train_utils import set_seed
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.paths import DEFAULT_MODEL_XML
+from neural_dynamics.rollout import load_dynamics_bundle
+from neural_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
@@ -36,7 +36,7 @@ def resolve_runtime_path(path: str) -> Path:
     if expanded.is_absolute():
         return expanded
     root_path = ROOT / expanded
-    if root_path.exists() or (expanded.parts and expanded.parts[0] == "learned_mujoco_dynamics"):
+    if root_path.exists() or (expanded.parts and expanded.parts[0] == "dynamics_modeling"):
         return root_path
     dynamics_path = DYNAMICS_ROOT / expanded
     if dynamics_path.exists():

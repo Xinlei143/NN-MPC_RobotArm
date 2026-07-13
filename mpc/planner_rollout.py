@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import torch
 
-from learned_dynamics.rollout import rollout_dynamics_batch
+from neural_dynamics.rollout import rollout_dynamics_batch
 from mpc.constraints import apply_delta_rate_limit, apply_rate_limit, clip_to_joint_limits
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
 

@@ -6,17 +6,15 @@
 /docs
 /tests
 
-/learned_mujoco_dynamics/__pycache__
-/learned_mujoco_dynamics/.codex
-/learned_mujoco_dynamics/.vscode
-/learned_mujoco_dynamics/outputs
-/learned_mujoco_dynamics/.pytest_cache
-/learned_mujoco_dynamics/learned_dynamics/__pycache__
-/learned_mujoco_dynamics/learned_dynamics2/__pycache__
-/learned_mujoco_dynamics/scripts/__pycache__
-/learned_mujoco_dynamics/scripts2/__pycache__
-/learned_mujoco_dynamics/tests/__pycache__
-/learned_mujoco_dynamics/README.md
+/dynamics_modeling/__pycache__
+/dynamics_modeling/.codex
+/dynamics_modeling/.vscode
+/dynamics_modeling/outputs
+/dynamics_modeling/.pytest_cache
+/dynamics_modeling/neural_dynamics/__pycache__
+/dynamics_modeling/scripts/__pycache__
+/dynamics_modeling/tests
+/dynamics_modeling/README.md
 
 
 /mpc/__pycache__

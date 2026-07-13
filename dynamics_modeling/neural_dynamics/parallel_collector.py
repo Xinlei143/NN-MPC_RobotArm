@@ -7,7 +7,7 @@ from typing import Tuple
 import numpy as np
 from tqdm import tqdm
 
-from learned_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
 
 REQUIRED_DATASET_ARRAYS = ("states", "actions", "next_states")
 MOTION_MODE_NAMES = ("hold", "step", "smooth_random", "sine", "delta_ref_random", "mpc_correlated_random")

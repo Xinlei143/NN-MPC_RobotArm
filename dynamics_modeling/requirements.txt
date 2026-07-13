@@ -1,4 +1,4 @@
-# Python dependencies for learned_mujoco_dynamics.
+# Python dependencies for dynamics_modeling.
 #
 # Recommended Python version: 3.10 or newer.
 # Install from the project directory with:
@@ -10,7 +10,7 @@
 # generator first, then install the remaining packages from this file.
 
 # MuJoCo simulator and optional interactive viewer used by:
-#   learned_dynamics/mujoco_env.py
+#   neural_dynamics/mujoco_env.py
 #   scripts/rollout_visualize.py
 mujoco>=2.3.7,<4.0
 

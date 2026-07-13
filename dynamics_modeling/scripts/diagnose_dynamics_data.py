@@ -13,9 +13,9 @@ if str(ROOT) not in sys.path:
 import mujoco
 import numpy as np
 
-from learned_dynamics.mujoco_env import MuJoCoArmEnv
-from learned_dynamics.parallel_collector import MOTION_MODE_NAMES, TERMINATION_REASON_CODES, parse_action_std, sample_smooth_action
-from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.parallel_collector import MOTION_MODE_NAMES, TERMINATION_REASON_CODES, parse_action_std, sample_smooth_action
+from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 
 
 @dataclass(frozen=True)

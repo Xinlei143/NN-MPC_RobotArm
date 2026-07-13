@@ -15,10 +15,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from learned_dynamics2.dataset import load_npz_dataset, load_rollout_npz_dataset, split_dataset
-from learned_dynamics2.integration import reconstruct_next_state
-from learned_dynamics2.normalization import StandardNormalizer
-from learned_dynamics2.train_utils import (
+from neural_dynamics.dataset import load_npz_dataset, load_rollout_npz_dataset, split_dataset
+from neural_dynamics.integration import reconstruct_next_state
+from neural_dynamics.normalization import StandardNormalizer
+from neural_dynamics.rollout import rollout_dynamics_batch
+from neural_dynamics.train_utils import (
     build_model,
     load_checkpoint,
     require_resume_checkpoint,
@@ -54,8 +55,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollout_loss_steps", default=1, type=int)
     parser.add_argument("--rollout_loss_weight", default=0.0, type=float)
     parser.add_argument("--rollout_loss_discount", default=1.0, type=float)
-    parser.add_argument("--direct_loss_steps", default=1, type=int)
-    parser.add_argument("--direct_loss_discount", default=1.0, type=float)
     parser.add_argument("--train_sample_stride", default=1, type=int)
     parser.add_argument("--val_sample_stride", default=1, type=int)
     parser.add_argument(
@@ -70,7 +69,7 @@ def validate_checkpoint_config(checkpoint: dict, expected: dict) -> None:
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         raise ValueError("Checkpoint config must be a mapping")
-    for key in ("model_type", "history_len", "state_dim", "action_dim", "output_dim", "direct_loss_steps"):
+    for key in ("model_type", "history_len", "state_dim", "action_dim"):
         if key not in config:
             continue
         if config[key] != expected[key]:
@@ -187,75 +186,6 @@ def weighted_delta_loss(
     return q_weight * q_loss + dq_weight * dq_loss
 
 
-def reshape_direct_prediction(pred_norm: torch.Tensor, target_dim: int) -> torch.Tensor:
-    if pred_norm.ndim != 2:
-        raise ValueError(f"pred_norm must be rank-2, got ndim={pred_norm.ndim}")
-    if target_dim <= 0:
-        raise ValueError(f"target_dim must be positive, got {target_dim}")
-    if pred_norm.shape[-1] == target_dim:
-        return pred_norm.unsqueeze(1)
-    if pred_norm.shape[-1] % target_dim != 0:
-        raise ValueError(f"Prediction dimension {pred_norm.shape[-1]} is not divisible by target_dim={target_dim}")
-    return pred_norm.reshape(pred_norm.shape[0], pred_norm.shape[-1] // target_dim, target_dim)
-
-
-def select_first_step_target(pred_norm: torch.Tensor, target_dim: int) -> torch.Tensor:
-    return reshape_direct_prediction(pred_norm, target_dim)[:, 0]
-
-
-def direct_multi_step_loss(
-    pred_norm: torch.Tensor,
-    target_norm: torch.Tensor,
-    n_joints: int,
-    q_weight: float,
-    dq_weight: float,
-    q_extra_weights: torch.Tensor | None,
-    dq_extra_weights: torch.Tensor | None,
-    loss_type: str = "mse",
-    huber_delta: float = 1.0,
-    discount: float = 1.0,
-) -> torch.Tensor:
-    if target_norm.ndim == 2:
-        return weighted_delta_loss(
-            pred_norm,
-            target_norm,
-            n_joints,
-            q_weight,
-            dq_weight,
-            q_extra_weights,
-            dq_extra_weights,
-            loss_type,
-            huber_delta,
-        )
-    if target_norm.ndim != 3:
-        raise ValueError(f"target_norm must be rank-2 or rank-3, got ndim={target_norm.ndim}")
-    if discount <= 0:
-        raise ValueError(f"discount must be positive, got {discount}")
-    pred_steps = reshape_direct_prediction(pred_norm, target_norm.shape[-1])
-    if pred_steps.shape != target_norm.shape:
-        raise ValueError(f"pred_steps and target_norm must have same shape, got {pred_steps.shape} and {target_norm.shape}")
-    weights = torch.pow(
-        torch.as_tensor(discount, device=pred_norm.device, dtype=pred_norm.dtype),
-        torch.arange(target_norm.shape[1], device=pred_norm.device, dtype=pred_norm.dtype),
-    )
-    step_losses = [
-        weights[step_idx]
-        * weighted_delta_loss(
-            pred_steps[:, step_idx],
-            target_norm[:, step_idx],
-            n_joints,
-            q_weight,
-            dq_weight,
-            q_extra_weights,
-            dq_extra_weights,
-            loss_type,
-            huber_delta,
-        )
-        for step_idx in range(target_norm.shape[1])
-    ]
-    return torch.stack(step_losses).sum() / weights.sum()
-
-
 def rollout_state_loss(
     pred_states: torch.Tensor,
     true_states: torch.Tensor,
@@ -290,36 +220,18 @@ def predict_rollout_states(
 ) -> torch.Tensor:
     if rollout_actions.ndim != 3:
         raise ValueError(f"rollout_actions must have shape [batch, steps, action_dim], got {rollout_actions.shape}")
-    if model_type == "mlp":
-        pred_state = initial_input[:, :state_dim]
-        history = None
-    else:
-        pred_state = initial_input[:, -1, :state_dim]
-        history = initial_input
-    pred_states: list[torch.Tensor] = []
-    for step_idx in range(rollout_actions.shape[1]):
-        action_i = rollout_actions[:, step_idx]
-        if model_type == "mlp":
-            model_input = normalizer.normalize_single_input(pred_state, action_i)
-        else:
-            if history is None:
-                raise RuntimeError("Sequence model rollout expected history tensor")
-            model_input = normalizer.normalize_sequence_input(history, state_dim)
-        target_dim = state_dim // 2 if target_mode == "delta_dq" else state_dim
-        pred_target = normalizer.denormalize_delta(select_first_step_target(model(model_input), target_dim))
-        pred_state = reconstruct_next_state(
-            pred_state,
-            pred_target,
-            target_mode,
-            control_dt,
-            state_dim // 2,
-        )
-        pred_states.append(pred_state)
-        if model_type != "mlp" and step_idx + 1 < rollout_actions.shape[1]:
-            next_action = rollout_actions[:, step_idx + 1]
-            next_entry = torch.cat([pred_state, next_action], dim=-1).unsqueeze(1)
-            history = torch.cat([history[:, 1:], next_entry], dim=1)
-    return torch.stack(pred_states, dim=1)
+    initial_history = initial_input.unsqueeze(1) if model_type == "mlp" and initial_input.ndim == 2 else initial_input
+    pred_states = rollout_dynamics_batch(
+        model=model,
+        normalizer=normalizer,
+        model_type=model_type,
+        initial_history=initial_history,
+        future_q_ref=rollout_actions,
+        state_dim=state_dim,
+        target_mode=target_mode,
+        control_dt=control_dt,
+    )
+    return pred_states[:, 1:]
 
 
 def format_epoch_header(epoch: int, train_loss: float, val_loss: float, is_best: bool) -> str:
@@ -389,7 +301,6 @@ def run_epoch(
     huber_delta: float = 1.0,
     rollout_loss_weight: float = 0.0,
     rollout_loss_discount: float = 1.0,
-    direct_loss_discount: float = 1.0,
 ) -> tuple[float, torch.Tensor, float]:
     training = optimizer is not None
     model.train(training)
@@ -420,7 +331,7 @@ def run_epoch(
         with torch.set_grad_enabled(training):
             with torch.amp.autocast(device_type=device.type, enabled=use_amp):
                 pred = model(x_norm)
-                one_step_loss = direct_multi_step_loss(
+                one_step_loss = weighted_delta_loss(
                     pred,
                     y_norm,
                     state_dim // 2,
@@ -430,7 +341,6 @@ def run_epoch(
                     dq_extra_weights,
                     loss_type,
                     huber_delta,
-                    direct_loss_discount,
                 )
                 rollout_loss_value = torch.zeros((), dtype=one_step_loss.dtype, device=one_step_loss.device)
                 if (
@@ -465,15 +375,13 @@ def run_epoch(
                     loss.backward()
                     optimizer.step()
 
-        target_dim = y.shape[-1]
-        pred_target = normalizer.denormalize_delta(select_first_step_target(pred.detach(), target_dim))
+        pred_target = normalizer.denormalize_delta(pred.detach())
         current_state = x[:, :state_dim] if model_type == "mlp" else x[:, -1, :state_dim]
         pred_next = reconstruct_next_state(current_state, pred_target, target_mode, control_dt, state_dim // 2)
-        y_first = y if y.ndim == 2 else y[:, 0]
         if target_mode == "delta_state":
-            true_next = current_state + y_first
+            true_next = current_state + y
         else:
-            true_next = reconstruct_next_state(current_state, y_first, target_mode, control_dt, state_dim // 2)
+            true_next = reconstruct_next_state(current_state, y, target_mode, control_dt, state_dim // 2)
         batch_squared_error = torch.square(pred_next - true_next).sum(dim=0).detach().cpu().double()
         squared_error_sum += batch_squared_error
         batch_samples = int(y.shape[0])
@@ -505,10 +413,6 @@ def main() -> None:
         raise ValueError(f"rollout_loss_weight must be non-negative, got {args.rollout_loss_weight}")
     if args.rollout_loss_discount <= 0:
         raise ValueError(f"rollout_loss_discount must be positive, got {args.rollout_loss_discount}")
-    if args.direct_loss_steps <= 0:
-        raise ValueError(f"direct_loss_steps must be positive, got {args.direct_loss_steps}")
-    if args.direct_loss_discount <= 0:
-        raise ValueError(f"direct_loss_discount must be positive, got {args.direct_loss_discount}")
     if args.train_sample_stride <= 0:
         raise ValueError(f"train_sample_stride must be positive, got {args.train_sample_stride}")
     if args.val_sample_stride <= 0:
@@ -531,16 +435,9 @@ def main() -> None:
             args.history_len,
             target_mode=args.target_mode,
             rollout_steps=args.rollout_loss_steps,
-            direct_loss_steps=args.direct_loss_steps,
         )
     else:
-        dataset = load_npz_dataset(
-            Path(args.data_path),
-            args.model_type,
-            args.history_len,
-            target_mode=args.target_mode,
-            direct_loss_steps=args.direct_loss_steps,
-        )
+        dataset = load_npz_dataset(Path(args.data_path), args.model_type, args.history_len, target_mode=args.target_mode)
     q_extra_weights = parse_extra_weights(args.q_extra_weights, dataset.state_dim // 2, "q_extra_weights")
     dq_extra_weights = parse_extra_weights(args.dq_extra_weights, dataset.state_dim // 2, "dq_extra_weights")
     print(
@@ -575,14 +472,12 @@ def main() -> None:
     del deltas
     print("normalizer ready", flush=True)
 
-    single_step_output_dim = dataset.target_dim
-    output_dim = single_step_output_dim * args.direct_loss_steps
     model = build_model(
         args.model_type,
         dataset.state_dim,
         dataset.action_dim,
         args.history_len,
-        output_dim=output_dim,
+        output_dim=dataset.target_dim,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     use_amp = bool(args.amp and device.type == "cuda")
@@ -591,8 +486,7 @@ def main() -> None:
         "model_type": args.model_type,
         "state_dim": dataset.state_dim,
         "action_dim": dataset.action_dim,
-        "output_dim": output_dim,
-        "single_step_output_dim": single_step_output_dim,
+        "output_dim": dataset.target_dim,
         "history_len": args.history_len,
         "target_mode": args.target_mode,
         "control_dt": args.control_dt,
@@ -609,8 +503,6 @@ def main() -> None:
         "rollout_loss_steps": args.rollout_loss_steps,
         "rollout_loss_weight": args.rollout_loss_weight,
         "rollout_loss_discount": args.rollout_loss_discount,
-        "direct_loss_steps": args.direct_loss_steps,
-        "direct_loss_discount": args.direct_loss_discount,
         "train_sample_stride": args.train_sample_stride,
         "val_sample_stride": args.val_sample_stride,
     }
@@ -686,7 +578,6 @@ def main() -> None:
             args.huber_delta,
             args.rollout_loss_weight,
             args.rollout_loss_discount,
-            args.direct_loss_discount,
         )
         val_loss, val_rmse, val_rollout_loss = run_epoch(
             model,
@@ -705,7 +596,6 @@ def main() -> None:
             huber_delta=args.huber_delta,
             rollout_loss_weight=args.rollout_loss_weight,
             rollout_loss_discount=args.rollout_loss_discount,
-            direct_loss_discount=args.direct_loss_discount,
         )
         is_best = val_loss < best_val
         is_best_rollout = bool(use_rollout_loss and val_rollout_loss < best_rollout)

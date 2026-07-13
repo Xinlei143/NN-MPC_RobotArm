@@ -8,13 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from learned_dynamics.parallel_collector import (
+from neural_dynamics.parallel_collector import (
     collect_parallel_detailed,
     collect_rollouts_detailed,
     save_dataset,
     validate_append_dataset,
 )
-from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
+from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 
 
 def parse_args() -> argparse.Namespace:

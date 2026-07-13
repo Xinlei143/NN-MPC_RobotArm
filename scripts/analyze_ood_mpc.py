@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DYNAMICS_ROOT = ROOT / "learned_mujoco_dynamics"
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
 for path in (ROOT, DYNAMICS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -43,7 +43,7 @@ def resolve_runtime_path(path: str) -> Path:
     if expanded.is_absolute():
         return expanded
     root_path = ROOT / expanded
-    if root_path.exists() or (expanded.parts and expanded.parts[0] == "learned_mujoco_dynamics"):
+    if root_path.exists() or (expanded.parts and expanded.parts[0] == "dynamics_modeling"):
         return root_path
     dynamics_path = DYNAMICS_ROOT / expanded
     if dynamics_path.exists():

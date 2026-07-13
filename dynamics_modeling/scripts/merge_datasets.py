@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from learned_dynamics2.dataset_merge import merge_npz_datasets
+from neural_dynamics.dataset_merge import merge_npz_datasets
 
 
 def parse_args() -> argparse.Namespace:

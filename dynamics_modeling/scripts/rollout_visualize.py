@@ -12,15 +12,15 @@ if str(ROOT) not in sys.path:
 import mujoco.viewer
 import numpy as np
 
-from learned_dynamics2.mujoco_env import MuJoCoArmEnv
-from learned_dynamics2.parallel_collector import (
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.parallel_collector import (
     MOTION_MODE_NAMES,
     generate_q_ref_sequence,
     parse_action_std,
     reset_safe_workspace,
     sample_smooth_action,
 )
-from learned_dynamics2.paths import DEFAULT_MODEL_XML, resolve_project_path
+from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
 
 
 def sample_visualization_action(

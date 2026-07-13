@@ -6,9 +6,9 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from learned_dynamics.integration import reconstruct_next_state
-from learned_dynamics.normalization import StandardNormalizer
-from learned_dynamics.train_utils import build_model, load_checkpoint
+from neural_dynamics.integration import reconstruct_next_state
+from neural_dynamics.normalization import StandardNormalizer
+from neural_dynamics.train_utils import build_model, load_checkpoint
 
 
 @dataclass(frozen=True)

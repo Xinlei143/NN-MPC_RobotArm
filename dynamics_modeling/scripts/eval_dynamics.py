@@ -13,17 +13,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from learned_dynamics.mujoco_env import MuJoCoArmEnv
-from learned_dynamics.normalization import StandardNormalizer
-from learned_dynamics.parallel_collector import (
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.normalization import StandardNormalizer
+from neural_dynamics.parallel_collector import (
     MOTION_MODE_NAMES,
     generate_q_ref_sequence,
     parse_action_std,
     reset_safe_workspace,
 )
-from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
-from learned_dynamics.train_utils import build_model, load_checkpoint, set_seed
-from learned_dynamics.integration import reconstruct_next_state
+from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
+from neural_dynamics.train_utils import build_model, load_checkpoint, set_seed
+from neural_dynamics.integration import reconstruct_next_state
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

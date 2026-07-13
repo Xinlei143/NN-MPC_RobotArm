@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DYNAMICS_ROOT = ROOT / "learned_mujoco_dynamics"
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
 for path in (ROOT, DYNAMICS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DYNAMICS_ROOT = ROOT / "learned_mujoco_dynamics"
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
 for import_path in (ROOT, DYNAMICS_ROOT):
     if str(import_path) not in sys.path:
         sys.path.insert(0, str(import_path))
@@ -38,7 +38,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Generate a validated ABB IRB2400 task-space reference.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--model_xml", default="learned_mujoco_dynamics/ABB_IRB2400.xml")
+    parser.add_argument("--model_xml", default="dynamics_modeling/ABB_IRB2400.xml")
     parser.add_argument("--save_dir", required=True)
     parser.add_argument("--shape", choices=["circle", "ellipse", "figure8", "square"], default="circle")
     parser.add_argument("--repeat_count", type=int, default=3)

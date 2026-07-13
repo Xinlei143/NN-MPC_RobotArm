@@ -1,4 +1,4 @@
-# MPC_RL_RobotArm
+# NN-MPC_RobotArm
 
 这是一个面向 ABB IRB 2400 的 MuJoCo 学习动力学与 CEM-MPC 项目。系统以六轴位置执行器的绝对关节目标 `q_ref` 为控制输入，学习关节状态转移，并在闭环中用 CEM 优化未来的 `q_ref` 增量序列。
 
@@ -12,17 +12,17 @@
 在仓库根目录运行顶层 MPC 命令：
 
 ```bash
-cd /home/xinlei/Data/RL_Projects/MPC_RL_RobotArm
+cd /home/xinlei/Data/RL_Projects/NN-MPC_RobotArm
 conda run -n pendulum-rl python scripts/run_cem_mpc.py --help
 ```
 
 项目使用 Python 3.10+、MuJoCo、PyTorch、NumPy 和 Matplotlib。依赖清单位于：
 
 ```bash
-conda run -n pendulum-rl pip install -r learned_mujoco_dynamics/requirements.txt
+conda run -n pendulum-rl pip install -r dynamics_modeling/requirements.txt
 ```
 
-完整的数据采集、模型训练和开环评估说明见 [learned_mujoco_dynamics/README.md](learned_mujoco_dynamics/README.md)。
+完整的数据采集、模型训练和开环评估说明见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
 ## 系统概览
 
@@ -56,7 +56,7 @@ q_ref0 = [0, 0, 0, 0, 0, 0] rad
 ## 目录结构
 
 ```text
-learned_mujoco_dynamics/  ABB XML、资产、数据采集、训练与评估
+dynamics_modeling/  ABB XML、资产、数据采集、训练与评估
 mpc/                      CEM 控制器、规划器、代价、约束、IK 与参考轨迹
 scripts/                  闭环 MPC 与离线任务参考命令
 tests/                    MPC、IK、参考轨迹与集成测试
@@ -78,8 +78,8 @@ docs/                     设计笔记和详细项目文档
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
-  --checkpoint learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
-  --normalizer learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
+  --checkpoint dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
+  --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer \
   --reference_mode multi_joint_sine \
   --horizon 20 \
@@ -115,8 +115,8 @@ conda run -n pendulum-rl python scripts/validate_ik.py \
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
-  --checkpoint learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
-  --normalizer learned_mujoco_dynamics/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
+  --checkpoint dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
+  --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer \
   --reference_mode task \
   --reference_file outputs/references/circle_3laps/reference.npz \
@@ -174,7 +174,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n pendulum-rl python -m pytest \
   tests/test_task_space_reference.py \
   tests/test_reference_pipeline.py \
   tests/test_task_space_mpc_smoke.py \
-  learned_mujoco_dynamics/tests/test_core.py -q
+  dynamics_modeling/tests/test_core.py -q
 ```
 
 当前实现下，该测试集结果为 `115 passed, 8 subtests passed`。

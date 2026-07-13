@@ -16,10 +16,10 @@ import mujoco
 import numpy as np
 import torch
 
-from learned_dynamics.mujoco_env import MuJoCoArmEnv
-from learned_dynamics.normalization import StandardNormalizer
-from learned_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
-from learned_dynamics.train_utils import build_model, load_checkpoint, set_seed
+from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from neural_dynamics.normalization import StandardNormalizer
+from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
+from neural_dynamics.train_utils import build_model, load_checkpoint, set_seed
 
 
 def load_eval_dynamics_module() -> Any:
