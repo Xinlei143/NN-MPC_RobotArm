@@ -2,7 +2,6 @@
 /.codex
 /.vscode
 /.pytest_cache
-/outputs
 /tests
 
 /dynamics_modeling/__pycache__

@@ -1,0 +1,76 @@
+{
+  "approach_duration": 2.0,
+  "center_mode": "relative",
+  "center_offset": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "circle_radius": 0.1,
+  "ee_site_name": "ee_site",
+  "ellipse_axis_a": 0.04,
+  "ellipse_axis_b": 0.025,
+  "figure8_axis_a": 0.035,
+  "figure8_axis_b": 0.02,
+  "final_hold_duration": 0.5,
+  "final_return_tolerance": 0.001,
+  "fixed_orientation": "safe",
+  "ik_config": {
+    "damping": 0.01,
+    "joint_limit_margin": 0.05,
+    "max_backtracking_steps": 8,
+    "max_iterations": 100,
+    "max_joint_step": 0.05,
+    "orientation_tolerance": 0.001,
+    "orientation_weight": 0.3,
+    "position_tolerance": 0.0001,
+    "sigma_warning": 0.02,
+    "step_gain": 0.5
+  },
+  "joint_departure_duration": 2.0,
+  "joint_return_duration": 2.0,
+  "lap_duration": 4.0,
+  "lap_joint_closure_tolerance": 0.05,
+  "lap_position_closure_tolerance": 0.001,
+  "max_joint_acceleration": [
+    5.0,
+    5.0,
+    5.0,
+    10.0,
+    10.0,
+    12.5
+  ],
+  "max_joint_jump": 0.15,
+  "max_joint_velocity": [
+    1.0,
+    1.0,
+    1.0,
+    2.0,
+    2.0,
+    2.5
+  ],
+  "plane_axis_u": [
+    0.0,
+    1.0,
+    0.0
+  ],
+  "plane_axis_v": [
+    0.0,
+    0.0,
+    1.0
+  ],
+  "repeat_count": 3,
+  "return_duration": 2.0,
+  "safe_departure_mode": "auto",
+  "safe_joint_limit_margin": 0.05,
+  "safe_q": null,
+  "safe_search_samples": 2048,
+  "safe_search_seed": 0,
+  "safe_sigma_threshold": 0.1,
+  "shape_name": "ellipse",
+  "singularity_reject": 0.005,
+  "singularity_warning": 0.02,
+  "small_return_tolerance": 0.05,
+  "square_half_side": 0.025,
+  "start_hold_duration": 0.5
+}

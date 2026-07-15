@@ -12,11 +12,11 @@ cd /home/xinlei/Data/RL_Projects/NN-MPC_RobotArm
 
 ```bash
 conda run -n pendulum-rl python scripts/generate_task_reference.py \
-  --shape circle --repeat_count 3 \
-  --save_dir outputs/references/circle_3laps
+  --shape figure8 --repeat_count 3 \
+  --save_dir outputs/references/figure8
 
 conda run -n pendulum-rl python scripts/validate_ik.py \
-  --reference_file outputs/references/circle_3laps/reference.npz
+  --reference_file outputs/references/figure8/reference.npz
 ```
 
 推荐运行：
@@ -27,10 +27,10 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer \
   --reference_mode task \
-  --reference_file outputs/references/circle_3laps/reference.npz \
+  --reference_file outputs/references/figure8/reference.npz \
   --horizon 10 --num_samples 128 --cem_iters 3 --rollout_batch_size 128 \
   --mpc_policy residual --cem_execute lowest_cost \
-  --save_dir outputs/mpc/task_circle_residual
+  --save_dir outputs/mpc/task_8
 ```
 
 task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。本地图形环境可在命令末尾添加 `--visualize`。

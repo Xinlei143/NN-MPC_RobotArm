@@ -1,0 +1,127 @@
+{
+  "actuator": {
+    "torque_p95_nm": [
+      9.39847822189331,
+      19.050153160095213,
+      7.485052204132077,
+      2.1259488582611086,
+      1.7365260720252989,
+      1.5323596119880676
+    ],
+    "torque_rms_nm": 3.7065773010253906,
+    "torque_slew_p95_nm_per_step": [
+      0.26668059825897217,
+      0.45887553691864014,
+      0.27689129114151,
+      0.1698673963546753,
+      0.03211682569235563,
+      0.026089847087860107
+    ]
+  },
+  "cem_sampling": {
+    "baseline_cost": {
+      "max": NaN,
+      "mean": NaN,
+      "p50": NaN,
+      "p95": NaN,
+      "samples": 0
+    },
+    "reset_std_each_step": false,
+    "std_end_mean": {
+      "max": NaN,
+      "mean": NaN,
+      "p50": NaN,
+      "p95": NaN,
+      "samples": 0
+    },
+    "std_start_mean": {
+      "max": NaN,
+      "mean": NaN,
+      "p50": NaN,
+      "p95": NaN,
+      "samples": 0
+    },
+    "uniform_sample_count": 0,
+    "uniform_sample_ratio": 0.15000000596046448
+  },
+  "controller_mode": "ik_direct",
+  "cost_profile": "blackbox",
+  "model_replay": {
+    "status": "not_applicable"
+  },
+  "mpc_policy": "residual",
+  "recorded_steps": 2107,
+  "residual": {
+    "max_abs_rad": [],
+    "p95_abs_rad": []
+  },
+  "safety": {
+    "command_acceleration_violation_count": 0,
+    "command_velocity_violation_count": 0,
+    "controller_failure_count": 0,
+    "joint_limit_violation_count": 0,
+    "recovery_active_step_count": 0,
+    "recovery_trigger_count": 0,
+    "recovery_trigger_counts": {}
+  },
+  "schema_version": 2,
+  "smoothness": {
+    "command_acceleration_p95_rad_s2": [
+      0.782310962677002,
+      0.25310367345809937,
+      0.6480515003204346,
+      1.8104165792465208,
+      0.72479248046875,
+      1.7766952514648433
+    ],
+    "command_sign_flip_rate": {
+      "overall": 0.0003079449804968179,
+      "per_joint": [
+        0.0018094089264173703,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "command_velocity_p95_rad_s": [
+      0.09347731247544287,
+      0.1541711390018463,
+      0.07148105651140213,
+      0.2319931983947754,
+      0.3587021678686142,
+      0.5375905334949493
+    ]
+  },
+  "timing": {
+    "control_step_wall_time_s": {
+      "max": 0.0018303639953956008,
+      "mean": 0.0002646450519979028,
+      "p50": 0.00025757396360859275,
+      "p95": 0.0003083716961555182,
+      "samples": 2107
+    },
+    "planning_time_s": {
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "samples": 2107
+    }
+  },
+  "tracking": {
+    "joint": {
+      "final_position_error_inf_rad": 0.002713915193453431,
+      "max_position_error_rad": 0.06678758561611176,
+      "position_rmse_rad": 0.0114030996337533
+    },
+    "task": {
+      "max_orientation_error_rad": 0.08885449171066284,
+      "max_position_error_m": 0.09842079877853394,
+      "orientation_rmse_rad": 0.02791212685406208,
+      "position_rmse_m": 0.031356628984212875,
+      "samples": 2107
+    }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "controller_mode": "mpc",
+  "final": {
+    "tcp_orientation_error_rad": 0.001091830083169043,
+    "tcp_position_error_m": 0.002181071089580655
+  },
+  "joint_tracking": {
+    "final_position_error_inf_rad": 0.0025628330186009407,
+    "max_position_error_rad": 0.0656513199210167,
+    "position_rmse_rad": 0.010603981092572212
+  },
+  "laps": {
+    "0": {
+      "max_orientation_error_rad": 0.02426953986287117,
+      "max_position_error_m": 0.028979966416954994,
+      "orientation_rmse_rad": 0.014435353688895702,
+      "position_rmse_m": 0.016443850472569466,
+      "samples": 404
+    },
+    "1": {
+      "max_orientation_error_rad": 0.02482656203210354,
+      "max_position_error_m": 0.028766602277755737,
+      "orientation_rmse_rad": 0.014482922852039337,
+      "position_rmse_m": 0.016531066969037056,
+      "samples": 404
+    },
+    "2": {
+      "max_orientation_error_rad": 0.025544049218297005,
+      "max_position_error_m": 0.028761932626366615,
+      "orientation_rmse_rad": 0.014533811248838902,
+      "position_rmse_m": 0.01683833636343479,
+      "samples": 404
+    }
+  },
+  "overall": {
+    "max_orientation_error_rad": 0.08165757358074188,
+    "max_position_error_m": 0.0955088883638382,
+    "orientation_rmse_rad": 0.025116166099905968,
+    "position_rmse_m": 0.03004164807498455,
+    "samples": 2116
+  },
+  "planning": {
+    "command_acceleration_violation_count": 1521,
+    "command_acceleration_violation_rate": 0.7188090737240076,
+    "command_velocity_violation_count": 0,
+    "command_velocity_violation_rate": 0.0,
+    "failure_count": 0,
+    "failure_rate": 0.0,
+    "joint_limit_violation_count": 0,
+    "joint_limit_violation_rate": 0.0,
+    "max_planning_time_s": 0.3195851147174835,
+    "mean_planning_time_s": 0.1512611958573243
+  },
+  "recorded_steps": 2116,
+  "segments": {
+    "0": {
+      "max_orientation_error_rad": 0.0,
+      "max_position_error_m": 0.0,
+      "orientation_rmse_rad": 0.0,
+      "position_rmse_m": 0.0,
+      "samples": 50
+    },
+    "1": {
+      "max_orientation_error_rad": 0.07177384197711945,
+      "max_position_error_m": 0.09246987104415894,
+      "orientation_rmse_rad": 0.048620570451021194,
+      "position_rmse_m": 0.06135648488998413,
+      "samples": 201
+    },
+    "2": {
+      "max_orientation_error_rad": 0.02210126630961895,
+      "max_position_error_m": 0.025458216667175293,
+      "orientation_rmse_rad": 0.0077876434661448,
+      "position_rmse_m": 0.008955691941082478,
+      "samples": 201
+    },
+    "3": {
+      "max_orientation_error_rad": 0.025544049218297005,
+      "max_position_error_m": 0.028979966416954994,
+      "orientation_rmse_rad": 0.014484085142612457,
+      "position_rmse_m": 0.016605280339717865,
+      "samples": 1212
+    },
+    "4": {
+      "max_orientation_error_rad": 0.009320241399109364,
+      "max_position_error_m": 0.010341770946979523,
+      "orientation_rmse_rad": 0.006238926202058792,
+      "position_rmse_m": 0.006887448485940695,
+      "samples": 201
+    },
+    "5": {
+      "max_orientation_error_rad": 0.08165757358074188,
+      "max_position_error_m": 0.0955088883638382,
+      "orientation_rmse_rad": 0.05372495576739311,
+      "position_rmse_m": 0.06252188235521317,
+      "samples": 201
+    },
+    "6": {
+      "max_orientation_error_rad": 0.02186431549489498,
+      "max_position_error_m": 0.02516736462712288,
+      "orientation_rmse_rad": 0.010222232900559902,
+      "position_rmse_m": 0.012206513434648514,
+      "samples": 50
+    }
+  }
+}
