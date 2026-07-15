@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+import sys
+
+import numpy as np
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
+if str(DYNAMICS_ROOT) not in sys.path:
+    sys.path.insert(0, str(DYNAMICS_ROOT))
+
+from mpc.cem_controller import CEMMPCConfig, CEMMPCController
+from mpc.constraints import project_nominal_q_ref_sequence, project_position_command_sequence
+from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
+from mpc.logging import build_run_summary
+from mpc.planner_rollout import construct_residual_q_ref_sequence
+from mpc.recovery import residual_recovery_reason
+
+
+class ResidualConstraintTests(unittest.TestCase):
+    def test_nominal_projection_preserves_a_feasible_direct_reference(self) -> None:
+        desired = torch.tensor([[0.10], [0.20], [0.30]], dtype=torch.float32)
+        nominal = project_nominal_q_ref_sequence(
+            desired,
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            control_dt=0.1,
+            velocity_limit=torch.tensor([2.0]),
+            acceleration_limit=torch.tensor([20.0]),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+        )
+        torch.testing.assert_close(nominal, desired)
+
+    def test_position_projection_respects_velocity_and_acceleration(self) -> None:
+        projected = project_position_command_sequence(
+            torch.full((1, 4, 1), 1.0),
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            control_dt=0.1,
+            velocity_limit=torch.tensor([0.5]),
+            acceleration_limit=torch.tensor([1.0]),
+            joint_low=torch.tensor([-2.0]),
+            joint_high=torch.tensor([2.0]),
+        )[0, :, 0]
+        velocity = torch.diff(torch.cat([torch.zeros(1), projected])) / 0.1
+        acceleration = torch.diff(torch.cat([torch.zeros(1), velocity])) / 0.1
+        self.assertTrue(bool(torch.all(torch.abs(velocity) <= 0.5 + 1e-6)))
+        self.assertTrue(bool(torch.all(torch.abs(acceleration) <= 1.0 + 1e-6)))
+
+    def test_zero_residual_is_the_executable_nominal_baseline(self) -> None:
+        nominal = torch.tensor([[0.02], [0.05]], dtype=torch.float32)
+        q_ref, residual, feasible = construct_residual_q_ref_sequence(
+            torch.zeros((2, 2, 1)),
+            nominal_q_ref=nominal,
+            residual_max=torch.tensor([0.1]),
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            joint_limit_margin=0.0,
+            q_ref_velocity_limit=torch.tensor([1.0]),
+            q_ref_acceleration_limit=torch.tensor([10.0]),
+            control_dt=0.1,
+        )
+        torch.testing.assert_close(q_ref, nominal.unsqueeze(0).expand_as(q_ref))
+        torch.testing.assert_close(residual, torch.zeros_like(residual))
+        self.assertTrue(bool(torch.all(feasible)))
+
+
+class ResidualCostTests(unittest.TestCase):
+    def _config(self) -> JointSpaceCostConfig:
+        return JointSpaceCostConfig(
+            q_tracking_scale=torch.tensor([1.0]),
+            dq_tracking_scale=torch.tensor([1.0]),
+            residual_scale=torch.tensor([0.1]),
+            servo_scale=torch.tensor([1.0]),
+            residual_velocity_scale=torch.tensor([1.0]),
+            residual_acceleration_scale=torch.tensor([1.0]),
+            state_velocity_limit=torch.tensor([10.0]),
+            control_dt=0.1,
+            joint_limit_safe_margin=0.01,
+            joint_limit_temp=0.01,
+            dq_limit_temp=0.01,
+        )
+
+    def test_zero_residual_has_no_anchor_or_smoothness_cost(self) -> None:
+        pred = torch.zeros((1, 3, 2))
+        cost, terms = joint_space_tracking_cost(
+            pred_states=pred,
+            q_des=torch.zeros((2, 1)),
+            dq_des=torch.zeros((2, 1)),
+            actuator_q_ref=torch.zeros((1, 2, 1)),
+            nominal_q_ref=torch.zeros((2, 1)),
+            previous_q_ref=torch.zeros(1),
+            previous_q_ref_velocity=torch.zeros(1),
+            previous_residual=torch.zeros(1),
+            previous_residual_velocity=torch.zeros(1),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            config=self._config(),
+            return_terms=True,
+        )
+        self.assertLess(float(cost[0]), 1e-6)
+        for name in ("residual", "servo", "residual_velocity", "residual_acceleration", "first", "terminal"):
+            self.assertLess(float(terms[name][0]), 1e-6)
+
+    def test_predicted_hard_joint_violation_is_rejected(self) -> None:
+        pred = torch.zeros((1, 3, 2))
+        pred[:, 1, 0] = 1.1
+        cost = joint_space_tracking_cost(
+            pred_states=pred,
+            q_des=torch.zeros((2, 1)),
+            dq_des=torch.zeros((2, 1)),
+            actuator_q_ref=torch.zeros((1, 2, 1)),
+            nominal_q_ref=torch.zeros((2, 1)),
+            previous_q_ref=torch.zeros(1),
+            previous_q_ref_velocity=torch.zeros(1),
+            previous_residual=torch.zeros(1),
+            previous_residual_velocity=torch.zeros(1),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            config=self._config(),
+        )
+        self.assertTrue(bool(torch.isinf(cost[0])))
+
+
+class _BaselinePlanner:
+    def evaluate(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
+        costs = torch.mean(torch.square(action), dim=(1, 2))
+        batch, horizon, dim = action.shape
+        return {
+            "costs": costs,
+            "q_ref_sequences": action.clone(),
+            "cost_terms": {"total": costs},
+            "pred_states": torch.zeros((batch, horizon + 1, 2 * dim)),
+        }
+
+
+class CEMBaselineTests(unittest.TestCase):
+    def test_zero_residual_is_forced_and_selected_when_optimal(self) -> None:
+        controller = CEMMPCController(
+            CEMMPCConfig(
+                horizon=3,
+                action_dim=1,
+                num_samples=8,
+                cem_iters=2,
+                init_std=0.5,
+                min_std=0.25,
+                uniform_sample_ratio=0.25,
+                force_baseline_candidate=True,
+                execute="lowest_cost",
+                seed=7,
+            ),
+            planner=_BaselinePlanner(),
+            joint_low=np.array([-1.0], dtype=np.float32),
+            joint_high=np.array([1.0], dtype=np.float32),
+        )
+        samples = controller._sample_population(controller.mean, controller.std)
+        self.assertEqual(tuple(samples.shape), (8, 3, 1))
+        self.assertTrue(bool(torch.allclose(samples[0], torch.zeros_like(samples[0]))))
+        result = controller.plan(np.zeros(2, dtype=np.float32), np.zeros(1, dtype=np.float32))
+        self.assertEqual(result.selection_mode, "baseline")
+        self.assertAlmostEqual(result.baseline_cost, 0.0)
+        np.testing.assert_allclose(result.q_ref, 0.0)
+        controller.mean.fill_(1.0)
+        controller.reset()
+        self.assertTrue(bool(torch.allclose(controller.mean, torch.zeros_like(controller.mean))))
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_command_limit_saturation_is_not_a_recovery_condition(self) -> None:
+        """Only the supplied failure signals may trigger recovery."""
+        reason = residual_recovery_reason(
+            [0.10, 0.10, 0.10, 0.10],
+            residual_saturation_streak=0,
+            consecutive_steps=3,
+            error_ratio=1.25,
+            min_tracking_error=0.05,
+            recovery_active=False,
+        )
+        self.assertEqual(reason, "")
+
+    def test_sustained_error_growth_and_residual_saturation_trigger_recovery(self) -> None:
+        common = dict(
+            consecutive_steps=3,
+            error_ratio=1.25,
+            min_tracking_error=0.05,
+            recovery_active=False,
+        )
+        self.assertEqual(
+            residual_recovery_reason([0.05, 0.06, 0.07, 0.08], residual_saturation_streak=0, **common),
+            "tracking_error_growth",
+        )
+        self.assertEqual(
+            residual_recovery_reason([0.10, 0.10], residual_saturation_streak=3, **common),
+            "residual_saturation",
+        )
+
+    def test_run_summary_reports_total_recovery_trigger_count(self) -> None:
+        summary = build_run_summary(
+            {
+                "recovery_active_flags": np.array([0, 1, 1, 0]),
+                "recovery_trigger_reasons": np.array(
+                    ["tracking_error_growth", "", "", "residual_saturation"]
+                ),
+            }
+        )
+        safety = summary["safety"]
+        self.assertEqual(safety["recovery_trigger_count"], 2)
+        self.assertEqual(safety["recovery_active_step_count"], 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

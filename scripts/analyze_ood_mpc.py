@@ -76,7 +76,16 @@ def summarize_against_distribution(
         states = np.asarray(rollout["actual_states"], dtype=np.float64)
         actions = np.asarray(rollout["actuator_q_ref"], dtype=np.float64)
         failure_flags = np.asarray(rollout["failure_flags"], dtype=np.float64) if "failure_flags" in rollout.files else np.zeros(len(states))
-        gap = np.asarray(rollout["predicted_real_error_gap"], dtype=np.float64) if "predicted_real_error_gap" in rollout.files else np.empty(0)
+        predicted_q_error = np.asarray(rollout["predicted_next_q_error"], dtype=np.float64) if "predicted_next_q_error" in rollout.files else np.empty(0)
+        predicted_dq_error = np.asarray(rollout["predicted_next_dq_error"], dtype=np.float64) if "predicted_next_dq_error" in rollout.files else np.empty(0)
+        replay_q_error = np.asarray(rollout["replay_q_error_norm"], dtype=np.float64) if "replay_q_error_norm" in rollout.files else np.empty((0, 0))
+        replay_dq_error = np.asarray(rollout["replay_dq_error_norm"], dtype=np.float64) if "replay_dq_error_norm" in rollout.files else np.empty((0, 0))
+
+    finite_mean = lambda values: float(np.mean(values[np.isfinite(values)])) if np.any(np.isfinite(values)) else float("nan")
+    replay_q_first = replay_q_error[:, 0] if replay_q_error.ndim == 2 and replay_q_error.shape[1] else np.empty(0)
+    replay_q_terminal = replay_q_error[:, -1] if replay_q_error.ndim == 2 and replay_q_error.shape[1] else np.empty(0)
+    replay_dq_first = replay_dq_error[:, 0] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
+    replay_dq_terminal = replay_dq_error[:, -1] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
 
     state_z = np.abs((states - distribution["state_mean"]) / distribution["state_std"])
     action_z = np.abs((actions - distribution["action_mean"]) / distribution["action_std"])
@@ -92,7 +101,12 @@ def summarize_against_distribution(
         "action_z_max": float(np.max(action_z)) if action_z.size else float("nan"),
         "action_ood_fraction": float(np.mean(np.any(action_z > z_threshold, axis=1))) if action_z.size else float("nan"),
         "failure_rate": float(np.mean(failure_flags)) if len(failure_flags) else float("nan"),
-        "predicted_real_error_gap_mean": float(np.mean(gap)) if len(gap) else float("nan"),
+        "predicted_next_q_error_mean": float(np.mean(predicted_q_error)) if len(predicted_q_error) else float("nan"),
+        "predicted_next_dq_error_mean": float(np.mean(predicted_dq_error)) if len(predicted_dq_error) else float("nan"),
+        "replay_q_error_k1_mean": finite_mean(replay_q_first),
+        "replay_q_error_kH_mean": finite_mean(replay_q_terminal),
+        "replay_dq_error_k1_mean": finite_mean(replay_dq_first),
+        "replay_dq_error_kH_mean": finite_mean(replay_dq_terminal),
     }
 
 

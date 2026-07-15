@@ -1,80 +1,47 @@
 # NN-MPC_RobotArm
 
-这是一个面向 ABB IRB 2400 的 MuJoCo 学习动力学与 CEM-MPC 项目。系统以六轴位置执行器的绝对关节目标 `q_ref` 为控制输入，学习关节状态转移，并在闭环中用 CEM 优化未来的 `q_ref` 增量序列。
-
-当前支持两类参考：
-
-- 关节空间参考：`hold`、`step`、`joint_sine`、`multi_joint_sine`。
-- 任务空间参考：`circle`、`ellipse`、`figure8`、`square`。该类参考先离线执行固定姿态连续 DLS IK，生成并验证关节空间 `q_des`、`dq_des`，再接入现有 MPC。
+面向 ABB IRB 2400 的 MuJoCo 学习动力学与 CEM-MPC 项目。动力学模型学习位置执行器的闭环状态转移；默认控制器是 **residual MPC**：以可执行的 IK nominal command 为基线，只搜索有界补偿，而不是重新生成一条无锚定的绝对命令轨迹。
 
 ## 快速开始
 
-在仓库根目录运行顶层 MPC 命令：
+在仓库根目录运行：
 
 ```bash
 cd /home/xinlei/Data/RL_Projects/NN-MPC_RobotArm
 conda run -n pendulum-rl python scripts/run_cem_mpc.py --help
 ```
 
-项目使用 Python 3.10+、MuJoCo、PyTorch、NumPy 和 Matplotlib。依赖清单位于：
+依赖与动力学数据采集、训练和开环评估说明见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
-```bash
-conda run -n pendulum-rl pip install -r dynamics_modeling/requirements.txt
-```
+## 当前 MPC 方法
 
-完整的数据采集、模型训练和开环评估说明见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
-
-## 系统概览
-
-MuJoCo 状态、动作和学习目标使用以下语义：
+MuJoCo 和 learned dynamics 的动作语义始终是绝对 position-actuator target：
 
 ```text
 state   = [q(6), dq(6)]
-action  = q_ref(6)，绝对位置执行器目标，单位为 rad
+action  = q_ref(6)     # absolute actuator reference, rad
 target  = delta_dq(6)
 ```
 
-Transformer/GRU 的输入是由 `[q, dq, q_ref]` 组成的历史序列 token。学习动力学输出 `delta_dq`，滚动预测通过速度积分重建未来状态。CEM 采样未来的 `delta_q_ref`，将其转换为满足约束的绝对 `q_ref`，用学习动力学滚动预测未来，并通过关节空间代价选出第一拍命令。
+任务空间参考先经连续 DLS IK 生成并验证 `q_des`、`dq_des`。在时刻 `t`，默认 residual MPC 的流程是：
 
 ```text
-q_des, dq_des
-    -> CEM 候选 delta_q_ref
-    -> 满足约束的绝对 q_ref 序列
-    -> 学习动力学滚动预测
-    -> 关节空间跟踪代价
-    -> 在 MuJoCo 执行第一拍 q_ref
+q_des[t+1:t+H]
+    -> project to executable nominal q_nom
+    -> CEM samples normalized residual r / r_max in [-1, 1]
+    -> q_ref = project(q_nom + r)
+    -> learned dynamics rollout
+    -> residual joint-space cost
+    -> execute the first q_ref in MuJoCo
 ```
 
-默认 MPC 初始配置为：
+`q_nom` 已满足命令速度、加速度和关节边界约束。零 residual 是每拍必有的 direct baseline；因此 `r=0` 永远代表“执行可行 nominal”。默认 `--cem_execute lowest_cost` 会比较 baseline、CEM best sample 和最终 CEM mean，执行预测 cost 最低的候选。
 
-```text
-q0 = [0, 0, 0, 0, 0, 0] rad
-dq0 = [0, 0, 0, 0, 0, 0] rad/s
-q_ref0 = [0, 0, 0, 0, 0, 0] rad
-```
+`--mpc_policy legacy_acceleration` 仍可复现实验中的无锚定命令加速度动作空间，但不是默认方法。
 
-## 目录结构
+## 推荐运行
 
-```text
-dynamics_modeling/  ABB XML、资产、数据采集、训练与评估
-mpc/                      CEM 控制器、规划器、代价、约束、IK 与参考轨迹
-scripts/                  闭环 MPC 与离线任务参考命令
-tests/                    MPC、IK、参考轨迹与集成测试
-outputs/                  生成的模型、参考、滚动结果与图像
-docs/                     设计笔记和详细项目文档
-```
-
-关键模块：
-
-- `mpc/cem_controller.py`：CEM 采样、elite 更新、warm start 与 fallback。
-- `mpc/planner_rollout.py`：候选命令约束和学习动力学滚动预测。
-- `mpc/cost_functions.py`：归一化位置/速度跟踪、命令偏置、平滑、终端和关节限位代价。
-- `mpc/kinematics_utils.py` 与 `mpc/ik_solver.py`：私有 `MjData` FK/Jacobian 和有界连续 DLS IK。
-- `mpc/reference_pipeline.py`：任务参考组装、离线验证与 `.npz` 持久化。
-
-## 关节空间 MPC
-
-从固定初始位姿运行一次闭环 MPC：
+默认预算是 horizon 10、128 candidates、3 次 CEM iteration、batch 128；下面显式写出这些推荐值，方便实验记录。
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
@@ -82,36 +49,41 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer \
   --reference_mode multi_joint_sine \
-  --horizon 20 \
-  --num_samples 1024 \
-  --cem_iters 4 \
-  --rollout_batch_size 256 \
-  --save_dir outputs/mpc/joint_sine_run
+  --episode_len 200 \
+  --horizon 10 \
+  --num_samples 128 \
+  --cem_iters 3 \
+  --rollout_batch_size 128 \
+  --mpc_policy residual \
+  --cem_execute lowest_cost \
+  --save_dir outputs/mpc/joint_sine_residual
 ```
 
-输出目录包含 `rollout.npz`、`rollout.csv`、关节跟踪图、控制图和规划诊断图。
+参数含义：
 
-## 任务空间参考与 MPC
+- `episode_len`：非 task 模式的执行控制步数；task 模式改用 reference 的 `execution_steps`。
+- `horizon`：每拍预测与优化的未来控制步数。
+- `num_samples`：每个 CEM iteration 的候选序列数量；residual 模式含 forced baseline 和 mean 候选。
+- `cem_iters`：每个控制步的 CEM 更新次数。
+- `rollout_batch_size`：一次模型前向计算的候选上限；可大于 `num_samples`，但不会增加候选数。
+- `cem_execute`：`mean` 执行最终分布均值，`best` 执行最低 cost sample，`lowest_cost` 比较 baseline、best、mean 后执行最低者；推荐后者。
 
-ABB XML 中的 `ee_site` 与兼容 site `tool0` 共位。任务空间参考必须离线生成并通过验证，MPC 只加载已验证的参考文件。
+输出目录包含 `rollout.npz`、`rollout.csv`、跟踪/控制图、`run_summary.json`。结束报告中的 `recovery triggers` 是 recovery 的总触发次数；`recovery active steps` 是 nominal 回退实际执行的步数。
 
-生成三圈圆形参考：
+## 任务空间参考与 IK direct
+
+生成并验证三圈圆形参考：
 
 ```bash
 conda run -n pendulum-rl python scripts/generate_task_reference.py \
-  --shape circle \
-  --repeat_count 3 \
+  --shape circle --repeat_count 3 \
   --save_dir outputs/references/circle_3laps
-```
 
-独立验证已有参考：
-
-```bash
 conda run -n pendulum-rl python scripts/validate_ik.py \
   --reference_file outputs/references/circle_3laps/reference.npz
 ```
 
-使用已验证的任务空间参考运行 MPC：
+运行 residual MPC：
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
@@ -120,76 +92,50 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --model_type transformer \
   --reference_mode task \
   --reference_file outputs/references/circle_3laps/reference.npz \
-  --save_dir outputs/mpc/task_circle
+  --mpc_policy residual --cem_execute lowest_cost \
+  --save_dir outputs/mpc/task_circle_residual
 ```
 
-`--reference_mode task` 使用参考文件中的 `execution_steps`；该模式下 `--episode_len` 不生效。参考文件包含 `q_des`、`dq_des`、`ddq_des`、期望 TCP 位姿、IK 诊断、阶段 id、圈数 id 和预测时域尾部填充。
-
-任务空间模式还会保存 TCP 位置/姿态误差、`ee_trajectory_3d.png`、平面投影图、按阶段/圈数统计的图像以及 `task_tracking_summary.json`。
-
-## 任务空间参考验证
-
-每条参考都从零关节位姿开始并返回零关节位姿。由于 ABB 全零配置的完整 6D Jacobian 存在奇异性，流程会先通过确定性的离线搜索寻找满足 `sigma_min >= 0.10` 的邻近 `q_safe`，随后采用五次关节空间离开和返回段。
-
-参考生成器会拒绝以下情况：
-
-- DLS 不收敛或 FK 误差超过阈值。
-- 硬关节限位违规。
-- 单关节速度或加速度超过阈值。
-- 任务空间段的 `sigma_min < 0.005`。
-- 关节空间不连续，或每圈 TCP/关节闭合失败。
-- 未返回零位姿和零速度。
-
-当前 MuJoCo XML 为所有 mesh geom 关闭了 collision bit。因此自碰撞会标记为 `not_available`，不构成已验证的安全保证。
-
-## 数据、训练和模型对比
-
-动力学数据集的核心字段为：
-
-```text
-states
-actions
-next_states
-episode_ids
-q_ref
-delta_q_ref
-tau_actuator
-tau_gravity
-tau_total
-```
-
-使用 `scripts/collect_mpc_data.py` 将闭环 MPC 滚动结果转成额外的动力学数据。使用 `scripts/evaluate_model_abc.py` 在相同 MPC 设置下比较多个 checkpoint，使用 `scripts/analyze_ood_mpc.py` 比较滚动结果的状态/动作查询与训练数据分布。
-
-进行任务空间实验时，Model A/B/C 必须复用同一个已验证 `reference.npz`。任务空间路径可能超出当前学习动力学训练分布；解释跟踪结果前应先进行 OOD 分析。
-
-## 测试
-
-禁用外部 pytest 插件后运行完整相关测试：
+IK direct baseline 不加载 learned dynamics 或 CEM，直接发送后继 `q_des`：
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n pendulum-rl python -m pytest \
-  tests/test_cost_functions.py \
-  tests/test_mpc_pipeline.py \
-  tests/test_ik_solver.py \
-  tests/test_task_space_reference.py \
-  tests/test_reference_pipeline.py \
-  tests/test_task_space_mpc_smoke.py \
-  dynamics_modeling/tests/test_core.py -q
+conda run -n pendulum-rl python scripts/run_cem_mpc.py \
+  --controller_mode ik_direct \
+  --reference_mode task \
+  --reference_file outputs/references/circle_3laps/reference.npz \
+  --save_dir outputs/mpc/task_circle_ik_direct
 ```
 
-当前实现下，该测试集结果为 `115 passed, 8 subtests passed`。
+对比两次运行的 `task_tracking_summary.json` 和 `run_summary.json`。task 模式忽略 `episode_len`，使用参考文件的 `execution_steps`。本地图形桌面可添加 `--visualize`，关闭窗口会停止并保存部分 rollout。
 
-## 当前限制
+## 安全与 recovery
 
-- 学习动力学与 CEM 目标仍处于关节空间；TCP 跟踪只作为评估指标，不是 MPC 代价。
-- 任务空间 IK 使用 previous-solution warm start 的局部 DLS，不枚举 ABB analytic IK 多解，也不联合优化整条轨迹。
-- 当前 XML 没有启用自碰撞或外部障碍物模型。
-- 现有 checkpoint 使用关节空间数据训练。大范围任务空间参考可能 OOD，需要降低速度、在新任务轨迹下采集数据，并训练 Model C。
-- 通过参考/IK 验证不代表已有学习动力学 checkpoint 一定能在闭环中稳定跟踪。
+默认 residual bound 为 `[0.12, 0.10, 0.12, 0.15, 0.15, 0.20] rad`。命令速度/加速度上限是 MuJoCo 规划上限而非 ABB 硬件额定值；达到这些上限只记录诊断，不会单独触发 recovery。
+
+Residual MPC 在以下情况下回退到 `q_nom` 并 reset CEM warm start：planner failure 立即触发；跟踪误差持续恶化或 residual 持续接近 bound 时按 `recovery_consecutive_steps` 触发。默认持续步数为 3，冷却期为 5 步。
+
+## 目录与测试
+
+```text
+dynamics_modeling/  ABB XML、数据采集、训练与开环评估
+mpc/                CEM、nominal projection、rollout、cost、recovery、IK
+scripts/            闭环 MPC 与参考生成命令
+docs/               当前规范、历史设计和实验材料
+outputs/            生成的模型、参考和运行结果
+```
+
+快速验证 residual MPC 单元测试：
+
+```bash
+conda run -n pendulum-rl python -m unittest mpc/test_residual_mpc.py -v
+```
+
+完整项目测试入口见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
 ## 相关文档
 
-- [项目结构](docs/PROJECT_STRUCTURE.md)
+- [Cost function](docs/CostFunction.md)
 - [MPC 伪代码](docs/mpc-pseudocode.md)
-- [完成状态](docs/PROJECT_COMPLETION_STATUS.md)
-- [命令示例](docs/run_command.md)
+- [运行命令](docs/run_command.md)
+- [项目结构](docs/PROJECT_STRUCTURE.md)
+- [完成状态（历史快照）](docs/PROJECT_COMPLETION_STATUS.md)

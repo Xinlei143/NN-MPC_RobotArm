@@ -3,7 +3,6 @@
 /.vscode
 /.pytest_cache
 /outputs
-/docs
 /tests
 
 /dynamics_modeling/__pycache__
@@ -14,7 +13,7 @@
 /dynamics_modeling/neural_dynamics/__pycache__
 /dynamics_modeling/scripts/__pycache__
 /dynamics_modeling/tests
-/dynamics_modeling/README.md
+
 
 
 /mpc/__pycache__

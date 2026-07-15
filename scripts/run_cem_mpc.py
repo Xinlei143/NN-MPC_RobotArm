@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,16 +20,43 @@ from neural_dynamics.paths import DEFAULT_MODEL_XML
 from neural_dynamics.rollout import load_dynamics_bundle
 from neural_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
+from mpc.constraints import project_nominal_q_ref_sequence
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
+from mpc.recovery import residual_recovery_reason
+from mpc.replay_diagnostics import replay_executed_commands
 from mpc.utils import build_history_tensor
 
 
 MPC_HOME_Q = np.zeros(6, dtype=np.float32)
+# Conservative MuJoCo command-planning caps, not ABB hardware ratings.
+# Each acceleration cap is five times its matching speed cap, giving a 0.2 s
+# ramp from rest to the cap before reference-specific auto calibration.
+DEFAULT_JOINT_VELOCITY_LIMIT = (1.0, 1.0, 1.0, 2.0, 2.0, 2.5)
+DEFAULT_JOINT_ACCELERATION_LIMIT = (5.0, 5.0, 5.0, 10.0, 10.0, 12.5)
+DEFAULT_RESIDUAL_MAX = (0.12, 0.10, 0.12, 0.15, 0.15, 0.20)
+DEFAULT_SERVO_SCALE = (0.08, 0.07, 0.08, 0.04, 0.025, 0.05)
+COST_TERM_NAMES = (
+    "q_tracking",
+    "dq_tracking",
+    "residual",
+    "servo",
+    "residual_velocity",
+    "residual_acceleration",
+    "first",
+    "qref_velocity",
+    "qref_acceleration",
+    "terminal",
+    "joint_limit",
+    "dq_limit",
+    "torque",
+    "delta_torque",
+    "total",
+)
 
 
 def resolve_runtime_path(path: str) -> Path:
@@ -52,14 +80,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--model_xml", default=DEFAULT_MODEL_XML, type=str)
-    parser.add_argument("--checkpoint", required=True, type=str)
-    parser.add_argument("--normalizer", required=True, type=str)
+    parser.add_argument("--checkpoint", default=None, type=str, help="Dynamics checkpoint. Required for --controller_mode mpc.")
+    parser.add_argument("--normalizer", default=None, type=str, help="Dynamics normalizer. Required for --controller_mode mpc.")
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer")
     parser.add_argument("--history_len", default=None, type=int)
     parser.add_argument("--n_joints", default=6, type=int)
     parser.add_argument("--device", default="auto", type=str)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--episode_len", default=200, type=int)
+    parser.add_argument(
+        "--max_execution_steps",
+        default=None,
+        type=int,
+        help="Optional cap on executed control steps, including task-reference runs.",
+    )
     parser.add_argument("--settle_steps", default=50, type=int)
     parser.add_argument(
         "--reference_mode",
@@ -76,40 +110,142 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference_amplitude", default=0.15, type=float)
     parser.add_argument("--save_dir", default="outputs/mpc/cem_run", type=str)
     parser.add_argument("--fail_on_limit_violation", action="store_true")
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Open a MuJoCo viewer and replay the closed-loop rollout at the simulation control period.",
+    )
+    parser.add_argument(
+        "--controller_mode",
+        choices=["mpc", "ik_direct"],
+        default="mpc",
+        help="mpc uses learned CEM-MPC; ik_direct sends the validated task-space IK q_des directly to position actuators.",
+    )
 
-    parser.add_argument("--horizon", default=20, type=int)
-    parser.add_argument("--num_samples", default=1024, type=int)
+    parser.add_argument("--horizon", default=10, type=int)
+    parser.add_argument(
+        "--mpc_policy",
+        choices=["residual", "legacy_acceleration"],
+        default="residual",
+        help="Default residual MPC anchors commands to an executable IK nominal; legacy_acceleration reproduces the former unanchored action space.",
+    )
+    parser.add_argument("--num_samples", default=128, type=int)
     parser.add_argument("--num_elites", default=None, type=int)
     parser.add_argument("--elite_ratio", default=0.08, type=float)
-    parser.add_argument("--cem_iters", default=4, type=int)
-    parser.add_argument("--init_std", default=0.12, type=float)
-    parser.add_argument("--min_std", default=0.01, type=float)
+    parser.add_argument("--cem_iters", default=3, type=int)
+    parser.add_argument(
+        "--init_std",
+        default=0.5,
+        type=float,
+        help="Initial CEM standard deviation in normalized action units.",
+    )
+    parser.add_argument(
+        "--min_std",
+        default=0.25,
+        type=float,
+        help="Warm-start floor for the CEM standard deviation in normalized action units.",
+    )
     parser.add_argument("--smoothing_alpha", default=0.2, type=float)
     parser.add_argument("--temporal_noise_alpha", default=0.8, type=float)
-    parser.add_argument("--rollout_batch_size", default=256, type=int)
+    parser.add_argument(
+        "--reset_std_each_step",
+        action="store_true",
+        help="Reset CEM std to init_std at every MPC step while retaining the shifted mean warm start.",
+    )
+    parser.add_argument(
+        "--uniform_sample_ratio",
+        default=0.15,
+        type=float,
+        help="Fraction of non-forced CEM candidates sampled uniformly from [-1, 1].",
+    )
+    parser.add_argument("--rollout_batch_size", default=128, type=int)
+    parser.add_argument(
+        "--cem_execute",
+        choices=["mean", "best", "lowest_cost"],
+        default="lowest_cost",
+        help="Action selected from the CEM mean, best sample, or their lowest-cost comparison with the residual baseline.",
+    )
 
-    parser.add_argument("--ref_mode", choices=["delta", "absolute"], default="delta")
-    parser.add_argument("--delta_base", choices=["previous_q_ref", "current_q"], default="previous_q_ref")
-    parser.add_argument("--delta_q_ref_max", default=0.08, type=float)
-    parser.add_argument("--q_ref_rate_limit", default=0.08, type=float)
-    parser.add_argument("--delta_rate_limit", default=None, type=float)
+    parser.add_argument(
+        "--q_ref_velocity_limit",
+        default="auto",
+        type=str,
+        help="Command velocity limit in rad/s: auto, one scalar, or n_joints comma-separated values.",
+    )
+    parser.add_argument(
+        "--q_ref_acceleration_limit",
+        default="auto",
+        type=str,
+        help="Command acceleration limit in rad/s^2: auto, one scalar, or n_joints comma-separated values.",
+    )
+    parser.add_argument(
+        "--command_velocity_physical_limit",
+        default=",".join(map(str, DEFAULT_JOINT_VELOCITY_LIMIT)),
+        type=str,
+        help="Upper MuJoCo command-planning speed cap in rad/s; scalar or comma-separated per-joint values.",
+    )
+    parser.add_argument(
+        "--command_acceleration_physical_limit",
+        default=",".join(map(str, DEFAULT_JOINT_ACCELERATION_LIMIT)),
+        type=str,
+        help="Upper MuJoCo command-planning acceleration cap in rad/s^2; scalar or comma-separated values.",
+    )
+    parser.add_argument(
+        "--state_velocity_limit",
+        default=",".join(map(str, DEFAULT_JOINT_VELOCITY_LIMIT)),
+        type=str,
+        help="Predicted joint-speed soft-limit in rad/s; scalar or comma-separated per-joint values.",
+    )
     parser.add_argument("--joint_limit_margin", default=0.02, type=float)
+    parser.add_argument(
+        "--residual_max",
+        default=",".join(map(str, DEFAULT_RESIDUAL_MAX)),
+        type=str,
+        help="Residual q_ref bound in rad: scalar or comma-separated per joint. Used by --mpc_policy residual.",
+    )
+    parser.add_argument("--temporal_discount", default=0.95, type=float)
+    parser.add_argument("--barrier_max_weight", default=2.0, type=float)
+    parser.add_argument(
+        "--servo_scale",
+        default=",".join(map(str, DEFAULT_SERVO_SCALE)),
+        type=str,
+        help="Servo proxy scale in rad: scalar or comma-separated per joint.",
+    )
+    parser.add_argument("--recovery_error_ratio", default=1.25, type=float)
+    parser.add_argument(
+        "--recovery_min_tracking_error",
+        default=0.05,
+        type=float,
+        help="Minimum joint-space L2 tracking error in rad before growth can trigger recovery.",
+    )
+    parser.add_argument(
+        "--recovery_residual_fraction",
+        default=0.95,
+        type=float,
+        help="Residual-bound fraction sustained before recovery can trigger; command-limit saturation is diagnostic only.",
+    )
+    parser.add_argument("--recovery_consecutive_steps", default=3, type=int)
+    parser.add_argument("--recovery_cooldown_steps", default=5, type=int)
 
     parser.add_argument("--w_q", default=1.0, type=float)
-    parser.add_argument("--w_dq", default=0.05, type=float)
-    parser.add_argument("--w_u_offset", default=0.05, type=float)
-    parser.add_argument("--w_dqref", default=0.05, type=float)
-    parser.add_argument("--w_ddqref", default=0.02, type=float)
-    parser.add_argument("--w_terminal", default=0.5, type=float)
-    parser.add_argument("--w_joint_limit", default=2.0, type=float)
-    parser.add_argument("--q_amp_fraction", default=0.2, type=float)
-    parser.add_argument("--q_tol", default=0.04, type=float)
-    parser.add_argument("--dq_scale", default=0.5, type=float)
-    parser.add_argument("--u_offset_scale", default=0.2, type=float)
-    parser.add_argument("--dqref_scale", default=0.08, type=float)
-    parser.add_argument("--ddqref_scale", default=0.05, type=float)
+    parser.add_argument("--w_dq", default=0.10, type=float)
+    parser.add_argument("--w_residual", default=0.20, type=float)
+    parser.add_argument("--w_servo", default=0.05, type=float)
+    parser.add_argument("--w_residual_velocity", default=0.05, type=float)
+    parser.add_argument("--w_residual_acceleration", default=0.02, type=float)
+    parser.add_argument("--w_first", default=0.20, type=float)
+    # The two qref smoothness weights are retained solely for legacy_acceleration.
+    parser.add_argument("--w_qref_velocity", default=0.05, type=float)
+    parser.add_argument("--w_qref_acceleration", default=0.02, type=float)
+    parser.add_argument("--w_terminal", default=0.0, type=float)
+    parser.add_argument("--w_joint_limit", default=10.0, type=float)
+    parser.add_argument("--w_dq_limit", default=5.0, type=float)
+    parser.add_argument("--w_tau", default=0.02, type=float, help="Used only by --cost_profile actuator_aware.")
+    parser.add_argument("--w_delta_tau", default=0.02, type=float, help="Used only by --cost_profile actuator_aware.")
+    parser.add_argument("--cost_profile", choices=["blackbox", "actuator_aware"], default="blackbox")
     parser.add_argument("--joint_limit_safe_margin", default=0.08, type=float)
     parser.add_argument("--joint_limit_temp", default=0.02, type=float)
+    parser.add_argument("--dq_limit_temp", default=0.1, type=float)
     parser.add_argument("--velocity_cost_mode", choices=["track", "damping"], default="track")
     return parser
 
@@ -130,8 +266,54 @@ def _stack_records(records: list[np.ndarray], dtype: np.dtype = np.float32) -> n
     return np.asarray(records, dtype=dtype)
 
 
-def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, horizon: int) -> None:
-    """Validate the subset of ReferenceBundle invariants required by receding-horizon MPC."""
+def _parse_joint_vector(value: str, n_joints: int, name: str, *, allow_auto: bool = False) -> np.ndarray | None:
+    text = str(value).strip().lower()
+    if allow_auto and text == "auto":
+        return None
+    try:
+        values = np.asarray([float(item) for item in text.split(",")], dtype=np.float32)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be 'auto', one positive scalar, or {n_joints} comma-separated values") from exc
+    if values.size == 1:
+        values = np.full(n_joints, float(values[0]), dtype=np.float32)
+    if values.shape != (n_joints,) or not np.all(np.isfinite(values)) or np.any(values <= 0.0):
+        raise ValueError(f"{name} must contain {n_joints} finite positive values")
+    return values
+
+
+def _reference_calibration(
+    reference: np.ndarray,
+    dq_reference: np.ndarray,
+    ddq_reference: np.ndarray,
+    physical_velocity_limit: np.ndarray,
+    physical_acceleration_limit: np.ndarray,
+) -> dict[str, np.ndarray]:
+    q_scale = np.clip(
+        0.1 * (np.percentile(reference, 95.0, axis=0) - np.percentile(reference, 5.0, axis=0)),
+        0.04,
+        0.08,
+    )
+    dq_scale = np.maximum(np.percentile(np.abs(dq_reference), 99.0, axis=0), 0.25)
+    velocity_limit = np.clip(
+        3.0 * np.percentile(np.abs(dq_reference), 99.0, axis=0),
+        0.05 * physical_velocity_limit,
+        physical_velocity_limit,
+    )
+    acceleration_limit = np.clip(
+        3.0 * np.percentile(np.abs(ddq_reference), 99.0, axis=0),
+        0.05 * physical_acceleration_limit,
+        physical_acceleration_limit,
+    )
+    return {
+        "q_tracking_scale": q_scale.astype(np.float32),
+        "dq_tracking_scale": dq_scale.astype(np.float32),
+        "q_ref_velocity_limit": velocity_limit.astype(np.float32),
+        "q_ref_acceleration_limit": acceleration_limit.astype(np.float32),
+    }
+
+
+def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_steps: int) -> None:
+    """Validate the reference invariants needed by the selected online controller."""
     q_des = np.asarray(bundle.q_des)
     dq_des = np.asarray(bundle.dq_des)
     if q_des.ndim != 2 or q_des.shape[1] != n_joints:
@@ -140,11 +322,11 @@ def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, horizon: in
         raise ValueError(f"Task reference dq_des must match q_des shape {q_des.shape}, got {dq_des.shape}")
     if bundle.execution_steps <= 0:
         raise ValueError(f"Task reference execution_steps must be positive, got {bundle.execution_steps}")
-    minimum_length = int(bundle.execution_steps) + int(horizon) + 1
+    minimum_length = int(bundle.execution_steps) + int(future_steps) + 1
     if q_des.shape[0] < minimum_length:
         raise ValueError(
-            "Task reference is too short for the requested MPC horizon: "
-            f"need at least execution_steps + horizon + 1 = {minimum_length} points, got {q_des.shape[0]}"
+            "Task reference is too short for the requested controller look-ahead: "
+            f"need at least execution_steps + future_steps + 1 = {minimum_length} points, got {q_des.shape[0]}"
         )
 
     expected_task_shapes = {
@@ -163,12 +345,13 @@ def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, horizon: in
 def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     if not args.reference_file:
         raise ValueError("--reference_file is required when --reference_mode task")
+    future_steps = args.horizon if args.controller_mode == "mpc" else 0
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
         expected_n_joints=args.n_joints,
-        min_horizon=args.horizon,
+        min_horizon=future_steps,
     )
-    _validate_task_reference(bundle, args.n_joints, args.horizon)
+    _validate_task_reference(bundle, args.n_joints, future_steps)
     return bundle
 
 
@@ -176,8 +359,8 @@ def _reference_for_run(
     args: argparse.Namespace,
     state: np.ndarray,
     env: MuJoCoArmEnv,
-    control_dt: float,
-) -> tuple[np.ndarray, np.ndarray, int, ReferenceBundle | None]:
+    control_dt: float | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, ReferenceBundle | None]:
     """Return the reference arrays and the number of closed-loop control steps."""
     if args.reference_mode == "task":
         bundle = _load_task_reference(args)
@@ -190,10 +373,13 @@ def _reference_for_run(
         return (
             np.asarray(bundle.q_des, dtype=np.float32),
             np.asarray(bundle.dq_des, dtype=np.float32),
+            np.asarray(bundle.ddq_des, dtype=np.float32),
             int(bundle.execution_steps),
             bundle,
         )
 
+    if control_dt is None:
+        raise RuntimeError("Joint-space references require a loaded MPC dynamics bundle")
     reference = generate_joint_reference(
         args.reference_mode,
         state[: args.n_joints],
@@ -204,7 +390,9 @@ def _reference_for_run(
         seed=args.seed,
         amplitude=args.reference_amplitude,
     )
-    return reference, finite_difference_dq(reference, control_dt), args.episode_len, None
+    dq_reference = finite_difference_dq(reference, control_dt)
+    ddq_reference = finite_difference_dq(dq_reference, control_dt)
+    return reference, dq_reference, ddq_reference, args.episode_len, None
 
 
 def _orientation_error(desired_rotation: np.ndarray, actual_rotation: np.ndarray) -> float:
@@ -214,21 +402,55 @@ def _orientation_error(desired_rotation: np.ndarray, actual_rotation: np.ndarray
     return float(np.arccos(cosine))
 
 
+def _launch_mujoco_viewer(env: MuJoCoArmEnv) -> Any:
+    """Open the optional passive viewer only for interactive local runs."""
+    try:
+        from mujoco import viewer
+
+        return viewer.launch_passive(env.model, env.data)
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not open the MuJoCo viewer. Run with a local graphical display or remove --visualize."
+        ) from exc
+
+
 def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
+    if args.controller_mode == "ik_direct" and args.reference_mode != "task":
+        raise ValueError("--controller_mode ik_direct requires --reference_mode task with a validated IK reference")
     if args.reference_mode != "task" and args.episode_len <= 0:
         raise ValueError(f"episode_len must be positive, got {args.episode_len}")
-    if args.horizon <= 0:
+    if args.controller_mode == "mpc" and args.horizon <= 0:
         raise ValueError(f"horizon must be positive, got {args.horizon}")
+    if args.max_execution_steps is not None and args.max_execution_steps <= 0:
+        raise ValueError("max_execution_steps must be positive when provided")
+    if not 0.0 <= args.uniform_sample_ratio <= 1.0:
+        raise ValueError("uniform_sample_ratio must be in [0, 1]")
+    if not 0.0 < args.temporal_discount <= 1.0:
+        raise ValueError("temporal_discount must be in (0, 1]")
+    if args.barrier_max_weight < 0.0:
+        raise ValueError("barrier_max_weight must be non-negative")
+    if args.recovery_consecutive_steps <= 0 or args.recovery_cooldown_steps < 0:
+        raise ValueError("recovery step counts must be positive (cooldown may be zero)")
+    if not 0.0 < args.recovery_residual_fraction <= 1.0:
+        raise ValueError("recovery_residual_fraction must be in (0, 1]")
+    if args.recovery_error_ratio <= 1.0:
+        raise ValueError("recovery_error_ratio must be greater than 1")
+    if args.recovery_min_tracking_error < 0.0:
+        raise ValueError("recovery_min_tracking_error must be non-negative")
     set_seed(args.seed)
     device = resolve_device(args.device)
-    bundle = load_dynamics_bundle(
-        checkpoint_path=resolve_runtime_path(args.checkpoint),
-        normalizer_path=resolve_runtime_path(args.normalizer),
-        model_type=args.model_type,
-        n_joints=args.n_joints,
-        device=device,
-        history_len=args.history_len,
-    )
+    bundle = None
+    if args.controller_mode == "mpc":
+        if not args.checkpoint or not args.normalizer:
+            raise ValueError("--checkpoint and --normalizer are required when --controller_mode mpc")
+        bundle = load_dynamics_bundle(
+            checkpoint_path=resolve_runtime_path(args.checkpoint),
+            normalizer_path=resolve_runtime_path(args.normalizer),
+            model_type=args.model_type,
+            n_joints=args.n_joints,
+            device=device,
+            history_len=args.history_len,
+        )
     env = MuJoCoArmEnv(str(resolve_runtime_path(args.model_xml)), n_joints=args.n_joints, seed=args.seed)
 
     states_history: list[np.ndarray] = []
@@ -237,16 +459,33 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     next_states: list[np.ndarray] = []
     selected_q_refs: list[np.ndarray] = []
     selected_delta_q_refs: list[np.ndarray] = []
+    command_velocities: list[np.ndarray] = []
+    command_accelerations: list[np.ndarray] = []
+    command_velocity_violations: list[int] = []
+    command_acceleration_violations: list[int] = []
     q_des_records: list[np.ndarray] = []
     dq_des_records: list[np.ndarray] = []
     planning_times: list[float] = []
+    control_step_wall_times: list[float] = []
     best_costs: list[float] = []
+    mean_costs: list[float] = []
+    baseline_costs: list[float] = []
+    selected_costs: list[float] = []
     elite_costs: list[float] = []
+    selection_modes: list[str] = []
     failures: list[int] = []
     failure_reasons: list[str] = []
     joint_limit_violations: list[int] = []
     realized_tracking_errors: list[float] = []
-    predicted_real_error_gaps: list[float] = []
+    predicted_next_q_errors: list[float] = []
+    predicted_next_dq_errors: list[float] = []
+    sampling_std_start_means: list[float] = []
+    sampling_std_end_means: list[float] = []
+    nominal_q_refs: list[np.ndarray] = []
+    executed_residuals: list[np.ndarray] = []
+    recovery_active_flags: list[int] = []
+    recovery_trigger_reasons: list[str] = []
+    cost_term_records: dict[str, list[float]] = {name: [] for name in COST_TERM_NAMES}
     torque_records: dict[str, list[np.ndarray]] = {"tau_actuator": [], "tau_gravity": [], "tau_total": []}
     desired_ee_positions: list[np.ndarray] = []
     desired_ee_rotations: list[np.ndarray] = []
@@ -259,99 +498,274 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     task_reference: ReferenceBundle | None = None
     execution_steps = args.episode_len
+    viewer: Any | None = None
 
     try:
         if args.n_joints > MPC_HOME_Q.shape[0]:
             raise ValueError(f"MPC home pose supports at most {MPC_HOME_Q.shape[0]} joints, got {args.n_joints}")
         state = env.reset_to_configuration(MPC_HOME_Q[: args.n_joints])
         previous_q_ref = np.asarray(state[: args.n_joints], dtype=np.float32).copy()
+        previous_q_ref_velocity = np.zeros(args.n_joints, dtype=np.float32)
+        previous_residual = np.zeros(args.n_joints, dtype=np.float32)
+        previous_residual_velocity = np.zeros(args.n_joints, dtype=np.float32)
+        recovery_remaining = 0
+        residual_saturation_streak = 0
         for _ in range(args.settle_steps):
             state = env.step(previous_q_ref)
         states_history.append(state.copy())
         q_ref_history.append(previous_q_ref.copy())
 
-        reference, dq_reference, execution_steps, task_reference = _reference_for_run(
+        reference, dq_reference, ddq_reference, execution_steps, task_reference = _reference_for_run(
             args=args,
             state=state,
             env=env,
-            control_dt=bundle.control_dt,
+            control_dt=bundle.control_dt if bundle is not None else None,
         )
-        cost_config = JointSpaceCostConfig(
-            w_q=args.w_q,
-            w_dq=args.w_dq,
-            w_u_offset=args.w_u_offset,
-            w_dqref=args.w_dqref,
-            w_ddqref=args.w_ddqref,
-            w_terminal=args.w_terminal,
-            w_joint_limit=args.w_joint_limit,
-            q_amp_fraction=args.q_amp_fraction,
-            q_tol=args.q_tol,
-            dq_scale=args.dq_scale,
-            u_offset_scale=args.u_offset_scale,
-            dqref_scale=args.dqref_scale,
-            ddqref_scale=args.ddqref_scale,
-            joint_limit_safe_margin=args.joint_limit_safe_margin,
-            joint_limit_temp=args.joint_limit_temp,
-            velocity_cost_mode=args.velocity_cost_mode,
+        if args.max_execution_steps is not None:
+            execution_steps = min(execution_steps, args.max_execution_steps)
+        cost_config = None
+        rollout_config = None
+        physical_velocity_limit = _parse_joint_vector(
+            args.command_velocity_physical_limit, args.n_joints, "command_velocity_physical_limit"
         )
-        rollout_config = PlannerRolloutConfig(
-            mode=args.ref_mode,
-            delta_base=args.delta_base,
-            delta_q_ref_max=args.delta_q_ref_max,
-            q_ref_rate_limit=args.q_ref_rate_limit,
-            delta_rate_limit=args.delta_rate_limit,
-            joint_limit_margin=args.joint_limit_margin,
-            rollout_batch_size=args.rollout_batch_size,
+        physical_acceleration_limit = _parse_joint_vector(
+            args.command_acceleration_physical_limit, args.n_joints, "command_acceleration_physical_limit"
         )
+        command_velocity_limit_for_log = physical_velocity_limit
+        command_acceleration_limit_for_log = physical_acceleration_limit
+        if args.controller_mode == "mpc":
+            state_velocity_limit = _parse_joint_vector(args.state_velocity_limit, args.n_joints, "state_velocity_limit")
+            residual_max = _parse_joint_vector(args.residual_max, args.n_joints, "residual_max")
+            servo_scale = _parse_joint_vector(args.servo_scale, args.n_joints, "servo_scale")
+            calibration = _reference_calibration(
+                reference,
+                dq_reference,
+                ddq_reference,
+                physical_velocity_limit,
+                physical_acceleration_limit,
+            )
+            q_ref_velocity_limit = _parse_joint_vector(
+                args.q_ref_velocity_limit, args.n_joints, "q_ref_velocity_limit", allow_auto=True
+            )
+            q_ref_acceleration_limit = _parse_joint_vector(
+                args.q_ref_acceleration_limit, args.n_joints, "q_ref_acceleration_limit", allow_auto=True
+            )
+            if q_ref_velocity_limit is None:
+                q_ref_velocity_limit = calibration["q_ref_velocity_limit"]
+            if q_ref_acceleration_limit is None:
+                q_ref_acceleration_limit = calibration["q_ref_acceleration_limit"]
+            command_velocity_limit_for_log = q_ref_velocity_limit
+            command_acceleration_limit_for_log = q_ref_acceleration_limit
+            actuator_kp = actuator_kd = torque_scale = delta_torque_scale = None
+            w_tau = w_delta_tau = 0.0
+            if args.cost_profile == "actuator_aware":
+                actuator_kp, actuator_kd = env.position_actuator_gains
+                torque_scale = np.maximum(actuator_kp * q_ref_velocity_limit * env.control_dt, 1.0).astype(np.float32)
+                delta_torque_scale = np.maximum(
+                    actuator_kp * q_ref_acceleration_limit * (env.control_dt**2), 0.5
+                ).astype(np.float32)
+                w_tau = args.w_tau
+                w_delta_tau = args.w_delta_tau
+            cost_config = JointSpaceCostConfig(
+                cost_mode="residual" if args.mpc_policy == "residual" else "legacy",
+                w_q=args.w_q,
+                w_dq=args.w_dq,
+                w_residual=args.w_residual,
+                w_servo=args.w_servo,
+                w_residual_velocity=args.w_residual_velocity,
+                w_residual_acceleration=args.w_residual_acceleration,
+                w_first=args.w_first,
+                w_qref_velocity=args.w_qref_velocity,
+                w_qref_acceleration=args.w_qref_acceleration,
+                w_terminal=args.w_terminal,
+                w_joint_limit=args.w_joint_limit,
+                w_dq_limit=args.w_dq_limit,
+                q_tracking_scale=torch.as_tensor(calibration["q_tracking_scale"], dtype=torch.float32, device=device),
+                dq_tracking_scale=torch.as_tensor(calibration["dq_tracking_scale"], dtype=torch.float32, device=device),
+                residual_scale=torch.as_tensor(0.5 * residual_max, dtype=torch.float32, device=device),
+                servo_scale=torch.as_tensor(servo_scale, dtype=torch.float32, device=device),
+                residual_velocity_scale=torch.as_tensor(residual_max / bundle.control_dt, dtype=torch.float32, device=device),
+                residual_acceleration_scale=torch.as_tensor(
+                    residual_max / (bundle.control_dt**2), dtype=torch.float32, device=device
+                ),
+                qref_velocity_scale=torch.as_tensor(q_ref_velocity_limit, dtype=torch.float32, device=device),
+                qref_acceleration_scale=torch.as_tensor(q_ref_acceleration_limit, dtype=torch.float32, device=device),
+                temporal_discount=args.temporal_discount,
+                barrier_max_weight=args.barrier_max_weight,
+                state_velocity_limit=torch.as_tensor(state_velocity_limit, dtype=torch.float32, device=device),
+                joint_limit_safe_margin=args.joint_limit_safe_margin,
+                joint_limit_temp=args.joint_limit_temp,
+                dq_limit_temp=args.dq_limit_temp,
+                control_dt=bundle.control_dt,
+                velocity_cost_mode=args.velocity_cost_mode,
+                w_tau=w_tau,
+                w_delta_tau=w_delta_tau,
+                actuator_kp=None if actuator_kp is None else torch.as_tensor(actuator_kp, dtype=torch.float32, device=device),
+                actuator_kd=None if actuator_kd is None else torch.as_tensor(actuator_kd, dtype=torch.float32, device=device),
+                torque_scale=None if torque_scale is None else torch.as_tensor(torque_scale, dtype=torch.float32, device=device),
+                delta_torque_scale=None
+                if delta_torque_scale is None
+                else torch.as_tensor(delta_torque_scale, dtype=torch.float32, device=device),
+            )
+            rollout_config = PlannerRolloutConfig(
+                mpc_policy=args.mpc_policy,
+                q_ref_velocity_limit=torch.as_tensor(q_ref_velocity_limit, dtype=torch.float32, device=device),
+                q_ref_acceleration_limit=torch.as_tensor(q_ref_acceleration_limit, dtype=torch.float32, device=device),
+                residual_max=torch.as_tensor(residual_max, dtype=torch.float32, device=device),
+                joint_limit_margin=args.joint_limit_margin,
+                rollout_batch_size=args.rollout_batch_size,
+            )
         controller: CEMMPCController | None = None
+        viewer_deadline = 0.0
+        if args.visualize:
+            viewer = _launch_mujoco_viewer(env)
+            viewer.sync()
+            viewer_deadline = time.perf_counter() + env.control_dt
 
         for step_idx in range(execution_steps):
-            initial_history = build_history_tensor(states_history, q_ref_history, bundle.history_len, device)
-            planner = LearnedDynamicsPlanner(
-                model=bundle.model,
-                normalizer=bundle.normalizer,
-                model_type=bundle.model_type,
-                state_dim=bundle.state_dim,
-                target_mode=bundle.target_mode,
-                control_dt=bundle.control_dt,
-                initial_history=initial_history,
-                q_des=torch.as_tensor(reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device),
-                dq_des=torch.as_tensor(dq_reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device),
-                previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
-                joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
-                joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
-                cost_config=cost_config,
-                rollout_config=rollout_config,
-            )
-            if controller is None:
-                controller = CEMMPCController(
-                    config=CEMMPCConfig(
-                        horizon=args.horizon,
-                        action_dim=args.n_joints,
-                        num_samples=args.num_samples,
-                        num_elites=args.num_elites,
-                        elite_ratio=args.elite_ratio,
-                        cem_iters=args.cem_iters,
-                        init_std=args.init_std,
-                        min_std=args.min_std,
-                        smoothing_alpha=args.smoothing_alpha,
-                        temporal_noise_alpha=args.temporal_noise_alpha,
-                        seed=args.seed,
-                        device=str(device),
-                    ),
-                    planner=planner,
-                    joint_low=env.joint_low,
-                    joint_high=env.joint_high,
+            if viewer is not None and not viewer.is_running():
+                break
+            control_step_started = time.perf_counter()
+            recovery_active = 0
+            recovery_trigger_reason = ""
+            nominal_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
+            if args.controller_mode == "mpc":
+                if bundle is None or cost_config is None or rollout_config is None:
+                    raise RuntimeError("MPC controller dependencies were not initialized")
+                initial_history = build_history_tensor(states_history, q_ref_history, bundle.history_len, device)
+                future_q_des = torch.as_tensor(
+                    reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device
                 )
-            else:
-                controller.planner = planner
+                if args.mpc_policy == "residual":
+                    nominal_q_ref = project_nominal_q_ref_sequence(
+                        future_q_des,
+                        previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
+                        previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
+                        control_dt=bundle.control_dt,
+                        velocity_limit=rollout_config.q_ref_velocity_limit,
+                        acceleration_limit=rollout_config.q_ref_acceleration_limit,
+                        joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
+                        joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
+                        joint_limit_margin=rollout_config.joint_limit_margin,
+                    )
+                    nominal_command = nominal_q_ref[0].detach().cpu().numpy().astype(np.float32)
+                else:
+                    nominal_q_ref = None
+                planner = LearnedDynamicsPlanner(
+                    model=bundle.model,
+                    normalizer=bundle.normalizer,
+                    model_type=bundle.model_type,
+                    state_dim=bundle.state_dim,
+                    target_mode=bundle.target_mode,
+                    control_dt=bundle.control_dt,
+                    initial_history=initial_history,
+                    q_des=future_q_des,
+                    dq_des=torch.as_tensor(dq_reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device),
+                    nominal_q_ref=nominal_q_ref,
+                    previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
+                    previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
+                    previous_residual=None
+                    if args.mpc_policy == "legacy_acceleration"
+                    else torch.as_tensor(previous_residual, dtype=torch.float32, device=device),
+                    previous_residual_velocity=None
+                    if args.mpc_policy == "legacy_acceleration"
+                    else torch.as_tensor(previous_residual_velocity, dtype=torch.float32, device=device),
+                    joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
+                    joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
+                    cost_config=cost_config,
+                    rollout_config=rollout_config,
+                )
+                if controller is None:
+                    controller = CEMMPCController(
+                        config=CEMMPCConfig(
+                            horizon=args.horizon,
+                            action_dim=args.n_joints,
+                            num_samples=args.num_samples,
+                            num_elites=args.num_elites,
+                            elite_ratio=args.elite_ratio,
+                            cem_iters=args.cem_iters,
+                            init_std=args.init_std,
+                            min_std=args.min_std,
+                            smoothing_alpha=args.smoothing_alpha,
+                            temporal_noise_alpha=args.temporal_noise_alpha,
+                            reset_std_each_step=args.reset_std_each_step,
+                            uniform_sample_ratio=args.uniform_sample_ratio,
+                            force_baseline_candidate=args.mpc_policy == "residual",
+                            execute=args.cem_execute,
+                            seed=args.seed,
+                            device=str(device),
+                        ),
+                        planner=planner,
+                        joint_low=env.joint_low,
+                        joint_high=env.joint_high,
+                    )
+                else:
+                    controller.planner = planner
 
-            result = controller.plan(current_state=state, previous_q_ref=previous_q_ref)
-            q_ref_command = result.q_ref.astype(np.float32)
+                if recovery_remaining > 0 and args.mpc_policy == "residual":
+                    recovery_active = 1
+                    recovery_remaining -= 1
+                    q_ref_command = nominal_command.copy()
+                    delta_q_ref = q_ref_command - previous_q_ref
+                    planning_time = 0.0
+                    best_cost = mean_cost = baseline_cost = selected_cost = elite_mean_cost = float("nan")
+                    selection_mode = "recovery_nominal"
+                    failure = 0
+                    failure_reason = ""
+                    selected_cost_terms = {}
+                    predicted_next_state = np.full(2 * args.n_joints, np.nan, dtype=np.float32)
+                    sampling_std_start_mean = sampling_std_end_mean = float("nan")
+                else:
+                    result = controller.plan(current_state=state, previous_q_ref=previous_q_ref)
+                    q_ref_command = result.q_ref.astype(np.float32)
+                    delta_q_ref = result.delta_q_ref.astype(np.float32)
+                    planning_time = float(result.planning_time)
+                    best_cost = float(result.best_cost)
+                    mean_cost = float(result.mean_cost)
+                    baseline_cost = float(result.baseline_cost)
+                    selected_cost = float(result.selected_cost)
+                    elite_mean_cost = float(result.elite_mean_cost)
+                    selection_mode = result.selection_mode
+                    failure = int(result.failure)
+                    failure_reason = result.failure_reason
+                    selected_cost_terms = result.cost_terms
+                    predicted_next_state = result.predicted_next_state
+                    sampling_std_start_mean = float(getattr(result, "sampling_std_start_mean", float("nan")))
+                    sampling_std_end_mean = float(getattr(result, "sampling_std_end_mean", float("nan")))
+                    if result.failure and args.mpc_policy == "residual":
+                        q_ref_command = nominal_command.copy()
+                        delta_q_ref = q_ref_command - previous_q_ref
+                        selection_mode = "planner_failure_nominal"
+                        recovery_trigger_reason = "planner_failure"
+                        recovery_remaining = args.recovery_cooldown_steps
+                        controller.reset()
+            else:
+                q_ref_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
+                delta_q_ref = q_ref_command - previous_q_ref
+                planning_time = 0.0
+                best_cost = float("nan")
+                mean_cost = float("nan")
+                baseline_cost = float("nan")
+                selected_cost = float("nan")
+                elite_mean_cost = float("nan")
+                selection_mode = "not_applicable"
+                failure = 0
+                failure_reason = "not_applicable"
+                selected_cost_terms = {}
+                predicted_next_state = np.full(2 * args.n_joints, np.nan, dtype=np.float32)
+                sampling_std_start_mean = float("nan")
+                sampling_std_end_mean = float("nan")
+
             torque = env.compute_torque_components(q_ref_command)
             actual_states.append(state.copy())
             q_des_records.append(reference[step_idx].copy())
             dq_des_records.append(dq_reference[step_idx].copy())
+            if args.controller_mode == "mpc" and args.mpc_policy == "residual":
+                executed_residual = (q_ref_command - nominal_command).astype(np.float32)
+                nominal_q_refs.append(nominal_command.copy())
+                executed_residuals.append(executed_residual.copy())
+            else:
+                executed_residual = np.zeros(args.n_joints, dtype=np.float32)
             if task_reference is not None:
                 desired_position = np.asarray(task_reference.task_positions_des[step_idx], dtype=np.float32)
                 desired_rotation = np.asarray(task_reference.task_rotations_des[step_idx], dtype=np.float32)
@@ -367,12 +781,26 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 segment_ids.append(int(task_reference.segment_ids[step_idx]))
                 lap_ids.append(int(task_reference.lap_ids[step_idx]))
             selected_q_refs.append(q_ref_command.copy())
-            selected_delta_q_refs.append(result.delta_q_ref.copy())
-            planning_times.append(result.planning_time)
-            best_costs.append(result.best_cost)
-            elite_costs.append(result.elite_mean_cost)
-            failures.append(int(result.failure))
-            failure_reasons.append(result.failure_reason)
+            selected_delta_q_refs.append(delta_q_ref.copy())
+            command_velocity = delta_q_ref / env.control_dt
+            command_acceleration = (command_velocity - previous_q_ref_velocity) / env.control_dt
+            command_velocities.append(command_velocity.astype(np.float32))
+            command_accelerations.append(command_acceleration.astype(np.float32))
+            command_velocity_violations.append(int(np.any(np.abs(command_velocity) > command_velocity_limit_for_log + 1e-6)))
+            command_acceleration_violations.append(
+                int(np.any(np.abs(command_acceleration) > command_acceleration_limit_for_log + 1e-6))
+            )
+            planning_times.append(planning_time)
+            best_costs.append(best_cost)
+            mean_costs.append(mean_cost)
+            baseline_costs.append(baseline_cost)
+            selected_costs.append(selected_cost)
+            elite_costs.append(elite_mean_cost)
+            selection_modes.append(selection_mode)
+            failures.append(failure)
+            failure_reasons.append(failure_reason)
+            for name in COST_TERM_NAMES:
+                cost_term_records[name].append(float(selected_cost_terms.get(name, np.nan)))
             for key, target_key in (("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"), ("total_tau", "tau_total")):
                 torque_records[target_key].append(torque[key].astype(np.float32))
 
@@ -384,25 +812,83 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 if args.fail_on_limit_violation:
                     raise
                 break
+            control_step_wall_times.append(time.perf_counter() - control_step_started)
+
+            if viewer is not None:
+                if viewer.is_running():
+                    viewer.sync()
+                    remaining = viewer_deadline - time.perf_counter()
+                    if remaining > 0.0:
+                        time.sleep(remaining)
+                    viewer_deadline += env.control_dt
 
             next_states.append(state.copy())
+            if args.controller_mode == "mpc" and np.all(np.isfinite(predicted_next_state)):
+                predicted_next_q_errors.append(float(np.linalg.norm(predicted_next_state[: args.n_joints] - state[: args.n_joints])))
+                predicted_next_dq_errors.append(
+                    float(np.linalg.norm(predicted_next_state[args.n_joints :] - state[args.n_joints :]))
+                )
+            else:
+                predicted_next_q_errors.append(float("nan"))
+                predicted_next_dq_errors.append(float("nan"))
+            sampling_std_start_means.append(sampling_std_start_mean)
+            sampling_std_end_means.append(sampling_std_end_mean)
+            previous_q_ref_velocity = (q_ref_command - previous_q_ref) / env.control_dt
             previous_q_ref = q_ref_command.copy()
             states_history.append(state.copy())
             q_ref_history.append(previous_q_ref.copy())
             realized_error = float(np.linalg.norm(state[: args.n_joints] - reference[step_idx + 1]))
             realized_tracking_errors.append(realized_error)
-            predicted_real_error_gaps.append(float(result.best_cost - realized_error))
+            if args.controller_mode == "mpc" and args.mpc_policy == "residual":
+                previous_residual_velocity = (executed_residual - previous_residual) / env.control_dt
+                previous_residual = executed_residual.copy()
+                residual_saturated = bool(
+                    np.any(np.abs(executed_residual) >= args.recovery_residual_fraction * residual_max)
+                )
+                residual_saturation_streak = residual_saturation_streak + 1 if residual_saturated else 0
+                if not recovery_trigger_reason and not recovery_active:
+                    recovery_trigger_reason = residual_recovery_reason(
+                        realized_tracking_errors,
+                        residual_saturation_streak=residual_saturation_streak,
+                        consecutive_steps=args.recovery_consecutive_steps,
+                        error_ratio=args.recovery_error_ratio,
+                        min_tracking_error=args.recovery_min_tracking_error,
+                        recovery_active=False,
+                    )
+                    if recovery_trigger_reason:
+                        recovery_remaining = args.recovery_cooldown_steps
+                        if controller is not None:
+                            controller.reset()
+                recovery_trigger_reasons.append(recovery_trigger_reason)
+                recovery_active_flags.append(recovery_active)
+            else:
+                recovery_trigger_reasons.append("")
+                recovery_active_flags.append(0)
             row: dict[str, Any] = {
                 "step": step_idx,
+                "controller_mode": args.controller_mode,
                 "tracking_error": realized_error,
-                "planning_time": result.planning_time,
-                "best_cost": result.best_cost,
-                "elite_mean_cost": result.elite_mean_cost,
-                "failure": int(result.failure),
-                "failure_reason": result.failure_reason,
+                "planning_time": planning_time,
+                "control_step_wall_time": control_step_wall_times[-1],
+                "best_cost": best_cost,
+                "mean_cost": mean_cost,
+                "baseline_cost": baseline_cost,
+                "selected_cost": selected_cost,
+                "elite_mean_cost": elite_mean_cost,
+                "selection_mode": selection_mode,
+                "failure": failure,
+                "failure_reason": failure_reason,
                 "joint_limit_violation": joint_limit_violations[-1],
-                "predicted_real_error_gap": predicted_real_error_gaps[-1],
+                "command_velocity_violation": command_velocity_violations[-1],
+                "command_acceleration_violation": command_acceleration_violations[-1],
+                "predicted_next_q_error": predicted_next_q_errors[-1],
+                "predicted_next_dq_error": predicted_next_dq_errors[-1],
+                "sampling_std_start_mean": sampling_std_start_means[-1],
+                "sampling_std_end_mean": sampling_std_end_means[-1],
+                "recovery_active": recovery_active_flags[-1],
+                "recovery_trigger_reason": recovery_trigger_reasons[-1],
             }
+            row.update({f"cost_{name}": cost_term_records[name][-1] for name in COST_TERM_NAMES})
             if task_reference is not None:
                 row.update(
                     {
@@ -414,22 +900,105 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 )
             rows.append(row)
     finally:
+        if viewer is not None:
+            viewer.close()
         env.close()
 
+    replay_arrays: dict[str, np.ndarray] = {}
+    if args.controller_mode == "mpc" and bundle is not None and isinstance(bundle.model, torch.nn.Module):
+        replay_arrays = replay_executed_commands(
+            model=bundle.model,
+            normalizer=bundle.normalizer,
+            model_type=bundle.model_type,
+            state_dim=bundle.state_dim,
+            target_mode=bundle.target_mode,
+            control_dt=bundle.control_dt,
+            history_len=bundle.history_len,
+            states_history=states_history,
+            q_ref_history=q_ref_history,
+            executed_q_ref=selected_q_refs,
+            horizon=args.horizon,
+            device=device,
+            rollout_batch_size=args.rollout_batch_size,
+            command_velocity=command_velocities,
+            command_acceleration=command_accelerations,
+        )
+
     arrays: dict[str, np.ndarray] = {
+        "controller_mode": np.asarray(args.controller_mode),
         "actual_states": _stack_records(actual_states),
         "next_states": _stack_records(next_states),
         "q_des": _stack_records(q_des_records),
         "dq_des": _stack_records(dq_des_records),
+        "ddq_des": _stack_records([ddq_reference[idx] for idx in range(len(q_des_records))]),
         "actuator_q_ref": _stack_records(selected_q_refs),
         "delta_q_ref": _stack_records(selected_delta_q_refs),
+        "command_velocity": _stack_records(command_velocities),
+        "command_acceleration": _stack_records(command_accelerations),
         "planning_time": np.asarray(planning_times, dtype=np.float32),
+        "control_step_wall_time": np.asarray(control_step_wall_times, dtype=np.float32),
         "best_cost": np.asarray(best_costs, dtype=np.float32),
+        "mean_cost": np.asarray(mean_costs, dtype=np.float32),
+        "baseline_cost": np.asarray(baseline_costs, dtype=np.float32),
+        "selected_cost": np.asarray(selected_costs, dtype=np.float32),
         "elite_mean_cost": np.asarray(elite_costs, dtype=np.float32),
+        "selection_mode": np.asarray(selection_modes),
         "failure_flags": np.asarray(failures, dtype=np.int64),
         "joint_limit_violation_flags": np.asarray(joint_limit_violations, dtype=np.int64),
+        "command_velocity_violation_flags": np.asarray(command_velocity_violations, dtype=np.int64),
+        "command_acceleration_violation_flags": np.asarray(command_acceleration_violations, dtype=np.int64),
         "realized_tracking_error": np.asarray(realized_tracking_errors, dtype=np.float32),
-        "predicted_real_error_gap": np.asarray(predicted_real_error_gaps, dtype=np.float32),
+        "predicted_next_q_error": np.asarray(predicted_next_q_errors, dtype=np.float32),
+        "predicted_next_dq_error": np.asarray(predicted_next_dq_errors, dtype=np.float32),
+        "sampling_std_start_mean": np.asarray(sampling_std_start_means, dtype=np.float32),
+        "sampling_std_end_mean": np.asarray(sampling_std_end_means, dtype=np.float32),
+        "nominal_q_ref": _stack_records(nominal_q_refs),
+        "executed_residual": _stack_records(executed_residuals),
+        "recovery_active_flags": np.asarray(recovery_active_flags, dtype=np.int64),
+        "recovery_trigger_reasons": np.asarray(recovery_trigger_reasons),
+        "cem_reset_std_each_step": np.asarray(args.reset_std_each_step),
+        "cem_init_std": np.asarray(args.init_std, dtype=np.float32),
+        "cem_min_std": np.asarray(args.min_std, dtype=np.float32),
+        "cem_execute": np.asarray(args.cem_execute),
+        "cem_force_baseline_candidate": np.asarray(args.mpc_policy == "residual"),
+        "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32),
+        "cem_uniform_sample_count": np.asarray(
+            int(
+                round(
+                    (args.num_samples - (2 if args.mpc_policy == "residual" else 0)) * args.uniform_sample_ratio
+                )
+            )
+            if args.controller_mode == "mpc"
+            else 0,
+            dtype=np.int64,
+        ),
+        "mpc_policy": np.asarray(args.mpc_policy),
+        "cost_profile": np.asarray(args.cost_profile),
+        "cost_temporal_discount": np.asarray(args.temporal_discount, dtype=np.float32),
+        "cost_barrier_max_weight": np.asarray(args.barrier_max_weight, dtype=np.float32),
+        "cost_w_q": np.asarray(args.w_q, dtype=np.float32),
+        "cost_w_dq": np.asarray(args.w_dq, dtype=np.float32),
+        "cost_w_residual": np.asarray(args.w_residual, dtype=np.float32),
+        "cost_w_servo": np.asarray(args.w_servo, dtype=np.float32),
+        "cost_w_residual_velocity": np.asarray(args.w_residual_velocity, dtype=np.float32),
+        "cost_w_residual_acceleration": np.asarray(args.w_residual_acceleration, dtype=np.float32),
+        "cost_w_first": np.asarray(args.w_first, dtype=np.float32),
+        "cost_w_terminal": np.asarray(args.w_terminal, dtype=np.float32),
+        "cost_w_joint_limit": np.asarray(args.w_joint_limit, dtype=np.float32),
+        "cost_w_dq_limit": np.asarray(args.w_dq_limit, dtype=np.float32),
+        "recovery_error_ratio": np.asarray(args.recovery_error_ratio, dtype=np.float32),
+        "recovery_min_tracking_error": np.asarray(args.recovery_min_tracking_error, dtype=np.float32),
+        "recovery_residual_fraction": np.asarray(args.recovery_residual_fraction, dtype=np.float32),
+        "recovery_consecutive_steps": np.asarray(args.recovery_consecutive_steps, dtype=np.int64),
+        "recovery_cooldown_steps": np.asarray(args.recovery_cooldown_steps, dtype=np.int64),
+        "q_tracking_scale": np.asarray(calibration["q_tracking_scale"], dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        "dq_tracking_scale": np.asarray(calibration["dq_tracking_scale"], dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        "q_ref_velocity_limit": np.asarray(q_ref_velocity_limit, dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        "q_ref_acceleration_limit": np.asarray(q_ref_acceleration_limit, dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        "residual_max": np.asarray(residual_max, dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        "servo_scale": np.asarray(servo_scale, dtype=np.float32) if args.controller_mode == "mpc" else np.empty((0,), dtype=np.float32),
+        **{f"cost_{name}": np.asarray(values, dtype=np.float32) for name, values in cost_term_records.items()},
+        **replay_arrays,
         **{key: _stack_records(value) for key, value in torque_records.items()},
     }
     if task_reference is not None:

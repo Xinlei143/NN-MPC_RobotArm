@@ -59,7 +59,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plane_axis_u", type=float, nargs=3, metavar=("X", "Y", "Z"), default=(0.0, 1.0, 0.0))
     parser.add_argument("--plane_axis_v", type=float, nargs=3, metavar=("X", "Y", "Z"), default=(0.0, 0.0, 1.0))
     parser.add_argument("--fixed_orientation", choices=["initial", "safe"], default="safe")
-    parser.add_argument("--circle_radius", type=float, default=0.03)
+    parser.add_argument("--circle_radius", type=float, default=0.1)
     parser.add_argument("--ellipse_axis_a", type=float, default=0.04)
     parser.add_argument("--ellipse_axis_b", type=float, default=0.025)
     parser.add_argument("--figure8_axis_a", type=float, default=0.035)

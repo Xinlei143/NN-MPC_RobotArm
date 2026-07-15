@@ -9,7 +9,7 @@ import numpy as np
 from mpc.utils import write_csv_rows
 
 
-def save_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray], rows: list[dict[str, Any]]) -> None:
+def save_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray], rows: list[dict[str, Any]]) -> dict[str, Any]:
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(save_dir / "rollout.npz", **arrays)
@@ -18,7 +18,264 @@ def save_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray], rows: list[dict[
     if summary is not None:
         with (save_dir / "task_tracking_summary.json").open("w", encoding="utf-8") as handle:
             json.dump(summary, handle, indent=2, sort_keys=True)
+    run_summary = build_run_summary(arrays, task_summary=summary)
+    with (save_dir / "run_summary.json").open("w", encoding="utf-8") as handle:
+        json.dump(run_summary, handle, indent=2, sort_keys=True)
     plot_mpc_run(save_dir, arrays)
+    print_run_summary(run_summary)
+    return run_summary
+
+
+def _finite_stats(values: np.ndarray) -> dict[str, float | int]:
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return {"samples": 0, "mean": float("nan"), "p50": float("nan"), "p95": float("nan"), "max": float("nan")}
+    return {
+        "samples": int(finite.size),
+        "mean": float(np.mean(finite)),
+        "p50": float(np.percentile(finite, 50.0)),
+        "p95": float(np.percentile(finite, 95.0)),
+        "max": float(np.max(finite)),
+    }
+
+
+def _sign_flip_rate(command_velocity: np.ndarray) -> dict[str, Any]:
+    velocity = np.asarray(command_velocity, dtype=np.float64)
+    if velocity.ndim != 2 or velocity.shape[0] < 2:
+        return {"overall": float("nan"), "per_joint": []}
+    threshold = np.maximum(np.percentile(np.abs(velocity), 20.0, axis=0), 1e-8)
+    previous = velocity[:-1]
+    current = velocity[1:]
+    valid = (np.abs(previous) > threshold) & (np.abs(current) > threshold)
+    flips = (previous * current) < 0.0
+    per_joint = [float(np.mean(flips[:, joint][valid[:, joint]])) if np.any(valid[:, joint]) else float("nan") for joint in range(velocity.shape[1])]
+    valid_all = valid.reshape(-1)
+    return {
+        "overall": float(np.mean(flips.reshape(-1)[valid_all])) if np.any(valid_all) else float("nan"),
+        "per_joint": per_joint,
+    }
+
+
+def _per_joint_percentile(values: np.ndarray, percentile: float) -> list[float]:
+    value = np.asarray(values, dtype=np.float64)
+    if value.ndim != 2 or value.shape[0] == 0:
+        return []
+    return [float(item) for item in np.percentile(np.abs(value), percentile, axis=0)]
+
+
+def _string_counts(values: np.ndarray) -> dict[str, int]:
+    flattened = np.asarray(values).reshape(-1)
+    counts: dict[str, int] = {}
+    for value in flattened:
+        text = str(value)
+        if text:
+            counts[text] = counts.get(text, 0) + 1
+    return counts
+
+
+def _replay_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any]:
+    if "replay_q_error_norm" not in arrays or "replay_dq_error_norm" not in arrays:
+        return {"status": "not_applicable"}
+    q_error = np.asarray(arrays["replay_q_error_norm"], dtype=np.float64)
+    dq_error = np.asarray(arrays["replay_dq_error_norm"], dtype=np.float64)
+    if q_error.ndim != 2 or dq_error.shape != q_error.shape:
+        return {"status": "invalid"}
+    by_horizon = []
+    for index in range(q_error.shape[1]):
+        by_horizon.append(
+            {
+                "k": index + 1,
+                "q_error": _finite_stats(q_error[:, index]),
+                "dq_error": _finite_stats(dq_error[:, index]),
+            }
+        )
+    first_mean = by_horizon[0]["q_error"]["mean"] if by_horizon else float("nan")
+    terminal_mean = by_horizon[-1]["q_error"]["mean"] if by_horizon else float("nan")
+    ratio = float(terminal_mean / first_mean) if np.isfinite(first_mean) and first_mean > 1e-12 else float("nan")
+    return {
+        "status": "available",
+        "horizon": int(q_error.shape[1]),
+        "valid_anchor_count": int(np.sum(np.isfinite(q_error[:, 0]))) if q_error.shape[1] else 0,
+        "online_selected_next_q_error": _finite_stats(np.asarray(arrays.get("predicted_next_q_error", np.empty(0)))),
+        "online_selected_next_dq_error": _finite_stats(np.asarray(arrays.get("predicted_next_dq_error", np.empty(0)))),
+        "q_error_horizon_growth_ratio": ratio,
+        "q_error_command_velocity_corr": float(np.asarray(arrays.get("replay_q_error_command_velocity_corr", np.nan)).reshape(-1)[0]),
+        "q_error_command_acceleration_corr": float(np.asarray(arrays.get("replay_q_error_command_acceleration_corr", np.nan)).reshape(-1)[0]),
+        "by_horizon": by_horizon,
+    }
+
+
+def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    actual_states = np.asarray(arrays.get("actual_states", np.empty((0,))))
+    q_des = np.asarray(arrays.get("q_des", np.empty((0,))))
+    n_joints = q_des.shape[1] if q_des.ndim == 2 else 0
+    joint_tracking: dict[str, Any] = {"status": "not_available"}
+    if actual_states.ndim == 2 and q_des.ndim == 2 and n_joints and actual_states.shape[0] and actual_states.shape[1] >= n_joints:
+        length = min(actual_states.shape[0], q_des.shape[0])
+        error = actual_states[:length, :n_joints] - q_des[:length]
+        joint_tracking = {
+            "position_rmse_rad": float(np.sqrt(np.mean(np.square(error)))),
+            "max_position_error_rad": float(np.max(np.abs(error))),
+            "final_position_error_inf_rad": float(np.max(np.abs(error[-1]))),
+        }
+    controller_mode = np.asarray(arrays.get("controller_mode", "unknown")).reshape(-1)
+    recovery_trigger_counts = _string_counts(np.asarray(arrays.get("recovery_trigger_reasons", np.empty(0))))
+    return {
+        "schema_version": 2,
+        "controller_mode": str(controller_mode[0]) if controller_mode.size else "unknown",
+        "mpc_policy": str(np.asarray(arrays.get("mpc_policy", "not_applicable")).reshape(-1)[0]),
+        "cost_profile": str(np.asarray(arrays.get("cost_profile", "not_applicable")).reshape(-1)[0]),
+        "recorded_steps": int(actual_states.shape[0]) if actual_states.ndim else 0,
+        "timing": {
+            "control_step_wall_time_s": _finite_stats(np.asarray(arrays.get("control_step_wall_time", np.empty(0)))),
+            "planning_time_s": _finite_stats(np.asarray(arrays.get("planning_time", np.empty(0)))),
+        },
+        "cem_sampling": {
+            "reset_std_each_step": bool(np.asarray(arrays.get("cem_reset_std_each_step", False)).reshape(-1)[0]),
+            "uniform_sample_ratio": float(np.asarray(arrays.get("cem_uniform_sample_ratio", 0.0)).reshape(-1)[0]),
+            "uniform_sample_count": int(np.asarray(arrays.get("cem_uniform_sample_count", 0)).reshape(-1)[0]),
+            "std_start_mean": _finite_stats(np.asarray(arrays.get("sampling_std_start_mean", np.empty(0)))),
+            "std_end_mean": _finite_stats(np.asarray(arrays.get("sampling_std_end_mean", np.empty(0)))),
+            "baseline_cost": _finite_stats(np.asarray(arrays.get("baseline_cost", np.empty(0)))),
+        },
+        "tracking": {"joint": joint_tracking, "task": None if task_summary is None else task_summary.get("overall")},
+        "smoothness": {
+            "command_velocity_p95_rad_s": _per_joint_percentile(np.asarray(arrays.get("command_velocity", np.empty((0,)))), 95.0),
+            "command_acceleration_p95_rad_s2": _per_joint_percentile(np.asarray(arrays.get("command_acceleration", np.empty((0,)))), 95.0),
+            "command_sign_flip_rate": _sign_flip_rate(np.asarray(arrays.get("command_velocity", np.empty((0,))))),
+        },
+        "actuator": {
+            "torque_rms_nm": float(np.sqrt(np.mean(np.square(arrays["tau_actuator"])))) if np.asarray(arrays.get("tau_actuator", np.empty(0))).size else float("nan"),
+            "torque_p95_nm": _per_joint_percentile(np.asarray(arrays.get("tau_actuator", np.empty((0,)))), 95.0),
+            "torque_slew_p95_nm_per_step": _per_joint_percentile(np.diff(np.asarray(arrays.get("tau_actuator", np.empty((0,)))), axis=0), 95.0),
+        },
+        "safety": {
+            "controller_failure_count": int(np.sum(np.asarray(arrays.get("failure_flags", np.empty(0))) != 0)),
+            "joint_limit_violation_count": int(np.sum(np.asarray(arrays.get("joint_limit_violation_flags", np.empty(0))) != 0)),
+            "command_velocity_violation_count": int(np.sum(np.asarray(arrays.get("command_velocity_violation_flags", np.empty(0))) != 0)),
+            "command_acceleration_violation_count": int(np.sum(np.asarray(arrays.get("command_acceleration_violation_flags", np.empty(0))) != 0)),
+            "recovery_active_step_count": int(np.sum(np.asarray(arrays.get("recovery_active_flags", np.empty(0))) != 0)),
+            "recovery_trigger_count": int(sum(recovery_trigger_counts.values())),
+            "recovery_trigger_counts": recovery_trigger_counts,
+        },
+        "residual": {
+            "max_abs_rad": _per_joint_percentile(np.asarray(arrays.get("executed_residual", np.empty((0,)))), 100.0),
+            "p95_abs_rad": _per_joint_percentile(np.asarray(arrays.get("executed_residual", np.empty((0,)))), 95.0),
+        },
+        "model_replay": _replay_summary(arrays),
+    }
+
+
+def _fmt(value: float, *, digits: int = 3) -> str:
+    return "n/a" if not np.isfinite(value) else f"{value:.{digits}g}"
+
+
+def _fmt_ms(value_s: float) -> str:
+    return "n/a" if not np.isfinite(value_s) else f"{1e3 * value_s:.1f} ms"
+
+
+def _fmt_joint_values(values: list[float], unit: str) -> str:
+    if not values:
+        return "n/a"
+    return "  ".join(f"J{index + 1}={_fmt(value):>7} {unit}" for index, value in enumerate(values))
+
+
+def print_run_summary(summary: dict[str, Any]) -> None:
+    """Print a compact, fixed-layout end-of-run diagnostic report."""
+    timing = summary["timing"]
+    sampling = summary["cem_sampling"]
+    tracking = summary["tracking"]
+    smoothness = summary["smoothness"]
+    actuator = summary["actuator"]
+    safety = summary["safety"]
+    replay = summary["model_replay"]
+    rule = "=" * 88
+    print(f"\n{rule}\nCEM-MPC | END-OF-RUN REPORT\n{rule}")
+    print(
+        f"RUN       controller: {summary['controller_mode']:<12} "
+        f"policy: {summary['mpc_policy']:<20} steps: {summary['recorded_steps']}"
+    )
+    print("-" * 88)
+    print(
+        "TIMING    "
+        f"control [p50 / p95 / max] = {_fmt_ms(timing['control_step_wall_time_s']['p50']):>9} / "
+        f"{_fmt_ms(timing['control_step_wall_time_s']['p95']):>9} / {_fmt_ms(timing['control_step_wall_time_s']['max']):>9}"
+    )
+    print(
+        "          "
+        f"planning [mean / p95]      = {_fmt_ms(timing['planning_time_s']['mean']):>9} / "
+        f"{_fmt_ms(timing['planning_time_s']['p95']):>9}"
+    )
+    print(
+        "CEM       "
+        f"std reset: {str(sampling['reset_std_each_step']):<5}  "
+        f"uniform: {100.0 * sampling['uniform_sample_ratio']:.0f}% ({sampling['uniform_sample_count']} samples)  "
+        f"std start/end mean: {_fmt(sampling['std_start_mean']['mean'])} / {_fmt(sampling['std_end_mean']['mean'])}"
+    )
+    if sampling["baseline_cost"]["samples"]:
+        print(f"          baseline cost [mean / p95] = {_fmt(sampling['baseline_cost']['mean'])} / {_fmt(sampling['baseline_cost']['p95'])}")
+    joint = tracking["joint"]
+    if joint.get("status") != "not_available":
+        print(
+            "TRACKING  "
+            f"joint RMSE: {_fmt(joint['position_rmse_rad']):>8} rad   "
+            f"max: {_fmt(joint['max_position_error_rad']):>8} rad   "
+            f"final inf-norm: {_fmt(joint['final_position_error_inf_rad']):>8} rad"
+        )
+    if tracking["task"] is not None:
+        task = tracking["task"]
+        print(
+            "          "
+            f"TCP position RMSE: {_fmt(1e3 * task['position_rmse_m']):>7} mm   "
+            f"max: {_fmt(1e3 * task['max_position_error_m']):>7} mm   "
+            f"orientation RMSE: {_fmt(np.degrees(task['orientation_rmse_rad'])):>7} deg"
+        )
+    print(
+        "COMMANDS  "
+        f"sign-flip rate: {_fmt(smoothness['command_sign_flip_rate']['overall']):>7}   "
+        "(successive non-trivial command-speed reversals)"
+    )
+    print(f"          speed p95: {_fmt_joint_values(smoothness['command_velocity_p95_rad_s'], 'rad/s')}")
+    print(f"          accel p95: {_fmt_joint_values(smoothness['command_acceleration_p95_rad_s2'], 'rad/s^2')}")
+    print(
+        "ACTUATOR  "
+        f"torque RMS: {_fmt(actuator['torque_rms_nm']):>7} Nm   "
+        f"torque p95: {_fmt_joint_values(actuator['torque_p95_nm'], 'Nm')}"
+    )
+    print(
+        "SAFETY    "
+        f"planner failures: {safety['controller_failure_count']:<5} "
+        f"joint-limit: {safety['joint_limit_violation_count']:<5} "
+        f"command v/a flags: {safety['command_velocity_violation_count']}/{safety['command_acceleration_violation_count']}  "
+        f"recovery triggers: {safety['recovery_trigger_count']}"
+    )
+    if safety["recovery_active_step_count"] or safety["recovery_trigger_counts"]:
+        print(
+            f"          recovery active steps: {safety['recovery_active_step_count']} "
+            f"triggers: {safety['recovery_trigger_counts']}"
+        )
+    if replay["status"] == "available":
+        first = replay["by_horizon"][0]
+        terminal = replay["by_horizon"][-1]
+        print(
+            "MODEL     "
+            f"actual-command replay anchors: {replay['valid_anchor_count']}   horizon: {replay['horizon']}"
+        )
+        print(
+            "          "
+            f"position error [k=1 / k=H]: {_fmt(1e3 * first['q_error']['mean']):>7} / "
+            f"{_fmt(1e3 * terminal['q_error']['mean']):>7} mm   "
+            f"growth: {_fmt(replay['q_error_horizon_growth_ratio']):>7}x"
+        )
+        print(
+            "          "
+            f"velocity error [k=1 / k=H]: {_fmt(first['dq_error']['mean']):>7} / "
+            f"{_fmt(terminal['dq_error']['mean']):>7} rad/s"
+        )
+    else:
+        print("MODEL     replay: not applicable (no learned MPC rollout)")
+    print(rule)
 
 
 def _task_arrays(arrays: dict[str, np.ndarray]) -> tuple[np.ndarray, ...] | None:
@@ -110,6 +367,9 @@ def _task_tracking_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any] | No
             "tcp_orientation_error_rad": float(orientation_errors[-1]),
         },
     }
+    controller_mode = np.asarray(arrays.get("controller_mode", np.empty((0,))))
+    if controller_mode.size == 1:
+        summary["controller_mode"] = str(controller_mode.reshape(-1)[0])
 
     actual_states = np.asarray(arrays.get("actual_states", np.empty((0,))))
     q_des = np.asarray(arrays.get("q_des", np.empty((0,))))
@@ -126,6 +386,8 @@ def _task_tracking_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any] | No
     planning_time = np.asarray(arrays.get("planning_time", np.empty((0,))), dtype=np.float64)
     failure_flags = np.asarray(arrays.get("failure_flags", np.empty((0,))), dtype=np.float64)
     limit_flags = np.asarray(arrays.get("joint_limit_violation_flags", np.empty((0,))), dtype=np.float64)
+    command_velocity_flags = np.asarray(arrays.get("command_velocity_violation_flags", np.empty((0,))), dtype=np.float64)
+    command_acceleration_flags = np.asarray(arrays.get("command_acceleration_violation_flags", np.empty((0,))), dtype=np.float64)
     planning: dict[str, float | int] = {}
     if planning_time.size:
         planning["mean_planning_time_s"] = float(np.mean(planning_time))
@@ -136,6 +398,12 @@ def _task_tracking_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any] | No
     if limit_flags.size:
         planning["joint_limit_violation_count"] = int(np.sum(limit_flags != 0.0))
         planning["joint_limit_violation_rate"] = float(np.mean(limit_flags != 0.0))
+    if command_velocity_flags.size:
+        planning["command_velocity_violation_count"] = int(np.sum(command_velocity_flags != 0.0))
+        planning["command_velocity_violation_rate"] = float(np.mean(command_velocity_flags != 0.0))
+    if command_acceleration_flags.size:
+        planning["command_acceleration_violation_count"] = int(np.sum(command_acceleration_flags != 0.0))
+        planning["command_acceleration_violation_rate"] = float(np.mean(command_acceleration_flags != 0.0))
     if planning:
         summary["planning"] = planning
     return summary
@@ -282,6 +550,7 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
     actual_states = arrays["actual_states"]
     q_des = arrays["q_des"]
     actuator_q_ref = arrays["actuator_q_ref"]
+    nominal_q_ref = np.asarray(arrays.get("nominal_q_ref", np.empty((0,))))
     planning_time = arrays["planning_time"]
     best_cost = arrays["best_cost"]
     n_joints = q_des.shape[1]
@@ -295,6 +564,8 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
     for idx in range(n_joints):
         axes_q[idx].plot(time, actual_states[:, idx], label="actual_q")
         axes_q[idx].plot(time, q_des[:, idx], label="q_des", linestyle="--")
+        if nominal_q_ref.shape == actuator_q_ref.shape:
+            axes_q[idx].plot(time, nominal_q_ref[:, idx], label="q_nom", linestyle="-.")
         axes_q[idx].plot(time, actuator_q_ref[:, idx], label="actuator_q_ref", linestyle=":")
         axes_q[idx].set_ylabel(f"q{idx}")
         axes_q[idx].legend(fontsize=8)

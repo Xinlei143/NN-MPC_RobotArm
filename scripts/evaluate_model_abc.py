@@ -66,7 +66,15 @@ def summarize(label: str, arrays: dict[str, np.ndarray], dataset_path: str) -> d
     tracking = arrays["realized_tracking_error"]
     failures = arrays["failure_flags"]
     planning_time = arrays["planning_time"]
-    predicted_gap = arrays["predicted_real_error_gap"]
+    predicted_q_error = arrays.get("predicted_next_q_error", np.empty(0))
+    predicted_dq_error = arrays.get("predicted_next_dq_error", np.empty(0))
+    replay_q_error = np.asarray(arrays.get("replay_q_error_norm", np.empty((0, 0))), dtype=np.float64)
+    replay_dq_error = np.asarray(arrays.get("replay_dq_error_norm", np.empty((0, 0))), dtype=np.float64)
+    replay_q_first = replay_q_error[:, 0] if replay_q_error.ndim == 2 and replay_q_error.shape[1] else np.empty(0)
+    replay_q_terminal = replay_q_error[:, -1] if replay_q_error.ndim == 2 and replay_q_error.shape[1] else np.empty(0)
+    replay_dq_first = replay_dq_error[:, 0] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
+    replay_dq_terminal = replay_dq_error[:, -1] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
+    finite_mean = lambda values: float(np.mean(values[np.isfinite(values)])) if np.any(np.isfinite(values)) else float("nan")
     return {
         "label": label,
         "dataset_path": dataset_path,
@@ -76,7 +84,12 @@ def summarize(label: str, arrays: dict[str, np.ndarray], dataset_path: str) -> d
         "failure_rate": float(np.mean(failures)) if len(failures) else float("nan"),
         "planning_time_mean": float(np.mean(planning_time)) if len(planning_time) else float("nan"),
         "best_cost_mean": float(np.mean(arrays["best_cost"])) if len(arrays["best_cost"]) else float("nan"),
-        "predicted_real_error_gap_mean": float(np.mean(predicted_gap)) if len(predicted_gap) else float("nan"),
+        "predicted_next_q_error_mean": float(np.mean(predicted_q_error)) if len(predicted_q_error) else float("nan"),
+        "predicted_next_dq_error_mean": float(np.mean(predicted_dq_error)) if len(predicted_dq_error) else float("nan"),
+        "replay_q_error_k1_mean": finite_mean(replay_q_first),
+        "replay_q_error_kH_mean": finite_mean(replay_q_terminal),
+        "replay_dq_error_k1_mean": finite_mean(replay_dq_first),
+        "replay_dq_error_kH_mean": finite_mean(replay_dq_terminal),
     }
 
 
