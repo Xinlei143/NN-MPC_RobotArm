@@ -15,6 +15,7 @@ from mpc.asap_types import ASAPPlanPacket, PlanningSnapshot
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import project_executable_command_np
+from mpc.history import future_history_tokens, history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 
 
@@ -38,6 +39,11 @@ class PlannerWorkerStatus:
     solve_count: int
     late_drop_count: int
     last_planning_time_s: float
+    last_best_cost: float
+    last_selected_cost: float
+    first_solve_complete_ns: int
+    last_solve_complete_ns: int
+    last_end_to_end_latency_s: float
     anchor_raw_residual: np.ndarray
     anchor_executed_residual: np.ndarray
     anchor_residual_projection_error: np.ndarray
@@ -66,6 +72,11 @@ class ASAPPlannerWorker(threading.Thread):
         self.history_len: int | None = None
         self.solve_count = self.late_drop_count = 0
         self.last_planning_time_s = float("nan")
+        self.last_best_cost = float("nan")
+        self.last_selected_cost = float("nan")
+        self.first_solve_complete_ns = 0
+        self.last_solve_complete_ns = 0
+        self.last_end_to_end_latency_s = float("nan")
         zeros = np.zeros(args.n_joints, dtype=np.float32)
         self._anchor_raw_residual = zeros.copy()
         self._anchor_executed_residual = zeros.copy()
@@ -82,6 +93,8 @@ class ASAPPlannerWorker(threading.Thread):
         with self._status_lock:
             return PlannerWorkerStatus(
                 self.failure_reason, self.solve_count, self.late_drop_count, self.last_planning_time_s,
+                self.last_best_cost, self.last_selected_cost, self.first_solve_complete_ns,
+                self.last_solve_complete_ns, self.last_end_to_end_latency_s,
                 self._anchor_raw_residual.copy(), self._anchor_executed_residual.copy(),
                 self._anchor_residual_projection_error.copy(), self._anchor_previous_residual_velocity.copy(),
                 self._warm_start_shift_steps, self._mean_anchor_step_before, self._mean_anchor_step_after,
@@ -118,16 +131,15 @@ class ASAPPlannerWorker(threading.Thread):
             executed_residuals.append(executed_residual)
             previous_command, previous_velocity = command, velocity.astype(np.float32)
         action_array = np.stack(actions).astype(np.float32)
-        history_array = np.concatenate([snapshot.states_history, snapshot.command_history], axis=-1).astype(np.float32)
-        while history_array.shape[0] < bundle.history_len:
-            history_array = np.concatenate([history_array[:1], history_array], axis=0)
-        history = torch.as_tensor(history_array[-bundle.history_len:], dtype=torch.float32, device=device)
+        history = torch.as_tensor(
+            history_tokens(snapshot.states_history, snapshot.command_history, bundle.history_len),
+            dtype=torch.float32,
+            device=device,
+        )
         predicted = rollout_dynamics_batch(model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type, initial_history=history, future_q_ref=torch.as_tensor(action_array, dtype=torch.float32, device=device).unsqueeze(0), state_dim=bundle.state_dim, target_mode=bundle.target_mode, control_dt=bundle.control_dt)[0].detach().cpu().numpy().astype(np.float32)
-        tokens = [np.concatenate([state, command]).astype(np.float32) for state, command in zip(snapshot.states_history, snapshot.command_history)]
-        tokens.extend(np.concatenate([predicted[index + 1], action_array[index]]).astype(np.float32) for index in range(delay))
-        future_history = np.stack(tokens[-bundle.history_len:])
-        while future_history.shape[0] < bundle.history_len:
-            future_history = np.concatenate([future_history[:1], future_history], axis=0)
+        future_history = future_history_tokens(
+            snapshot.states_history, snapshot.command_history, predicted, action_array, bundle.history_len
+        )
         anchor = snapshot.launch_step + delay
         previous_residual = executed_residuals[-1]
         previous_residual_velocity = (
@@ -202,9 +214,18 @@ class ASAPPlannerWorker(threading.Thread):
                     mean_anchor_step = None
                 result = controller.plan(anchor_state, anchor_command, warm_start_shift_steps=shift)
                 mean_anchor_step = mean_anchor_after_plan(mean_anchor_step, anchor, result.failure)
+                publish_ns = time.perf_counter_ns()
+                activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
+                late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))
                 with self._status_lock:
                     self.solve_count += 1
                     self.last_planning_time_s = float(result.planning_time)
+                    self.last_best_cost = float(result.best_cost)
+                    self.last_selected_cost = float(result.selected_cost)
+                    if self.first_solve_complete_ns == 0:
+                        self.first_solve_complete_ns = publish_ns
+                    self.last_solve_complete_ns = publish_ns
+                    self.last_end_to_end_latency_s = (publish_ns - snapshot.launch_time_ns) / 1e9
                     self._anchor_raw_residual = anchor_raw_residual.copy()
                     self._anchor_executed_residual = anchor_residual.copy()
                     self._anchor_residual_projection_error = (anchor_raw_residual - anchor_residual).copy()
@@ -214,13 +235,9 @@ class ASAPPlannerWorker(threading.Thread):
                     self._mean_anchor_step_after = -1 if mean_anchor_step is None else mean_anchor_step
                     self._planner_mean_updated = not result.failure
                     self._planner_failure = bool(result.failure)
-                    self._packet_late_dropped = False
-                publish_ns = time.perf_counter_ns()
-                activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
-                if result.failure or publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6):
-                    with self._status_lock:
-                        self.late_drop_count += int(not result.failure)
-                        self._packet_late_dropped = bool(not result.failure)
+                    self._packet_late_dropped = late_dropped
+                    self.late_drop_count += int(late_dropped)
+                if result.failure or late_dropped:
                     continue
                 packet = ASAPPlanPacket(plan_id=plan_id, launch_step=snapshot.launch_step, launch_time_ns=snapshot.launch_time_ns, activation_step=anchor, activation_time_ns=activation_ns, publish_time_ns=publish_ns, residual_sequence=result.selected_residual_sequence.copy(), predicted_state_sequence=result.selected_predicted_state_sequence.copy(), planning_time_s=float(result.planning_time), anchor_state=anchor_state.copy(), selection_mode=result.selection_mode, selected_cost=float(result.selected_cost))
                 plan_id += 1

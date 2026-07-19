@@ -16,6 +16,7 @@ from neural_dynamics.rollout import rollout_dynamics_batch
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction
+from mpc.history import commit_command_and_append_placeholder, future_history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 
 
@@ -100,11 +101,9 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 future_q_ref=t(actions).unsqueeze(0), state_dim=bundle.state_dim, target_mode=bundle.target_mode,
                 control_dt=bundle.control_dt,
             )[0].detach().cpu().numpy().astype(np.float32)
-            tokens = [np.concatenate([s, q]).astype(np.float32) for s, q in zip(states_history, command_history)]
-            tokens.extend(np.concatenate([predicted[i + 1], actions[i]]).astype(np.float32) for i in range(delay))
-            future_history = np.stack(tokens[-bundle.history_len :])
-            while future_history.shape[0] < bundle.history_len:
-                future_history = np.concatenate([future_history[:1], future_history], axis=0)
+            future_history = future_history_tokens(
+                states_history, command_history, predicted, actions, bundle.history_len
+            )
             velocity = previous_velocity if delay == 1 else (actions[-1] - actions[-2]) / bundle.control_dt
             return t(future_history), predicted[-1], actions[-1], velocity.astype(np.float32)
 
@@ -196,7 +195,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             tracking = float(np.linalg.norm(state[: args.n_joints] - reference[step + 1])); rec["realized_tracking_error"].append(tracking)
             rows.append({"step": step, "controller_mode": "mpc", "tracking_error": tracking, "planning_time": planning_time, "replan_time": planning_time, "mpc_replanned": replanned, "replan_deadline_miss": rec["replan_deadline_miss"][-1], "multirate_mode": args.multirate_mode, "packet_event": event, "packet_age": age, "feedback_correction_norm": float(np.linalg.norm(feedback)), "executed_residual_norm": float(np.linalg.norm(executed)), "selection_mode": selection})
             previous_command, previous_velocity = command.copy(), velocity.astype(np.float32)
-            states_history.append(state.copy()); command_history.append(command.copy())
+            commit_command_and_append_placeholder(states_history, command_history, command, state)
     finally:
         env.close()
     int_keys = {"mpc_replanned", "replan_deadline_miss", "buffer_index", "buffer_length", "failure_flags", "joint_limit_violation_flags", "command_velocity_violation_flags", "command_acceleration_violation_flags", "packet_age", "segment_ids", "lap_ids"}

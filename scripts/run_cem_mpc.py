@@ -33,6 +33,7 @@ from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
 from mpc.utils import build_history_tensor
+from mpc.history import commit_command_and_append_placeholder
 
 
 MPC_HOME_Q = np.zeros(6, dtype=np.float32)
@@ -146,6 +147,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--planner_guard_ms", default=5.0, type=float, help="threaded_asap drops a packet published within this many ms of its activation deadline.")
     parser.add_argument("--planner_min_interval_ms", default=0.0, type=float, help="Minimum delay between threaded planner launches; zero means strict ASAP.")
+    parser.add_argument(
+        "--asap_history_mode",
+        choices=["aligned", "legacy_shifted"],
+        default="aligned",
+        help="Threaded ASAP ablation: use training-aligned [x_t,u_t] history or the former one-step-shifted history.",
+    )
+    parser.add_argument(
+        "--asap_snapshot_mode",
+        choices=["tick_start", "post_step_legacy"],
+        default="tick_start",
+        help="Threaded ASAP ablation: publish physical tick-start states or reproduce the former post-step snapshot phase.",
+    )
     parser.add_argument("--feedback_kq", default=0.30, type=float, help="ASAP/tube position-feedback gain.")
     parser.add_argument("--feedback_kdq", default=0.015, type=float, help="ASAP/tube velocity-feedback gain in seconds.")
     parser.add_argument(
@@ -1003,6 +1016,9 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             for key, target_key in (("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"), ("total_tau", "tau_total")):
                 torque_records[target_key].append(torque[key].astype(np.float32))
 
+            # Commit the command to the current state before advancing the
+            # simulator, matching training tokens [x_t, u_t].
+            q_ref_history[-1] = q_ref_command.copy()
             try:
                 state = env.step(q_ref_command)
                 joint_limit_violations.append(0)
@@ -1045,8 +1061,7 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             sampling_std_end_means.append(sampling_std_end_mean)
             previous_q_ref_velocity = (q_ref_command - previous_q_ref) / env.control_dt
             previous_q_ref = q_ref_command.copy()
-            states_history.append(state.copy())
-            q_ref_history.append(previous_q_ref.copy())
+            commit_command_and_append_placeholder(states_history, q_ref_history, q_ref_command, state)
             realized_error = float(np.linalg.norm(state[: args.n_joints] - reference[step_idx + 1]))
             realized_tracking_errors.append(realized_error)
             if args.controller_mode == "mpc" and args.mpc_policy == "residual":

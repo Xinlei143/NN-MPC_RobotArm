@@ -131,8 +131,30 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
     deadline_miss_count = int(np.sum(deadline_misses != 0))
     deadline_s = float(np.asarray(arrays.get("replan_deadline_s", np.nan)).reshape(-1)[0])
     interval_steps = int(np.asarray(arrays.get("replan_interval_steps", 1)).reshape(-1)[0])
+    multirate_mode = str(np.asarray(arrays.get("multirate_mode", "synchronous")).reshape(-1)[0])
+    threaded_asap = multirate_mode == "threaded_asap"
+    planner_solve_count = int(np.asarray(arrays.get("planner_solve_count", replan_count)).reshape(-1)[0])
+    planner_late_drop_count = int(np.asarray(arrays.get("planner_late_drop_count", 0)).reshape(-1)[0])
+    planner_rate = float(np.asarray(arrays.get("planner_actual_update_rate_hz", np.nan)).reshape(-1)[0])
+    replanning = {
+        "interval_steps": None if threaded_asap else interval_steps,
+        "deadline_s": None if threaded_asap else deadline_s,
+        "nominal_frequency_hz": float("nan") if threaded_asap else (float(1.0 / deadline_s) if np.isfinite(deadline_s) and deadline_s > 0.0 else float("nan")),
+        "count": planner_solve_count if threaded_asap else replan_count,
+        "deadline_miss_count": deadline_miss_count,
+        "deadline_miss_rate": float(deadline_miss_count / planner_solve_count) if threaded_asap and planner_solve_count else (float(deadline_miss_count / replan_count) if replan_count else float("nan")),
+        "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
+    }
+    planner = {
+        "solve_count": planner_solve_count,
+        "actual_update_rate_hz": planner_rate,
+        "late_drop_count": planner_late_drop_count,
+        "late_drop_rate": float(planner_late_drop_count / planner_solve_count) if planner_solve_count else float("nan"),
+        "end_to_end_latency_s": _finite_stats(np.asarray(arrays.get("planner_end_to_end_latency_s", np.empty(0)))),
+        "packet_publish_deadline_s": float(np.asarray(arrays.get("packet_publish_deadline_s", np.nan)).reshape(-1)[0]),
+    }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "controller_mode": str(controller_mode[0]) if controller_mode.size else "unknown",
         "mpc_policy": str(np.asarray(arrays.get("mpc_policy", "not_applicable")).reshape(-1)[0]),
         "cost_profile": str(np.asarray(arrays.get("cost_profile", "not_applicable")).reshape(-1)[0]),
@@ -141,16 +163,12 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "control_step_wall_time_s": _finite_stats(np.asarray(arrays.get("control_step_wall_time", np.empty(0)))),
             "planning_time_s": _finite_stats(replan_time),
             "control_lateness_s": _finite_stats(np.asarray(arrays.get("control_lateness_s", np.empty(0)))),
+            "actual_control_period_s": _finite_stats(np.asarray(arrays.get("actual_control_period_s", np.empty(0)))),
+            "control_wakeup_lateness_s": _finite_stats(np.asarray(arrays.get("control_wakeup_lateness_s", np.empty(0)))),
+            "control_start_jitter_s": _finite_stats(np.asarray(arrays.get("control_start_jitter_s", np.empty(0)))),
         },
-        "replanning": {
-            "interval_steps": interval_steps,
-            "deadline_s": deadline_s,
-            "nominal_frequency_hz": float(1.0 / deadline_s) if np.isfinite(deadline_s) and deadline_s > 0.0 else float("nan"),
-            "count": replan_count,
-            "deadline_miss_count": deadline_miss_count,
-            "deadline_miss_rate": float(deadline_miss_count / replan_count) if replan_count else float("nan"),
-            "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
-        },
+        "replanning": replanning,
+        "planner": planner,
         "cem_sampling": {
             "reset_std_each_step": bool(np.asarray(arrays.get("cem_reset_std_each_step", False)).reshape(-1)[0]),
             "uniform_sample_ratio": float(np.asarray(arrays.get("cem_uniform_sample_ratio", 0.0)).reshape(-1)[0]),

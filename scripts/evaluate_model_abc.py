@@ -75,6 +75,21 @@ def summarize(label: str, arrays: dict[str, np.ndarray], dataset_path: str) -> d
     replay_dq_first = replay_dq_error[:, 0] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
     replay_dq_terminal = replay_dq_error[:, -1] if replay_dq_error.ndim == 2 and replay_dq_error.shape[1] else np.empty(0)
     finite_mean = lambda values: float(np.mean(values[np.isfinite(values)])) if np.any(np.isfinite(values)) else float("nan")
+    finite_percentile = lambda values, q: float(np.percentile(values[np.isfinite(values)], q)) if np.any(np.isfinite(values)) else float("nan")
+    replanned = np.asarray(arrays.get("mpc_replanned", np.empty(0)), dtype=bool)
+    solve_mask = replanned if replanned.shape == planning_time.shape else np.isfinite(planning_time)
+    solve_planning_time = planning_time[solve_mask] if solve_mask.size else planning_time
+    best_cost = np.asarray(arrays.get("best_cost", np.empty(0)), dtype=np.float64)
+    solve_best_cost = best_cost[solve_mask] if solve_mask.shape == best_cost.shape else best_cost
+    actual_states = np.asarray(arrays.get("actual_states", np.empty((0, 0))), dtype=np.float64)
+    q_des = np.asarray(arrays.get("q_des", np.empty((0, 0))), dtype=np.float64)
+    joint_length = min(actual_states.shape[0], q_des.shape[0]) if actual_states.ndim == q_des.ndim == 2 else 0
+    joint_rmse = float(np.sqrt(np.mean(np.square(actual_states[:joint_length, : q_des.shape[1]] - q_des[:joint_length])))) if joint_length and actual_states.shape[1] >= q_des.shape[1] else float("nan")
+    position_error = np.asarray(arrays.get("ee_position_errors", np.empty(0)), dtype=np.float64)
+    orientation_error = np.asarray(arrays.get("ee_orientation_errors", np.empty(0)), dtype=np.float64)
+    packet_age = np.asarray(arrays.get("packet_age", np.empty(0)), dtype=np.float64)
+    solve_count = int(np.asarray(arrays.get("planner_solve_count", np.sum(replanned))).reshape(-1)[0])
+    late_drop_count = int(np.asarray(arrays.get("planner_late_drop_count", 0)).reshape(-1)[0])
     return {
         "label": label,
         "dataset_path": dataset_path,
@@ -82,10 +97,21 @@ def summarize(label: str, arrays: dict[str, np.ndarray], dataset_path: str) -> d
         "tracking_error_mean": float(np.mean(tracking)) if len(tracking) else float("nan"),
         "tracking_error_final": float(tracking[-1]) if len(tracking) else float("nan"),
         "failure_rate": float(np.mean(failures)) if len(failures) else float("nan"),
-        "planning_time_mean": float(np.mean(planning_time)) if len(planning_time) else float("nan"),
-        "best_cost_mean": float(np.mean(arrays["best_cost"])) if len(arrays["best_cost"]) else float("nan"),
-        "predicted_next_q_error_mean": float(np.mean(predicted_q_error)) if len(predicted_q_error) else float("nan"),
-        "predicted_next_dq_error_mean": float(np.mean(predicted_dq_error)) if len(predicted_dq_error) else float("nan"),
+        "planning_time_mean": finite_mean(solve_planning_time),
+        "best_cost_mean": finite_mean(solve_best_cost),
+        "predicted_next_q_error_mean": finite_mean(predicted_q_error),
+        "predicted_next_dq_error_mean": finite_mean(predicted_dq_error),
+        "tcp_position_rmse_m": float(np.sqrt(np.mean(np.square(position_error[np.isfinite(position_error)])))) if np.any(np.isfinite(position_error)) else float("nan"),
+        "orientation_rmse_rad": float(np.sqrt(np.mean(np.square(orientation_error[np.isfinite(orientation_error)])))) if np.any(np.isfinite(orientation_error)) else float("nan"),
+        "joint_position_rmse_rad": joint_rmse,
+        "control_period_p99_s": finite_percentile(np.asarray(arrays.get("actual_control_period_s", np.empty(0)), dtype=np.float64), 99.0),
+        "control_wakeup_lateness_p99_s": finite_percentile(np.asarray(arrays.get("control_wakeup_lateness_s", np.empty(0)), dtype=np.float64), 99.0),
+        "control_compute_p99_s": finite_percentile(np.asarray(arrays.get("control_step_wall_time", np.empty(0)), dtype=np.float64), 99.0),
+        "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
+        "planner_solve_count": solve_count,
+        "planner_update_rate_hz": float(np.asarray(arrays.get("planner_actual_update_rate_hz", np.nan)).reshape(-1)[0]),
+        "planner_late_drop_rate": float(late_drop_count / solve_count) if solve_count else float("nan"),
+        "active_packet_ratio": float(np.mean(packet_age >= 0.0)) if packet_age.size else float("nan"),
         "replay_q_error_k1_mean": finite_mean(replay_q_first),
         "replay_q_error_kH_mean": finite_mean(replay_q_terminal),
         "replay_dq_error_k1_mean": finite_mean(replay_dq_first),

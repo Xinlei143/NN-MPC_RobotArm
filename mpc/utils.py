@@ -7,17 +7,15 @@ from typing import Any
 import numpy as np
 import torch
 
+from mpc.history import history_tokens
+
 
 def build_history_tensor(states: list[np.ndarray], actuator_q_refs: list[np.ndarray], history_len: int, device: torch.device) -> torch.Tensor:
     if not states or not actuator_q_refs:
         raise ValueError("states and actuator_q_refs must not be empty")
     if len(states) != len(actuator_q_refs):
         raise ValueError("states and actuator_q_refs must have the same length")
-    start = max(0, len(states) - history_len)
-    entries = [np.concatenate([state, action]).astype(np.float32) for state, action in zip(states[start:], actuator_q_refs[start:])]
-    while len(entries) < history_len:
-        entries.insert(0, entries[0].copy())
-    return torch.as_tensor(np.stack(entries, axis=0), dtype=torch.float32, device=device)
+    return torch.as_tensor(history_tokens(states, actuator_q_refs, history_len), dtype=torch.float32, device=device)
 
 
 def write_csv_rows(path: Path, rows: list[dict[str, Any]]) -> None:
