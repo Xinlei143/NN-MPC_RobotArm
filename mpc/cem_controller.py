@@ -47,8 +47,11 @@ class CEMMPCResult:
     failure: bool
     failure_reason: str
     best_sequence: np.ndarray
+    selected_q_ref_sequence: np.ndarray
+    selected_residual_sequence: np.ndarray
     cost_terms: dict[str, float]
     predicted_next_state: np.ndarray
+    selected_predicted_state_sequence: np.ndarray
     sampling_std_start_mean: float
     sampling_std_end_mean: float
 
@@ -134,6 +137,19 @@ class CEMMPCController:
         self.mean.zero_()
         self.std = self.initial_std.clone()
 
+    def advance_after_execution(self, executed_steps: int) -> None:
+        """Advance the CEM warm start after executing a buffered plan prefix.
+
+        ``plan`` already shifts the warm start by one command before returning.
+        A multi-rate caller that executes more than that first command uses this
+        method to discard the remaining stale prefix before its next replan.
+        """
+        if executed_steps <= 1:
+            return
+        extra_shift = min(int(executed_steps) - 1, self.config.horizon)
+        tail = self.mean[-1:].expand(extra_shift, -1)
+        self.mean = torch.cat([self.mean[extra_shift:], tail], dim=0).detach().clone()
+
     def _fallback(self, previous_q_ref: np.ndarray, start_time: float, reason: str) -> CEMMPCResult:
         previous = np.asarray(previous_q_ref, dtype=np.float32)
         return CEMMPCResult(
@@ -149,8 +165,13 @@ class CEMMPCController:
             failure=True,
             failure_reason=reason,
             best_sequence=np.zeros((self.config.horizon, self.config.action_dim), dtype=np.float32),
+            selected_q_ref_sequence=np.repeat(previous[None, :], self.config.horizon, axis=0),
+            selected_residual_sequence=np.zeros((self.config.horizon, self.config.action_dim), dtype=np.float32),
             cost_terms={},
             predicted_next_state=np.full(2 * self.config.action_dim, np.nan, dtype=np.float32),
+            selected_predicted_state_sequence=np.full(
+                (self.config.horizon + 1, 2 * self.config.action_dim), np.nan, dtype=np.float32
+            ),
             sampling_std_start_mean=float("nan"),
             sampling_std_end_mean=float("nan"),
         )
@@ -175,7 +196,9 @@ class CEMMPCController:
             predicted_next_state = np.full(2 * self.config.action_dim, np.nan, dtype=np.float32)
         return terms, predicted_next_state
 
-    def _evaluate_sequence(self, sequence: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, float], np.ndarray] | None:
+    def _evaluate_sequence(
+        self, sequence: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor] | None:
         """Return one constrained action sequence's rollout cost when valid."""
         try:
             evaluation = self.planner.evaluate(sequence.unsqueeze(0))
@@ -191,8 +214,19 @@ class CEMMPCController:
             return None
         if not self._valid_q_ref_sequence(q_ref_sequences, batch_size=1):
             return None
+        residual_sequences = evaluation.get("residual_sequences", sequence.unsqueeze(0))
+        residual_sequences = residual_sequences.to(self.device)
+        if residual_sequences.shape != q_ref_sequences.shape or not bool(torch.all(torch.isfinite(residual_sequences))):
+            return None
         terms, predicted_next_state = self._diagnostics_from_evaluation(evaluation, 0)
-        return costs[0], q_ref_sequences[0], terms, predicted_next_state
+        pred_state_sequence = evaluation.get("pred_states")
+        if (
+            not isinstance(pred_state_sequence, torch.Tensor)
+            or pred_state_sequence.shape != (1, self.config.horizon + 1, 2 * self.config.action_dim)
+            or not bool(torch.all(torch.isfinite(pred_state_sequence)))
+        ):
+            return None
+        return costs[0], q_ref_sequences[0], residual_sequences[0], terms, predicted_next_state, pred_state_sequence[0]
 
     def plan(self, current_state: np.ndarray, previous_q_ref: np.ndarray) -> CEMMPCResult:
         del current_state
@@ -202,8 +236,10 @@ class CEMMPCController:
         sampling_std_start_mean = float(std.mean().detach().cpu())
         best_sequence = None
         best_q_ref_sequence = None
+        best_residual_sequence = None
         best_cost_terms: dict[str, float] = {}
         best_predicted_next_state = np.full(2 * self.config.action_dim, np.nan, dtype=np.float32)
+        best_predicted_state_sequence: torch.Tensor | None = None
         best_cost = torch.as_tensor(float("inf"), device=self.device)
         elite_mean_cost = torch.as_tensor(float("inf"), device=self.device)
 
@@ -228,7 +264,11 @@ class CEMMPCController:
                     best_sequence = samples[best_local].detach().clone()
                     if "q_ref_sequences" in evaluation:
                         best_q_ref_sequence = evaluation["q_ref_sequences"][best_local].detach().clone()
+                    residual_sequences = evaluation.get("residual_sequences", samples)
+                    if residual_sequences.shape == samples.shape:
+                        best_residual_sequence = residual_sequences[best_local].detach().clone()
                     best_cost_terms, best_predicted_next_state = self._diagnostics_from_evaluation(evaluation, int(best_local))
+                    best_predicted_state_sequence = evaluation["pred_states"][best_local].detach().clone()
                 new_mean = torch.clamp(elites.mean(dim=0), min=-1.0, max=1.0)
                 new_std = elites.std(dim=0, unbiased=False).clamp_min(float(self.config.min_std))
                 alpha = float(self.config.smoothing_alpha)
@@ -237,58 +277,103 @@ class CEMMPCController:
         except RuntimeError as exc:
             return self._fallback(previous_q_ref, start_time, f"planner_runtime_error:{exc}")
 
-        if best_sequence is None or best_q_ref_sequence is None:
+        if best_sequence is None or best_q_ref_sequence is None or best_residual_sequence is None or best_predicted_state_sequence is None:
             return self._fallback(previous_q_ref, start_time, "no_valid_sequence")
-        if not torch.all(torch.isfinite(best_sequence)) or not self._valid_q_ref_sequence(best_q_ref_sequence.unsqueeze(0), batch_size=1):
+        if (
+            not torch.all(torch.isfinite(best_sequence))
+            or not self._valid_q_ref_sequence(best_q_ref_sequence.unsqueeze(0), batch_size=1)
+            or best_residual_sequence.shape != best_sequence.shape
+            or not bool(torch.all(torch.isfinite(best_residual_sequence)))
+        ):
             return self._fallback(previous_q_ref, start_time, "invalid_selected_action")
 
         mean_cost = float("nan")
         baseline_cost = float("nan")
         selected_raw_sequence = best_sequence
         selected_q_ref_sequence = best_q_ref_sequence
+        selected_residual_sequence = best_residual_sequence
         selected_cost = best_cost
         selection_mode = "best"
         selected_cost_terms = best_cost_terms
         selected_predicted_next_state = best_predicted_next_state
+        selected_predicted_state_sequence = best_predicted_state_sequence
         mean_evaluation = None
         if self.config.execute in {"mean", "lowest_cost"}:
             mean_evaluation = self._evaluate_sequence(mean)
             if mean_evaluation is not None:
-                mean_cost_tensor, mean_q_ref_sequence, mean_cost_terms, mean_predicted_next_state = mean_evaluation
+                mean_cost_tensor, mean_q_ref_sequence, mean_residual_sequence, mean_cost_terms, mean_predicted_next_state, mean_predicted_state_sequence = mean_evaluation
                 mean_cost = float(mean_cost_tensor.detach().cpu())
                 if self.config.execute == "mean":
                     selected_raw_sequence = mean
                     selected_q_ref_sequence = mean_q_ref_sequence
+                    selected_residual_sequence = mean_residual_sequence
                     selected_cost = mean_cost_tensor
                     selection_mode = "mean"
                     selected_cost_terms = mean_cost_terms
                     selected_predicted_next_state = mean_predicted_next_state
+                    selected_predicted_state_sequence = mean_predicted_state_sequence
             else:
                 if self.config.execute == "mean":
                     selection_mode = "best_fallback_invalid_mean"
 
         if self.config.execute == "lowest_cost":
-            candidates: list[tuple[str, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray]] = [
-                ("best", best_sequence, best_cost, best_q_ref_sequence, best_cost_terms, best_predicted_next_state)
+            candidates: list[tuple[str, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor]] = [
+                (
+                    "best",
+                    best_sequence,
+                    best_cost,
+                    best_q_ref_sequence,
+                    best_residual_sequence,
+                    best_cost_terms,
+                    best_predicted_next_state,
+                    best_predicted_state_sequence,
+                )
             ]
             if mean_evaluation is not None:
-                mean_cost_tensor, mean_q_ref_sequence, mean_cost_terms, mean_predicted_next_state = mean_evaluation
+                mean_cost_tensor, mean_q_ref_sequence, mean_residual_sequence, mean_cost_terms, mean_predicted_next_state, mean_predicted_state_sequence = mean_evaluation
                 mean_cost = float(mean_cost_tensor.detach().cpu())
-                candidates.append(("mean", mean, mean_cost_tensor, mean_q_ref_sequence, mean_cost_terms, mean_predicted_next_state))
+                candidates.append(
+                    ("mean", mean, mean_cost_tensor, mean_q_ref_sequence, mean_residual_sequence, mean_cost_terms, mean_predicted_next_state, mean_predicted_state_sequence)
+                )
             if self.config.force_baseline_candidate:
                 baseline = torch.zeros_like(mean)
                 baseline_evaluation = self._evaluate_sequence(baseline)
                 if baseline_evaluation is not None:
-                    baseline_cost_tensor, baseline_q_ref_sequence, baseline_cost_terms, baseline_predicted_next_state = baseline_evaluation
+                    (
+                        baseline_cost_tensor,
+                        baseline_q_ref_sequence,
+                        baseline_residual_sequence,
+                        baseline_cost_terms,
+                        baseline_predicted_next_state,
+                        baseline_predicted_state_sequence,
+                    ) = baseline_evaluation
                     baseline_cost = float(baseline_cost_tensor.detach().cpu())
                     candidates.append(
-                        ("baseline", baseline, baseline_cost_tensor, baseline_q_ref_sequence, baseline_cost_terms, baseline_predicted_next_state)
+                        (
+                            "baseline",
+                            baseline,
+                            baseline_cost_tensor,
+                            baseline_q_ref_sequence,
+                            baseline_residual_sequence,
+                            baseline_cost_terms,
+                            baseline_predicted_next_state,
+                            baseline_predicted_state_sequence,
+                        )
                     )
             # Equal costs should prefer the deterministic baseline, then mean,
             # over a sampled action.  This makes the direct nominal fallback
             # stable instead of depending on population ordering.
             preference = {"baseline": 0, "mean": 1, "best": 2}
-            selected_name, selected_raw_sequence, selected_cost, selected_q_ref_sequence, selected_cost_terms, selected_predicted_next_state = min(
+            (
+                selected_name,
+                selected_raw_sequence,
+                selected_cost,
+                selected_q_ref_sequence,
+                selected_residual_sequence,
+                selected_cost_terms,
+                selected_predicted_next_state,
+                selected_predicted_state_sequence,
+            ) = min(
                 candidates, key=lambda item: (float(item[2].detach().cpu()), preference[item[0]])
             )
             selection_mode = selected_name
@@ -314,8 +399,11 @@ class CEMMPCController:
             failure=False,
             failure_reason="",
             best_sequence=best_sequence.detach().cpu().numpy().astype(np.float32),
+            selected_q_ref_sequence=selected_q_ref_sequence.detach().cpu().numpy().astype(np.float32),
+            selected_residual_sequence=selected_residual_sequence.detach().cpu().numpy().astype(np.float32),
             cost_terms=selected_cost_terms,
             predicted_next_state=selected_predicted_next_state,
+            selected_predicted_state_sequence=selected_predicted_state_sequence.detach().cpu().numpy().astype(np.float32),
             sampling_std_start_mean=sampling_std_start_mean,
             sampling_std_end_mean=sampling_std_end_mean,
         )

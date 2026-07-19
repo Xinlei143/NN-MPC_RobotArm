@@ -124,12 +124,12 @@ python scripts/collect_data.py \
 ```bash
 python scripts/collect_data.py \
   --n_joints 6 \
-  --num_episodes 5000 \
-  --episode_len 600 \
+  --num_episodes 30000 \
+  --episode_len 1000 \
   --num_envs 32 \
-  --action_std 0.2 \
+  --action_std 0.5 \
   --seed 1 \
-  --save_path outputs/datasets/irb2400_parallel_data.npz \
+  --save_path outputs/datasets_v2/irb2400_parallel_data.npz \
   --append
 ```
 
@@ -438,7 +438,7 @@ python scripts/train_dynamics.py \
 
 ```bash
 python scripts/eval_dynamics.py \
-  --checkpoint outputs/checkpoints_mlp/mlp_20260530_094540/best_model.pt \
+  --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_010124 \
   --normalizer outputs/checkpoints_mlp/mlp_20260530_094540/normalizer.pt \
   --model_type mlp \
   --n_joints 6 \
@@ -452,15 +452,15 @@ Transformer 评估示例：
 
 ```bash
 python scripts/eval_dynamics.py \
-  --checkpoint outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
-  --normalizer outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
-  --model_type transformer \
+  --checkpoint outputs/checkpoints/gru_20260717_152930/best_model.pt \
+  --normalizer outputs/checkpoints/gru_20260717_152930/normalizer.pt \
+  --model_type gru \
   --n_joints 6 \
   --rollout_len 200 \
   --num_rollouts 10 \
-  --save_dir outputs/figures/transformer \
+  --save_dir outputs/figures/gru \
   --warmup_steps 50 \
-  --action_std 0.3 \
+  --action_std 0.95 \
   --horizons 1,5,10,20,50,100,200 
 
 python scripts/eval_dynamics.py \

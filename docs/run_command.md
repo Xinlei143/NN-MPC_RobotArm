@@ -27,10 +27,14 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer \
   --reference_mode task \
-  --reference_file outputs/references/figure8/reference.npz \
-  --horizon 10 --num_samples 128 --cem_iters 3 --rollout_batch_size 128 \
+  --reference_file outputs/references/circle_3laps/reference.npz \
+  --horizon 10 --num_samples 64 --cem_iters 2 --rollout_batch_size 64 \
   --mpc_policy residual --cem_execute lowest_cost \
-  --save_dir outputs/mpc/task_8
+  --save_dir outputs/mpc/task_circle_residual2 \
+  --q_ref_acceleration_limit 5,5,5,10,10,12.5 \
+  --elite_ratio 0.08 \
+  --uniform_sample_ratio 0.15 
+
 ```
 
 task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。本地图形环境可在命令末尾添加 `--visualize`。

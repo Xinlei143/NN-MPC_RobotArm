@@ -17,14 +17,16 @@ import torch
 
 from neural_dynamics.mujoco_env import MuJoCoArmEnv
 from neural_dynamics.paths import DEFAULT_MODEL_XML
-from neural_dynamics.rollout import load_dynamics_bundle
+from neural_dynamics.rollout import load_dynamics_bundle, rollout_dynamics_batch
 from neural_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.constraints import project_nominal_q_ref_sequence
+from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
-from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.delay_aware_runner import run as run_delay_aware_virtual
+from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig, reanchor_residual_command
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.recovery import residual_recovery_reason
@@ -85,7 +87,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer")
     parser.add_argument("--history_len", default=None, type=int)
     parser.add_argument("--n_joints", default=6, type=int)
-    parser.add_argument("--device", default="auto", type=str)
+    parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--episode_len", default=200, type=int)
     parser.add_argument(
@@ -122,7 +124,39 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="mpc uses learned CEM-MPC; ik_direct sends the validated task-space IK q_des directly to position actuators.",
     )
 
-    parser.add_argument("--horizon", default=10, type=int)
+    parser.add_argument("--horizon", default=20, type=int)
+    parser.add_argument(
+        "--replan_interval_steps",
+        default=5,
+        type=int,
+        help="Number of 100 Hz command steps executed from each CEM plan before replanning.",
+    )
+    parser.add_argument(
+        "--multirate_mode",
+        choices=["synchronous", "virtual_asap", "virtual_smooth"],
+        default="virtual_asap",
+        help="Default virtual_asap uses delayed MPC packets plus 100 Hz state feedback; synchronous keeps the legacy runner.",
+    )
+    parser.add_argument(
+        "--anticipation_delay_steps",
+        default=6,
+        type=int,
+        help="Virtual MPC computation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
+    )
+    parser.add_argument("--feedback_kq", default=0.30, type=float, help="ASAP/tube position-feedback gain.")
+    parser.add_argument("--feedback_kdq", default=0.015, type=float, help="ASAP/tube velocity-feedback gain in seconds.")
+    parser.add_argument(
+        "--feedback_max",
+        default="0.015",
+        type=str,
+        help="Maximum absolute feedback correction in rad: scalar or one value per joint.",
+    )
+    parser.add_argument(
+        "--mpc_warmup_plans",
+        default=1,
+        type=int,
+        help="Discarded CEM plans before the first control command, used to warm up CUDA execution.",
+    )
     parser.add_argument(
         "--mpc_policy",
         choices=["residual", "legacy_acceleration"],
@@ -132,7 +166,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num_samples", default=128, type=int)
     parser.add_argument("--num_elites", default=None, type=int)
     parser.add_argument("--elite_ratio", default=0.08, type=float)
-    parser.add_argument("--cem_iters", default=3, type=int)
+    parser.add_argument("--cem_iters", default=2, type=int)
     parser.add_argument(
         "--init_std",
         default=0.5,
@@ -345,6 +379,9 @@ def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_step
 def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     if not args.reference_file:
         raise ValueError("--reference_file is required when --reference_mode task")
+    # Virtual delay-aware execution shortens the executable prefix near the
+    # end of a reference, rather than requiring a separately padded file.
+    # The runner applies that prefix truncation before issuing a future plan.
     future_steps = args.horizon if args.controller_mode == "mpc" else 0
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
@@ -421,6 +458,12 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"episode_len must be positive, got {args.episode_len}")
     if args.controller_mode == "mpc" and args.horizon <= 0:
         raise ValueError(f"horizon must be positive, got {args.horizon}")
+    if args.replan_interval_steps <= 0:
+        raise ValueError("replan_interval_steps must be positive")
+    if args.controller_mode == "mpc" and args.replan_interval_steps > args.horizon:
+        raise ValueError("replan_interval_steps must not exceed horizon")
+    if args.mpc_warmup_plans < 0:
+        raise ValueError("mpc_warmup_plans must be non-negative")
     if args.max_execution_steps is not None and args.max_execution_steps <= 0:
         raise ValueError("max_execution_steps must be positive when provided")
     if not 0.0 <= args.uniform_sample_ratio <= 1.0:
@@ -437,6 +480,8 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("recovery_error_ratio must be greater than 1")
     if args.recovery_min_tracking_error < 0.0:
         raise ValueError("recovery_min_tracking_error must be non-negative")
+    if args.multirate_mode != "synchronous":
+        return run_delay_aware_virtual(args, globals())
     set_seed(args.seed)
     device = resolve_device(args.device)
     bundle = None
@@ -466,6 +511,11 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     q_des_records: list[np.ndarray] = []
     dq_des_records: list[np.ndarray] = []
     planning_times: list[float] = []
+    replan_times: list[float] = []
+    mpc_replanned_flags: list[int] = []
+    buffer_indices: list[int] = []
+    buffer_lengths: list[int] = []
+    replan_deadline_miss_flags: list[int] = []
     control_step_wall_times: list[float] = []
     best_costs: list[float] = []
     mean_costs: list[float] = []
@@ -482,7 +532,10 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     sampling_std_start_means: list[float] = []
     sampling_std_end_means: list[float] = []
     nominal_q_refs: list[np.ndarray] = []
+    buffered_residuals: list[np.ndarray] = []
     executed_residuals: list[np.ndarray] = []
+    residual_reanchor_deltas: list[np.ndarray] = []
+    multirate_buffer_modes: list[str] = []
     recovery_active_flags: list[int] = []
     recovery_trigger_reasons: list[str] = []
     cost_term_records: dict[str, list[float]] = {name: [] for name in COST_TERM_NAMES}
@@ -616,11 +669,41 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 rollout_batch_size=args.rollout_batch_size,
             )
         controller: CEMMPCController | None = None
+        # ``command_buffer`` is retained for the old absolute-command action
+        # space only.  Residual MPC caches corrections and re-anchors them at
+        # every 100 Hz actuator command below.
+        command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+        residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+        command_buffer_index = 0
+        command_buffer_plan_length = 0
+        warmup_completed = False
         viewer_deadline = 0.0
         if args.visualize:
             viewer = _launch_mujoco_viewer(env)
             viewer.sync()
             viewer_deadline = time.perf_counter() + env.control_dt
+
+        def reanchor_buffered_residual(buffered_residual: np.ndarray, nominal: np.ndarray) -> tuple[np.ndarray, np.ndarray, bool]:
+            if rollout_config is None or bundle is None:
+                raise RuntimeError("residual re-anchoring requires initialized MPC rollout configuration")
+            command, executed, feasible = reanchor_residual_command(
+                buffered_residual=torch.as_tensor(buffered_residual, dtype=torch.float32, device=device),
+                nominal_q_ref=torch.as_tensor(nominal, dtype=torch.float32, device=device),
+                residual_max=rollout_config.residual_max,
+                previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
+                previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
+                joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
+                joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
+                joint_limit_margin=rollout_config.joint_limit_margin,
+                q_ref_velocity_limit=rollout_config.q_ref_velocity_limit,
+                q_ref_acceleration_limit=rollout_config.q_ref_acceleration_limit,
+                control_dt=bundle.control_dt,
+            )
+            return (
+                command.detach().cpu().numpy().astype(np.float32),
+                executed.detach().cpu().numpy().astype(np.float32),
+                feasible,
+            )
 
         for step_idx in range(execution_steps):
             if viewer is not None and not viewer.is_running():
@@ -628,11 +711,12 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             control_step_started = time.perf_counter()
             recovery_active = 0
             recovery_trigger_reason = ""
+            buffered_residual = np.zeros(args.n_joints, dtype=np.float32)
+            multirate_buffer_mode = "not_applicable"
             nominal_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
             if args.controller_mode == "mpc":
                 if bundle is None or cost_config is None or rollout_config is None:
                     raise RuntimeError("MPC controller dependencies were not initialized")
-                initial_history = build_history_tensor(states_history, q_ref_history, bundle.history_len, device)
                 future_q_des = torch.as_tensor(
                     reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device
                 )
@@ -651,63 +735,20 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                     nominal_command = nominal_q_ref[0].detach().cpu().numpy().astype(np.float32)
                 else:
                     nominal_q_ref = None
-                planner = LearnedDynamicsPlanner(
-                    model=bundle.model,
-                    normalizer=bundle.normalizer,
-                    model_type=bundle.model_type,
-                    state_dim=bundle.state_dim,
-                    target_mode=bundle.target_mode,
-                    control_dt=bundle.control_dt,
-                    initial_history=initial_history,
-                    q_des=future_q_des,
-                    dq_des=torch.as_tensor(dq_reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device),
-                    nominal_q_ref=nominal_q_ref,
-                    previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
-                    previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
-                    previous_residual=None
-                    if args.mpc_policy == "legacy_acceleration"
-                    else torch.as_tensor(previous_residual, dtype=torch.float32, device=device),
-                    previous_residual_velocity=None
-                    if args.mpc_policy == "legacy_acceleration"
-                    else torch.as_tensor(previous_residual_velocity, dtype=torch.float32, device=device),
-                    joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
-                    joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
-                    cost_config=cost_config,
-                    rollout_config=rollout_config,
-                )
-                if controller is None:
-                    controller = CEMMPCController(
-                        config=CEMMPCConfig(
-                            horizon=args.horizon,
-                            action_dim=args.n_joints,
-                            num_samples=args.num_samples,
-                            num_elites=args.num_elites,
-                            elite_ratio=args.elite_ratio,
-                            cem_iters=args.cem_iters,
-                            init_std=args.init_std,
-                            min_std=args.min_std,
-                            smoothing_alpha=args.smoothing_alpha,
-                            temporal_noise_alpha=args.temporal_noise_alpha,
-                            reset_std_each_step=args.reset_std_each_step,
-                            uniform_sample_ratio=args.uniform_sample_ratio,
-                            force_baseline_candidate=args.mpc_policy == "residual",
-                            execute=args.cem_execute,
-                            seed=args.seed,
-                            device=str(device),
-                        ),
-                        planner=planner,
-                        joint_low=env.joint_low,
-                        joint_high=env.joint_high,
-                    )
-                else:
-                    controller.planner = planner
-
                 if recovery_remaining > 0 and args.mpc_policy == "residual":
                     recovery_active = 1
                     recovery_remaining -= 1
+                    command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                    residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                    command_buffer_index = command_buffer_plan_length = 0
                     q_ref_command = nominal_command.copy()
                     delta_q_ref = q_ref_command - previous_q_ref
                     planning_time = 0.0
+                    replan_time = float("nan")
+                    mpc_replanned = 0
+                    buffer_index = -1
+                    buffer_length = 0
+                    replan_deadline_miss = 0
                     best_cost = mean_cost = baseline_cost = selected_cost = elite_mean_cost = float("nan")
                     selection_mode = "recovery_nominal"
                     failure = 0
@@ -715,11 +756,109 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                     selected_cost_terms = {}
                     predicted_next_state = np.full(2 * args.n_joints, np.nan, dtype=np.float32)
                     sampling_std_start_mean = sampling_std_end_mean = float("nan")
+                    multirate_buffer_mode = "recovery_nominal"
+                elif (
+                    (args.mpc_policy == "residual" and command_buffer_index < residual_buffer.shape[0])
+                    or (args.mpc_policy == "legacy_acceleration" and command_buffer_index < command_buffer.shape[0])
+                ):
+                    buffer_index = command_buffer_index
+                    buffer_length = command_buffer_plan_length
+                    if args.mpc_policy == "residual":
+                        buffered_residual = residual_buffer[command_buffer_index].copy()
+                        q_ref_command, _, residual_feasible = reanchor_buffered_residual(buffered_residual, nominal_command)
+                        if not residual_feasible:
+                            buffered_residual.fill(0.0)
+                            q_ref_command = nominal_command.copy()
+                            selection_mode = "buffered_residual_nominal_fallback"
+                        else:
+                            selection_mode = "buffered_residual_reanchored"
+                        multirate_buffer_mode = "residual_reanchored"
+                    else:
+                        q_ref_command = command_buffer[command_buffer_index].copy()
+                        selection_mode = "buffered"
+                        multirate_buffer_mode = "absolute_q_ref_legacy"
+                    command_buffer_index += 1
+                    delta_q_ref = q_ref_command - previous_q_ref
+                    planning_time = 0.0
+                    replan_time = float("nan")
+                    mpc_replanned = 0
+                    replan_deadline_miss = 0
+                    best_cost = mean_cost = baseline_cost = selected_cost = elite_mean_cost = float("nan")
+                    failure = 0
+                    failure_reason = ""
+                    selected_cost_terms = {}
+                    predicted_next_state = np.full(2 * args.n_joints, np.nan, dtype=np.float32)
+                    sampling_std_start_mean = sampling_std_end_mean = float("nan")
                 else:
+                    initial_history = build_history_tensor(states_history, q_ref_history, bundle.history_len, device)
+                    planner = LearnedDynamicsPlanner(
+                        model=bundle.model,
+                        normalizer=bundle.normalizer,
+                        model_type=bundle.model_type,
+                        state_dim=bundle.state_dim,
+                        target_mode=bundle.target_mode,
+                        control_dt=bundle.control_dt,
+                        initial_history=initial_history,
+                        q_des=future_q_des,
+                        dq_des=torch.as_tensor(
+                            dq_reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device
+                        ),
+                        nominal_q_ref=nominal_q_ref,
+                        previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
+                        previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
+                        previous_residual=None
+                        if args.mpc_policy == "legacy_acceleration"
+                        else torch.as_tensor(previous_residual, dtype=torch.float32, device=device),
+                        previous_residual_velocity=None
+                        if args.mpc_policy == "legacy_acceleration"
+                        else torch.as_tensor(previous_residual_velocity, dtype=torch.float32, device=device),
+                        joint_low=torch.as_tensor(env.joint_low, dtype=torch.float32, device=device),
+                        joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
+                        cost_config=cost_config,
+                        rollout_config=rollout_config,
+                    )
+                    if controller is None:
+                        controller = CEMMPCController(
+                            config=CEMMPCConfig(
+                                horizon=args.horizon,
+                                action_dim=args.n_joints,
+                                num_samples=args.num_samples,
+                                num_elites=args.num_elites,
+                                elite_ratio=args.elite_ratio,
+                                cem_iters=args.cem_iters,
+                                init_std=args.init_std,
+                                min_std=args.min_std,
+                                smoothing_alpha=args.smoothing_alpha,
+                                temporal_noise_alpha=args.temporal_noise_alpha,
+                                reset_std_each_step=args.reset_std_each_step,
+                                uniform_sample_ratio=args.uniform_sample_ratio,
+                                force_baseline_candidate=args.mpc_policy == "residual",
+                                execute=args.cem_execute,
+                                seed=args.seed,
+                                device=str(device),
+                            ),
+                            planner=planner,
+                            joint_low=env.joint_low,
+                            joint_high=env.joint_high,
+                        )
+                    else:
+                        controller.planner = planner
+                    if not warmup_completed:
+                        if args.mpc_warmup_plans:
+                            generator_state = controller.generator.get_state()
+                            for _ in range(args.mpc_warmup_plans):
+                                controller.plan(current_state=state, previous_q_ref=previous_q_ref)
+                            controller.generator.set_state(generator_state)
+                            controller.reset()
+                        warmup_completed = True
                     result = controller.plan(current_state=state, previous_q_ref=previous_q_ref)
                     q_ref_command = result.q_ref.astype(np.float32)
                     delta_q_ref = result.delta_q_ref.astype(np.float32)
                     planning_time = float(result.planning_time)
+                    replan_time = planning_time
+                    mpc_replanned = 1
+                    buffer_index = 0
+                    replan_deadline_miss = int(planning_time > args.replan_interval_steps * bundle.control_dt)
                     best_cost = float(result.best_cost)
                     mean_cost = float(result.mean_cost)
                     baseline_cost = float(result.baseline_cost)
@@ -733,16 +872,60 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                     sampling_std_start_mean = float(getattr(result, "sampling_std_start_mean", float("nan")))
                     sampling_std_end_mean = float(getattr(result, "sampling_std_end_mean", float("nan")))
                     if result.failure and args.mpc_policy == "residual":
+                        command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                        residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                        command_buffer_index = command_buffer_plan_length = 0
+                        buffer_length = 0
                         q_ref_command = nominal_command.copy()
                         delta_q_ref = q_ref_command - previous_q_ref
                         selection_mode = "planner_failure_nominal"
                         recovery_trigger_reason = "planner_failure"
                         recovery_remaining = args.recovery_cooldown_steps
                         controller.reset()
+                        multirate_buffer_mode = "planner_failure_nominal"
+                    else:
+                        if args.mpc_policy == "residual":
+                            selected_residual_sequence = np.asarray(
+                                getattr(result, "selected_residual_sequence", np.empty((0, args.n_joints))), dtype=np.float32
+                            )
+                            if selected_residual_sequence.shape != (args.horizon, args.n_joints):
+                                raise RuntimeError("CEM result has an invalid selected_residual_sequence shape")
+                            buffer_length = min(
+                                args.replan_interval_steps, selected_residual_sequence.shape[0], execution_steps - step_idx
+                            )
+                            residual_buffer = selected_residual_sequence[:buffer_length].copy()
+                            command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                            buffered_residual = residual_buffer[0].copy()
+                            q_ref_command, _, residual_feasible = reanchor_buffered_residual(buffered_residual, nominal_command)
+                            if not residual_feasible:
+                                buffered_residual.fill(0.0)
+                                residual_buffer[0].fill(0.0)
+                                q_ref_command = nominal_command.copy()
+                                selection_mode = "replan_residual_nominal_fallback"
+                            multirate_buffer_mode = "residual_reanchored"
+                        else:
+                            selected_sequence = np.asarray(
+                                getattr(result, "selected_q_ref_sequence", result.q_ref[None, :]), dtype=np.float32
+                            )
+                            if selected_sequence.shape != (args.horizon, args.n_joints):
+                                raise RuntimeError("CEM result has an invalid selected_q_ref_sequence shape")
+                            buffer_length = min(args.replan_interval_steps, selected_sequence.shape[0], execution_steps - step_idx)
+                            command_buffer = selected_sequence[:buffer_length].copy()
+                            residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                            q_ref_command = command_buffer[0].copy()
+                            multirate_buffer_mode = "absolute_q_ref_legacy"
+                        command_buffer_index = 1
+                        command_buffer_plan_length = buffer_length
+                        delta_q_ref = q_ref_command - previous_q_ref
             else:
                 q_ref_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
                 delta_q_ref = q_ref_command - previous_q_ref
                 planning_time = 0.0
+                replan_time = float("nan")
+                mpc_replanned = 0
+                buffer_index = -1
+                buffer_length = 0
+                replan_deadline_miss = 0
                 best_cost = float("nan")
                 mean_cost = float("nan")
                 baseline_cost = float("nan")
@@ -762,8 +945,12 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             dq_des_records.append(dq_reference[step_idx].copy())
             if args.controller_mode == "mpc" and args.mpc_policy == "residual":
                 executed_residual = (q_ref_command - nominal_command).astype(np.float32)
+                residual_reanchor_delta = (executed_residual - buffered_residual).astype(np.float32)
                 nominal_q_refs.append(nominal_command.copy())
+                buffered_residuals.append(buffered_residual.copy())
                 executed_residuals.append(executed_residual.copy())
+                residual_reanchor_deltas.append(residual_reanchor_delta.copy())
+                multirate_buffer_modes.append(multirate_buffer_mode)
             else:
                 executed_residual = np.zeros(args.n_joints, dtype=np.float32)
             if task_reference is not None:
@@ -791,6 +978,11 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 int(np.any(np.abs(command_acceleration) > command_acceleration_limit_for_log + 1e-6))
             )
             planning_times.append(planning_time)
+            replan_times.append(replan_time)
+            mpc_replanned_flags.append(mpc_replanned)
+            buffer_indices.append(buffer_index)
+            buffer_lengths.append(buffer_length)
+            replan_deadline_miss_flags.append(replan_deadline_miss)
             best_costs.append(best_cost)
             mean_costs.append(mean_cost)
             baseline_costs.append(baseline_cost)
@@ -813,6 +1005,17 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                     raise
                 break
             control_step_wall_times.append(time.perf_counter() - control_step_started)
+
+            if (
+                args.controller_mode == "mpc"
+                and controller is not None
+                and command_buffer_plan_length > 0
+                and command_buffer_index >= command_buffer_plan_length
+            ):
+                controller.advance_after_execution(command_buffer_plan_length)
+                command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                command_buffer_index = command_buffer_plan_length = 0
 
             if viewer is not None:
                 if viewer.is_running():
@@ -859,6 +1062,9 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                         recovery_remaining = args.recovery_cooldown_steps
                         if controller is not None:
                             controller.reset()
+                        command_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                        residual_buffer = np.empty((0, args.n_joints), dtype=np.float32)
+                        command_buffer_index = command_buffer_plan_length = 0
                 recovery_trigger_reasons.append(recovery_trigger_reason)
                 recovery_active_flags.append(recovery_active)
             else:
@@ -869,6 +1075,11 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 "controller_mode": args.controller_mode,
                 "tracking_error": realized_error,
                 "planning_time": planning_time,
+                "replan_time": replan_time,
+                "mpc_replanned": mpc_replanned,
+                "buffer_index": buffer_index,
+                "buffer_length": buffer_length,
+                "replan_deadline_miss": replan_deadline_miss,
                 "control_step_wall_time": control_step_wall_times[-1],
                 "best_cost": best_cost,
                 "mean_cost": mean_cost,
@@ -887,6 +1098,10 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
                 "sampling_std_end_mean": sampling_std_end_means[-1],
                 "recovery_active": recovery_active_flags[-1],
                 "recovery_trigger_reason": recovery_trigger_reasons[-1],
+                "multirate_buffer_mode": multirate_buffer_mode,
+                "buffered_residual_norm": float(np.linalg.norm(buffered_residual)),
+                "executed_residual_norm": float(np.linalg.norm(executed_residual)),
+                "residual_reanchor_delta_norm": float(np.linalg.norm(executed_residual - buffered_residual)),
             }
             row.update({f"cost_{name}": cost_term_records[name][-1] for name in COST_TERM_NAMES})
             if task_reference is not None:
@@ -936,6 +1151,12 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         "command_velocity": _stack_records(command_velocities),
         "command_acceleration": _stack_records(command_accelerations),
         "planning_time": np.asarray(planning_times, dtype=np.float32),
+        "replan_time": np.asarray(replan_times, dtype=np.float32),
+        "mpc_replanned": np.asarray(mpc_replanned_flags, dtype=np.int64),
+        "buffer_index": np.asarray(buffer_indices, dtype=np.int64),
+        "buffer_length": np.asarray(buffer_lengths, dtype=np.int64),
+        "replan_deadline_miss": np.asarray(replan_deadline_miss_flags, dtype=np.int64),
+        "replan_deadline_s": np.asarray(args.replan_interval_steps * env.control_dt, dtype=np.float32),
         "control_step_wall_time": np.asarray(control_step_wall_times, dtype=np.float32),
         "best_cost": np.asarray(best_costs, dtype=np.float32),
         "mean_cost": np.asarray(mean_costs, dtype=np.float32),
@@ -953,7 +1174,10 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         "sampling_std_start_mean": np.asarray(sampling_std_start_means, dtype=np.float32),
         "sampling_std_end_mean": np.asarray(sampling_std_end_means, dtype=np.float32),
         "nominal_q_ref": _stack_records(nominal_q_refs),
+        "buffered_residual": _stack_records(buffered_residuals),
         "executed_residual": _stack_records(executed_residuals),
+        "residual_reanchor_delta": _stack_records(residual_reanchor_deltas),
+        "multirate_buffer_mode": np.asarray(multirate_buffer_modes),
         "recovery_active_flags": np.asarray(recovery_active_flags, dtype=np.int64),
         "recovery_trigger_reasons": np.asarray(recovery_trigger_reasons),
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step),
@@ -972,6 +1196,8 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
             else 0,
             dtype=np.int64,
         ),
+        "replan_interval_steps": np.asarray(args.replan_interval_steps, dtype=np.int64),
+        "mpc_warmup_plans": np.asarray(args.mpc_warmup_plans, dtype=np.int64),
         "mpc_policy": np.asarray(args.mpc_policy),
         "cost_profile": np.asarray(args.cost_profile),
         "cost_temporal_discount": np.asarray(args.temporal_discount, dtype=np.float32),

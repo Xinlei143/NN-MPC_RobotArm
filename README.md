@@ -41,7 +41,7 @@ q_des[t+1:t+H]
 
 ## 推荐运行
 
-默认预算是 horizon 10、128 candidates、3 次 CEM iteration、batch 128；下面显式写出这些推荐值，方便实验记录。
+默认配置是 ASAP residual MPC：预测 horizon 20、每 5 个 10 ms 快速控制步重规划一次（20 Hz）、6 步计算延迟补偿、128 candidates、2 次 CEM iteration、batch 128。100 Hz 快速层持续重锚定 residual 并施加状态反馈。
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
@@ -50,9 +50,12 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --model_type transformer \
   --reference_mode multi_joint_sine \
   --episode_len 200 \
-  --horizon 10 \
+  --horizon 20 \
+  --replan_interval_steps 5 \
+  --multirate_mode virtual_asap \
+  --anticipation_delay_steps 6 \
   --num_samples 128 \
-  --cem_iters 3 \
+  --cem_iters 2 \
   --rollout_batch_size 128 \
   --mpc_policy residual \
   --cem_execute lowest_cost \

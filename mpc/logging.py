@@ -121,6 +121,15 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         }
     controller_mode = np.asarray(arrays.get("controller_mode", "unknown")).reshape(-1)
     recovery_trigger_counts = _string_counts(np.asarray(arrays.get("recovery_trigger_reasons", np.empty(0))))
+    replan_time = np.asarray(arrays.get("replan_time", np.empty(0)), dtype=np.float64)
+    if not replan_time.size:
+        replan_time = np.asarray(arrays.get("planning_time", np.empty(0)), dtype=np.float64)
+    replan_flags = np.asarray(arrays.get("mpc_replanned", np.empty(0)), dtype=np.int64)
+    replan_count = int(np.sum(replan_flags != 0)) if replan_flags.size else int(np.sum(np.isfinite(replan_time)))
+    deadline_misses = np.asarray(arrays.get("replan_deadline_miss", np.empty(0)), dtype=np.int64)
+    deadline_miss_count = int(np.sum(deadline_misses != 0))
+    deadline_s = float(np.asarray(arrays.get("replan_deadline_s", np.nan)).reshape(-1)[0])
+    interval_steps = int(np.asarray(arrays.get("replan_interval_steps", 1)).reshape(-1)[0])
     return {
         "schema_version": 2,
         "controller_mode": str(controller_mode[0]) if controller_mode.size else "unknown",
@@ -129,7 +138,15 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "recorded_steps": int(actual_states.shape[0]) if actual_states.ndim else 0,
         "timing": {
             "control_step_wall_time_s": _finite_stats(np.asarray(arrays.get("control_step_wall_time", np.empty(0)))),
-            "planning_time_s": _finite_stats(np.asarray(arrays.get("planning_time", np.empty(0)))),
+            "planning_time_s": _finite_stats(replan_time),
+        },
+        "replanning": {
+            "interval_steps": interval_steps,
+            "deadline_s": deadline_s,
+            "nominal_frequency_hz": float(1.0 / deadline_s) if np.isfinite(deadline_s) and deadline_s > 0.0 else float("nan"),
+            "count": replan_count,
+            "deadline_miss_count": deadline_miss_count,
+            "deadline_miss_rate": float(deadline_miss_count / replan_count) if replan_count else float("nan"),
         },
         "cem_sampling": {
             "reset_std_each_step": bool(np.asarray(arrays.get("cem_reset_std_each_step", False)).reshape(-1)[0]),
@@ -160,8 +177,22 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "recovery_trigger_counts": recovery_trigger_counts,
         },
         "residual": {
+            "buffered_max_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("buffered_residual", np.empty((0,)))), 100.0
+            ),
+            "buffered_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("buffered_residual", np.empty((0,)))), 95.0
+            ),
             "max_abs_rad": _per_joint_percentile(np.asarray(arrays.get("executed_residual", np.empty((0,)))), 100.0),
             "p95_abs_rad": _per_joint_percentile(np.asarray(arrays.get("executed_residual", np.empty((0,)))), 95.0),
+            "reanchor_delta_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("residual_reanchor_delta", np.empty((0,)))), 95.0
+            ),
+            "buffer_modes": _string_counts(np.asarray(arrays.get("multirate_buffer_mode", np.empty(0)))),
+            "feedback_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("feedback_correction", np.empty((0,)))), 95.0
+            ),
+            "packet_events": _string_counts(np.asarray(arrays.get("packet_event", np.empty(0)))),
         },
         "model_replay": _replay_summary(arrays),
     }
@@ -190,6 +221,7 @@ def print_run_summary(summary: dict[str, Any]) -> None:
     actuator = summary["actuator"]
     safety = summary["safety"]
     replay = summary["model_replay"]
+    replanning = summary["replanning"]
     rule = "=" * 88
     print(f"\n{rule}\nCEM-MPC | END-OF-RUN REPORT\n{rule}")
     print(
@@ -207,6 +239,13 @@ def print_run_summary(summary: dict[str, Any]) -> None:
         f"planning [mean / p95]      = {_fmt_ms(timing['planning_time_s']['mean']):>9} / "
         f"{_fmt_ms(timing['planning_time_s']['p95']):>9}"
     )
+    if replanning["count"]:
+        print(
+            "          "
+            f"replan: {replanning['count']} @ {_fmt(replanning['nominal_frequency_hz'])} Hz  "
+            f"deadline misses: {replanning['deadline_miss_count']} "
+            f"({_fmt(100.0 * replanning['deadline_miss_rate'])}%)"
+        )
     print(
         "CEM       "
         f"std reset: {str(sampling['reset_std_each_step']):<5}  "
@@ -551,7 +590,7 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
     q_des = arrays["q_des"]
     actuator_q_ref = arrays["actuator_q_ref"]
     nominal_q_ref = np.asarray(arrays.get("nominal_q_ref", np.empty((0,))))
-    planning_time = arrays["planning_time"]
+    planning_time = np.asarray(arrays.get("replan_time", arrays["planning_time"]))
     best_cost = arrays["best_cost"]
     n_joints = q_des.shape[1]
     time = np.arange(q_des.shape[0])
@@ -603,7 +642,7 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
 
     fig_diag, axes_diag = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
     axes_diag[0].plot(time, planning_time)
-    axes_diag[0].set_ylabel("planning_time_s")
+    axes_diag[0].set_ylabel("replan_time_s")
     axes_diag[1].plot(time, best_cost)
     axes_diag[1].set_ylabel("best_cost")
     axes_diag[1].set_xlabel("step")

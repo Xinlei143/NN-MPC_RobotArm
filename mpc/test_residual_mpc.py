@@ -16,7 +16,8 @@ from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.constraints import project_nominal_q_ref_sequence, project_position_command_sequence
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
 from mpc.logging import build_run_summary
-from mpc.planner_rollout import construct_residual_q_ref_sequence
+from mpc.planner_rollout import construct_residual_q_ref_sequence, reanchor_residual_command
+from mpc.delay_aware import corrected_direct_ik_command, feedback_correction
 from mpc.recovery import residual_recovery_reason
 
 
@@ -69,6 +70,68 @@ class ResidualConstraintTests(unittest.TestCase):
         torch.testing.assert_close(q_ref, nominal.unsqueeze(0).expand_as(q_ref))
         torch.testing.assert_close(residual, torch.zeros_like(residual))
         self.assertTrue(bool(torch.all(feasible)))
+
+    def test_cached_residual_is_reanchored_and_reprojected(self) -> None:
+        command, executed, feasible = reanchor_residual_command(
+            buffered_residual=torch.tensor([0.08]),
+            nominal_q_ref=torch.tensor([0.20]),
+            residual_max=torch.tensor([0.10]),
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            joint_limit_margin=0.0,
+            q_ref_velocity_limit=torch.tensor([2.0]),
+            q_ref_acceleration_limit=torch.tensor([20.0]),
+            control_dt=0.1,
+        )
+        self.assertTrue(feasible)
+        torch.testing.assert_close(command, torch.tensor([0.20]))
+        torch.testing.assert_close(executed, torch.tensor([0.0]))
+
+    def test_reanchoring_zero_residual_preserves_online_nominal(self) -> None:
+        command, executed, feasible = reanchor_residual_command(
+            buffered_residual=torch.tensor([0.0]),
+            nominal_q_ref=torch.tensor([0.10]),
+            residual_max=torch.tensor([0.10]),
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            joint_limit_margin=0.0,
+            q_ref_velocity_limit=torch.tensor([2.0]),
+            q_ref_acceleration_limit=torch.tensor([20.0]),
+            control_dt=0.1,
+        )
+        self.assertTrue(feasible)
+        torch.testing.assert_close(command, torch.tensor([0.10]))
+        torch.testing.assert_close(executed, torch.tensor([0.0]))
+
+    def test_direct_ik_zero_correction_bypasses_stale_command_projection(self) -> None:
+        command, correction = corrected_direct_ik_command(
+            nominal_q_des=torch.tensor([0.30]),
+            correction=torch.tensor([0.0]),
+            previous_q_ref=torch.tensor([0.0]),
+            previous_q_ref_velocity=torch.tensor([0.0]),
+            joint_low=torch.tensor([-1.0]),
+            joint_high=torch.tensor([1.0]),
+            joint_limit_margin=0.0,
+            velocity_limit=torch.tensor([0.1]),
+            acceleration_limit=torch.tensor([0.1]),
+            control_dt=0.01,
+        )
+        torch.testing.assert_close(command, torch.tensor([0.30]))
+        torch.testing.assert_close(correction, torch.tensor([0.0]))
+
+    def test_feedback_has_the_planned_tracking_sign_and_is_bounded(self) -> None:
+        correction = feedback_correction(
+            predicted_state=np.array([0.4, 1.0], dtype=np.float32),
+            measured_state=np.array([0.1, 0.0], dtype=np.float32),
+            kq=0.5,
+            kdq=0.1,
+            max_abs=np.array([0.05], dtype=np.float32),
+        )
+        np.testing.assert_allclose(correction, np.array([0.05], dtype=np.float32))
 
 
 class ResidualCostTests(unittest.TestCase):
@@ -166,6 +229,14 @@ class CEMBaselineTests(unittest.TestCase):
         self.assertEqual(result.selection_mode, "baseline")
         self.assertAlmostEqual(result.baseline_cost, 0.0)
         np.testing.assert_allclose(result.q_ref, 0.0)
+        self.assertEqual(result.selected_q_ref_sequence.shape, (3, 1))
+        self.assertEqual(result.selected_residual_sequence.shape, (3, 1))
+        self.assertEqual(result.selected_predicted_state_sequence.shape, (4, 2))
+        np.testing.assert_allclose(result.selected_residual_sequence, 0.0)
+        np.testing.assert_allclose(result.q_ref, result.selected_q_ref_sequence[0])
+        controller.mean = torch.tensor([[1.0], [2.0], [3.0]])
+        controller.advance_after_execution(2)
+        torch.testing.assert_close(controller.mean, torch.tensor([[2.0], [3.0], [3.0]]))
         controller.mean.fill_(1.0)
         controller.reset()
         self.assertTrue(bool(torch.allclose(controller.mean, torch.zeros_like(controller.mean))))
@@ -212,6 +283,21 @@ class RecoveryTests(unittest.TestCase):
         safety = summary["safety"]
         self.assertEqual(safety["recovery_trigger_count"], 2)
         self.assertEqual(safety["recovery_active_step_count"], 2)
+
+    def test_run_summary_uses_only_replanning_steps_for_planning_timing(self) -> None:
+        summary = build_run_summary(
+            {
+                "planning_time": np.array([0.04, 0.0, 0.0, 0.06]),
+                "replan_time": np.array([0.04, np.nan, np.nan, 0.06]),
+                "mpc_replanned": np.array([1, 0, 0, 1]),
+                "replan_deadline_miss": np.array([0, 0, 0, 1]),
+                "replan_interval_steps": np.array(5),
+                "replan_deadline_s": np.array(0.05),
+            }
+        )
+        self.assertAlmostEqual(summary["timing"]["planning_time_s"]["mean"], 0.05)
+        self.assertEqual(summary["replanning"]["count"], 2)
+        self.assertEqual(summary["replanning"]["deadline_miss_count"], 1)
 
 
 if __name__ == "__main__":

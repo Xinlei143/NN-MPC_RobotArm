@@ -6,6 +6,7 @@ import torch
 
 from neural_dynamics.rollout import rollout_dynamics_batch
 from mpc.constraints import (
+    clip_to_joint_limits,
     apply_command_kinematic_limits,
     project_nominal_q_ref_sequence,
     project_position_command_sequence,
@@ -61,6 +62,7 @@ def construct_residual_q_ref_sequence(
     q_ref_velocity_limit: torch.Tensor | float,
     q_ref_acceleration_limit: torch.Tensor | float,
     control_dt: float = 0.01,
+    project_kinematics: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Map bounded residual candidates to executable q_ref sequences.
 
@@ -94,20 +96,75 @@ def construct_residual_q_ref_sequence(
     if residual_limit.shape != (action_dim,) or not bool(torch.all(torch.isfinite(residual_limit))) or bool(torch.any(residual_limit <= 0)):
         raise ValueError(f"residual_max must contain {action_dim} finite positive values")
     proposed_residual = torch.clamp(candidate_normalized_residual, min=-1.0, max=1.0) * residual_limit.view(1, 1, -1)
-    q_ref_sequences = project_position_command_sequence(
-        nominal + proposed_residual,
-        previous_q_ref=previous_q_ref,
-        previous_q_ref_velocity=previous_q_ref_velocity,
-        control_dt=control_dt,
-        velocity_limit=q_ref_velocity_limit,
-        acceleration_limit=q_ref_acceleration_limit,
-        joint_low=joint_low,
-        joint_high=joint_high,
-        joint_limit_margin=joint_limit_margin,
-    )
+    requested = nominal + proposed_residual
+    if project_kinematics:
+        q_ref_sequences = project_position_command_sequence(
+            requested,
+            previous_q_ref=previous_q_ref,
+            previous_q_ref_velocity=previous_q_ref_velocity,
+            control_dt=control_dt,
+            velocity_limit=q_ref_velocity_limit,
+            acceleration_limit=q_ref_acceleration_limit,
+            joint_low=joint_low,
+            joint_high=joint_high,
+            joint_limit_margin=joint_limit_margin,
+        )
+    else:
+        # The delay-aware controller keeps Direct IK as its exact zero-correction
+        # baseline.  It constrains only the MPC/feedback correction at execution
+        # time, rather than slowing the nominal trajectory towards an old command.
+        q_ref_sequences = clip_to_joint_limits(requested, joint_low, joint_high, joint_limit_margin)
     executed_residual = q_ref_sequences - nominal
     feasible = torch.all(torch.abs(executed_residual) <= residual_limit.view(1, 1, -1) + 1e-5, dim=(1, 2))
     return q_ref_sequences, executed_residual, feasible
+
+
+def reanchor_residual_command(
+    buffered_residual: torch.Tensor,
+    nominal_q_ref: torch.Tensor,
+    residual_max: torch.Tensor | float,
+    previous_q_ref: torch.Tensor,
+    previous_q_ref_velocity: torch.Tensor,
+    joint_low: torch.Tensor,
+    joint_high: torch.Tensor,
+    joint_limit_margin: float,
+    q_ref_velocity_limit: torch.Tensor | float,
+    q_ref_acceleration_limit: torch.Tensor | float,
+    control_dt: float = 0.01,
+) -> tuple[torch.Tensor, torch.Tensor, bool]:
+    """Re-anchor one cached *executed* residual to the current nominal command.
+
+    Multi-rate MPC caches residual corrections, not old absolute commands.  At
+    every 100 Hz actuator update this helper reconstructs and projects the
+    command using the latest previous command and kinematic state.  A false
+    feasibility result means callers must use the zero-residual nominal path.
+    """
+    if buffered_residual.ndim != 1 or nominal_q_ref.ndim != 1:
+        raise ValueError("buffered_residual and nominal_q_ref must have shape [action_dim]")
+    if buffered_residual.shape != nominal_q_ref.shape:
+        raise ValueError("buffered_residual and nominal_q_ref must have matching shapes")
+    residual_limit = torch.as_tensor(
+        residual_max, device=buffered_residual.device, dtype=buffered_residual.dtype
+    )
+    if residual_limit.ndim == 0:
+        residual_limit = residual_limit.expand_as(buffered_residual)
+    if residual_limit.shape != buffered_residual.shape or bool(torch.any(residual_limit <= 0)):
+        raise ValueError("residual_max must contain one positive limit per action")
+    normalized = torch.clamp(buffered_residual / residual_limit, min=-1.0, max=1.0)
+    q_ref, executed_residual, feasible = construct_residual_q_ref_sequence(
+        normalized.view(1, 1, -1),
+        nominal_q_ref=nominal_q_ref.view(1, -1),
+        residual_max=residual_limit,
+        previous_q_ref=previous_q_ref,
+        previous_q_ref_velocity=previous_q_ref_velocity,
+        joint_low=joint_low,
+        joint_high=joint_high,
+        joint_limit_margin=joint_limit_margin,
+        q_ref_velocity_limit=q_ref_velocity_limit,
+        q_ref_acceleration_limit=q_ref_acceleration_limit,
+        control_dt=control_dt,
+    )
+    return q_ref[0, 0], executed_residual[0, 0], bool(feasible[0])
 
 
 @dataclass(frozen=True)
@@ -118,6 +175,7 @@ class PlannerRolloutConfig:
     residual_max: torch.Tensor | float | None = None
     joint_limit_margin: float = 0.0
     rollout_batch_size: int | None = None
+    project_residual_kinematics: bool = True
 
 
 @dataclass
@@ -172,6 +230,7 @@ class LearnedDynamicsPlanner:
                 q_ref_velocity_limit=self.rollout_config.q_ref_velocity_limit,
                 q_ref_acceleration_limit=self.rollout_config.q_ref_acceleration_limit,
                 control_dt=self.control_dt,
+                project_kinematics=self.rollout_config.project_residual_kinematics,
             )
         elif self.rollout_config.mpc_policy == "legacy_acceleration":
             q_ref_sequences = construct_actuator_q_ref_sequence(
