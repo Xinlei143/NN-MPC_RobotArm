@@ -26,6 +26,7 @@ from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
 from mpc.delay_aware_runner import run as run_delay_aware_virtual
+from mpc.asap_runner import run as run_threaded_asap
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig, reanchor_residual_command
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
@@ -133,9 +134,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--multirate_mode",
-        choices=["synchronous", "virtual_asap", "virtual_smooth"],
+        choices=["synchronous", "virtual_asap", "virtual_smooth", "threaded_asap"],
         default="virtual_asap",
-        help="Default virtual_asap uses delayed MPC packets plus 100 Hz state feedback; synchronous keeps the legacy runner.",
+        help="virtual_asap is deterministic virtual time; threaded_asap runs wall-clock 100 Hz control with a CUDA planner thread.",
     )
     parser.add_argument(
         "--anticipation_delay_steps",
@@ -143,6 +144,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         help="Virtual MPC computation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
     )
+    parser.add_argument("--planner_guard_ms", default=5.0, type=float, help="threaded_asap drops a packet published within this many ms of its activation deadline.")
+    parser.add_argument("--planner_min_interval_ms", default=0.0, type=float, help="Minimum delay between threaded planner launches; zero means strict ASAP.")
     parser.add_argument("--feedback_kq", default=0.30, type=float, help="ASAP/tube position-feedback gain.")
     parser.add_argument("--feedback_kdq", default=0.015, type=float, help="ASAP/tube velocity-feedback gain in seconds.")
     parser.add_argument(
@@ -480,6 +483,10 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("recovery_error_ratio must be greater than 1")
     if args.recovery_min_tracking_error < 0.0:
         raise ValueError("recovery_min_tracking_error must be non-negative")
+    if args.planner_guard_ms < 0.0 or args.planner_min_interval_ms < 0.0:
+        raise ValueError("planner_guard_ms and planner_min_interval_ms must be non-negative")
+    if args.multirate_mode == "threaded_asap":
+        return run_threaded_asap(args, globals())
     if args.multirate_mode != "synchronous":
         return run_delay_aware_virtual(args, globals())
     set_seed(args.seed)

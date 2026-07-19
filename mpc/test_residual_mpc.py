@@ -17,7 +17,9 @@ from mpc.constraints import project_nominal_q_ref_sequence, project_position_com
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
 from mpc.logging import build_run_summary
 from mpc.planner_rollout import construct_residual_q_ref_sequence, reanchor_residual_command
-from mpc.delay_aware import corrected_direct_ik_command, feedback_correction
+from mpc.delay_aware import corrected_direct_ik_command, corrected_direct_ik_command_np, feedback_correction
+from mpc.asap_shared import LatestSnapshotStore, PlanPacketStore
+from mpc.asap_types import ASAPPlanPacket, PlanningSnapshot
 from mpc.recovery import residual_recovery_reason
 
 
@@ -133,6 +135,51 @@ class ResidualConstraintTests(unittest.TestCase):
         )
         np.testing.assert_allclose(correction, np.array([0.05], dtype=np.float32))
 
+    def test_numpy_direct_ik_projection_preserves_zero_and_limits(self) -> None:
+        command, residual = corrected_direct_ik_command_np(
+            nominal_q_des=np.array([0.3], dtype=np.float32), correction=np.array([0.0], dtype=np.float32),
+            previous_q_ref=np.array([0.0], dtype=np.float32), previous_q_ref_velocity=np.array([0.0], dtype=np.float32),
+            joint_low=np.array([-1.0], dtype=np.float32), joint_high=np.array([1.0], dtype=np.float32),
+            joint_limit_margin=0.0, velocity_limit=np.array([0.1], dtype=np.float32),
+            acceleration_limit=np.array([0.1], dtype=np.float32), control_dt=0.01,
+        )
+        np.testing.assert_allclose(command, [0.3])
+        np.testing.assert_allclose(residual, [0.0])
+        command, _ = corrected_direct_ik_command_np(
+            np.array([1.0], dtype=np.float32), np.array([1.0], dtype=np.float32), np.array([0.0], dtype=np.float32),
+            np.array([0.0], dtype=np.float32), np.array([-2.0], dtype=np.float32), np.array([2.0], dtype=np.float32),
+            0.0, np.array([0.5], dtype=np.float32), np.array([1.0], dtype=np.float32), 0.1,
+        )
+        self.assertLessEqual(float(command[0]), 0.011)
+
+
+class ASAPStoreTests(unittest.TestCase):
+    def _packet(self, plan_id: int, activation: int) -> ASAPPlanPacket:
+        return ASAPPlanPacket(plan_id=plan_id, launch_step=0, launch_time_ns=0, activation_step=activation,
+            activation_time_ns=activation * 10, publish_time_ns=1, residual_sequence=np.full((3, 1), plan_id, dtype=np.float32),
+            predicted_state_sequence=np.zeros((4, 2), dtype=np.float32), planning_time_s=0.01,
+            anchor_state=np.zeros(2, dtype=np.float32), selection_mode="best", selected_cost=1.0)
+
+    def test_latest_snapshot_coalesces_and_copies_arrays(self) -> None:
+        store = LatestSnapshotStore()
+        first = PlanningSnapshot(0, 0, 0, np.zeros((1, 2), dtype=np.float32), np.zeros((1, 1), dtype=np.float32), np.zeros(1, dtype=np.float32), np.zeros(1, dtype=np.float32), np.zeros(1, dtype=np.float32), np.zeros(1, dtype=np.float32), ())
+        second = PlanningSnapshot(1, 1, 1, np.ones((1, 2), dtype=np.float32), np.ones((1, 1), dtype=np.float32), np.ones(1, dtype=np.float32), np.ones(1, dtype=np.float32), np.ones(1, dtype=np.float32), np.ones(1, dtype=np.float32), ())
+        store.publish(first); store.publish(second)
+        received = store.wait_for_newer(-1, 0.0)
+        self.assertIsNotNone(received)
+        assert received is not None
+        self.assertEqual(received.request_id, 1)
+        second.states_history.fill(9.0)
+        self.assertEqual(float(received.states_history[0, 0]), 1.0)
+
+    def test_packet_activation_uses_latest_due_packet(self) -> None:
+        store = PlanPacketStore()
+        store.publish(self._packet(1, 2)); store.publish(self._packet(2, 3))
+        active = store.activate_due(3, 30)
+        self.assertIsNotNone(active)
+        assert active is not None
+        self.assertEqual(active.plan_id, 2)
+
 
 class ResidualCostTests(unittest.TestCase):
     def _config(self) -> JointSpaceCostConfig:
@@ -237,6 +284,9 @@ class CEMBaselineTests(unittest.TestCase):
         controller.mean = torch.tensor([[1.0], [2.0], [3.0]])
         controller.advance_after_execution(2)
         torch.testing.assert_close(controller.mean, torch.tensor([[2.0], [3.0], [3.0]]))
+        controller.mean = torch.tensor([[1.0], [2.0], [3.0]])
+        controller.shift_warm_start(2)
+        torch.testing.assert_close(controller.mean, torch.tensor([[3.0], [3.0], [3.0]]))
         controller.mean.fill_(1.0)
         controller.reset()
         self.assertTrue(bool(torch.allclose(controller.mean, torch.zeros_like(controller.mean))))

@@ -10,15 +10,29 @@
 |---|---:|---:|---|
 | 旧 GRU H20@20 Hz | 71.6 ± 23.2 mm | 47.4 ± 0.1 ms | 低频缓存绝对命令，劣于 Direct IK |
 | **ASAP H20@20 Hz** | **38.5 ± 0.3 mm** | **32.0 ± 0.3 ms** | 默认配置；优于 Direct IK |
+| **threaded ASAP H20（修复后，单 seed）** | **35.38 mm** | **35.90 ms** | 真实双线程；projected anchor 与 warm start 对齐；deadline miss 为 0 |
 | 旧 GRU H30@10 Hz | 79.1 ± 19.0 mm | 67.0 ± 2.2 ms | 低频缓存绝对命令，劣于 Direct IK |
 | **ASAP H30@10 Hz** | **37.8 ± 0.2 mm** | **44.1 ± 0.7 ms** | 明显改善，但更新频率较低 |
 | Direct IK | 53.2 mm | — | 无模型、100 Hz nominal 基线 |
 
 ASAP 的误差收益来自三项结构变化：**在计划真正生效的未来状态处优化、缓存 residual 而不是过时的绝对 `q_ref`、以及在每个 10 ms 控制步使用当前状态作小幅反馈修正**。这使慢速 CEM 只负责预测性补偿，快速层持续保留 Direct IK 的实时跟踪能力。
 
-本文中的实现名为 `virtual_asap`：CEM 仍在单进程中同步测时，但其结果被安排在固定的未来控制步才可生效。这能可重复地验证计算延迟补偿逻辑，**并不等同于**论文中的后台线程/进程异步求解、真实通信时延或真机实时调度。
+`virtual_asap` 仍是确定性基线：CEM 在单进程中同步测时，但其结果被安排在固定的未来控制步才可生效。它能可重复地验证计算延迟补偿逻辑，**并不等同于**真实后台调度。项目另提供 `threaded_asap`：主线程按真实墙钟 100 Hz 执行 MuJoCo、反馈和 NumPy 投影，后台线程独占 CUDA 执行 GRU+CEM，并经线程安全 packet store 发布结果。
 
-相关方法学参考：Dirckx 等提出的 [ASAP-MPC](https://arxiv.org/abs/2402.06263) 将慢速最优轨迹生成与快速线性状态反馈结合，并在新解完成后异步更新、平滑衔接轨迹。本文实现借鉴其“慢规划 + 快反馈 + 未来状态锚定”的原则，但尚未实现真实后台求解和连续轨迹拼接。
+相关方法学参考：Dirckx 等提出的 [ASAP-MPC](https://arxiv.org/abs/2402.06263) 将慢速最优轨迹生成与快速线性状态反馈结合，并在新解完成后异步更新、平滑衔接轨迹。本文实现借鉴其“慢规划 + 快反馈 + 未来状态锚定”的原则；`threaded_asap` 实现真实后台求解，`virtual_asap` 保留为算法消融基线。
+
+### 1.1 真实线程模式
+
+```bash
+python scripts/run_cem_mpc.py \
+  --model_type gru --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_152930/best_model.pt \
+  --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_152930/normalizer.pt \
+  --reference_mode task --reference_file outputs/references/circle_3laps/reference.npz \
+  --horizon 20 --multirate_mode threaded_asap --anticipation_delay_steps 6 \
+  --planner_guard_ms 5 --planner_min_interval_ms 0 --device cuda
+```
+
+`threaded_asap` 丢弃在 activation deadline 前 guard window 内未发布的 packet；控制层继续使用有效旧 packet，或退化为零 residual 的 Direct IK。运行摘要报告 control compute p50/p95/p99、控制 deadline miss、worker solve count 和 late-drop count。它是软实时 Python/MuJoCo 测量，不应与硬实时真机保证混同。
 
 ---
 
@@ -188,24 +202,52 @@ ASAP 路径将“全候选、全 horizon 的速度/加速度投影”移出 CEM 
 
 ---
 
-## 5. 计时口径：什么叫“规划更快”
+## 5. 计时口径：virtual 与 threaded 不能直接比较 control time
 
 | 指标 | 定义 | 是否包含未来锚点预测 |
 |---|---|---|
 | `planning_time` / `replan_time` | `CEMMPCController.plan()` 的墙钟耗时 | 否 |
 | planning mean / p95 | 只在实际 CEM 重规划步统计 | 否 |
-| `control_step_wall_time` | 一个 10 ms 快速控制步的完整脚本耗时 | 是；还含命令投影、MuJoCo、诊断和日志 |
-| control p95 | 所有 100 Hz 控制步的 wall time P95 | 是 |
+| `virtual_asap.control_step_wall_time` | 同步循环一次迭代的耗时 | 是；含 future-anchor rollout 和阻塞的 CEM |
+| `threaded_asap.control_step_wall_time` | 控制线程的计算耗时 | 不含 worker 的 GRU+CEM，也不含等待下一 deadline 的 sleep |
+| `control_deadline_miss` / `control_lateness_s` | 控制线程是否在下一个绝对 10 ms deadline 前完成 | 不包含 worker 计算；用于验证 100 Hz 调度 |
 | deadline | `planning_time > D × 10 ms` | 使用 CEM 计时，不是完整端到端时间 |
 
-因此，ASAP 的 32 ms planning p95 表示 CEM 内部优化时间，而非新的 packet 从测量到可下发的完整端到端延迟。完整控制 p95 应同时报告，例如 H20@20 Hz 为 35.7 ms。
+因此，virtual ASAP 的 32 ms planning p95 表示 CEM 内部优化时间，而非 packet 从测量到可下发的完整端到端延迟；其 35.7 ms control p95 包含同步阻塞路径。
+
+对 `threaded_asap`，控制线程与 CEM worker 已解耦。控制计算时间不能与上述 35.7 ms 直接比较：它回答的是“100 Hz 线程自身能否在 deadline 前完成”，而不是“CEM 求解耗时”。真实线程实验应同时报告 control compute、control deadline miss、CEM planning time、实际 planner update rate 与 packet late-drop count。
+
+### 5.1 threaded ASAP H20 实测（RTX 4060，seed 0）
+
+命令使用 GRU checkpoint `gru_20260717_152930`、H=20、128 samples × 2 iterations、D=6、guard=5 ms，在 circle 三圈轨迹前 1000 个控制步运行。结果为：
+
+| 指标 | 结果 |
+|---|---:|
+| 控制周期 | 10 ms / 100 Hz |
+| Control compute p50 / p95 / p99 / max | 0.358 / 0.626 / 0.812 / 0.944 ms |
+| Control deadline miss | 0 / 1000 |
+| CEM planning mean / p95 / p99 | 33.78 / 35.90 / 37.74 ms |
+| Worker solve count / 实际 update rate | 275 / 约 27.5 Hz |
+| Late packet drop | 0 |
+| Active-packet control ticks | 994 / 1000 |
+| TCP RMSE / orientation RMSE | 35.38 mm / 1.85 deg |
+
+worker 两次 solve 的观察间隔为 3–4 个控制 tick。CEM p95 小于 55 ms 的 publish deadline（D=6 的 60 ms window 减 5 ms guard），因此没有迟到 packet；前 6 个 tick 使用零 residual 的 Direct-IK nominal，之后 packet 开始激活。
+
+### 5.2 projected anchor 与 warm-start 对齐验证
+
+修复后，worker 和控制线程共用同一个 NumPy 单步投影函数。future GRU rollout 使用 projected command；传给新 planner 的 `previous_residual` 与 `previous_residual_velocity` 来自 projected/executed residual，而不是 raw packet residual。
+
+在 275 次实际 replan 中，raw 与 executed anchor residual 仅有 102 次完全相同；其差异 L2 的 p50 / p95 / max 为 0.0108 / 0.0327 / 0.0514 rad，证明执行层投影对 anchor 语义具有实质影响。所有 replan 均满足 `warm_start_shift_steps = mean_anchor_step_after - mean_anchor_step_before`；shift 为 3 或 4 step，没有 planner failure、anchor 倒退或 late packet。单元测试还验证：成功但迟到的 packet 会保留最新 mean anchor，而规划 failure 不会移动它。
+
+本次 `command_acceleration_violation_flags` 记录了 329 次，但最大超限仅为 $2.86\times10^{-6}$ rad/s²（物理上限 5–12.5 rad/s²），来自 float32 边界舍入与当前 $10^{-6}$ 的过严日志容差，不应解读为实质性约束失效。正式安全报告前应将该诊断改为合理的绝对/相对容差，并重新生成统计。
 
 此外，ASAP 不会仅因“降低重规划频率”而让一次 CEM 求解变快。当前结果中的 planning-time 优势来自以下可观测实现条件的组合：
 
 1. H20/H25/H30 及 `128×2` 的计算预算本身不同；
 2. candidate sequence 的速度/加速度投影从 population rollout 转移到逐步执行层；
 3. 同一 GPU、CUDA 状态和代码路径下重新测量，且每个 rollout 丢弃一次 CUDA warm-up plan；
-4. future-anchor rollout 不计入 `planning_time`，但计入 `control_step_wall_time`。
+4. 对 `virtual_asap`，future-anchor rollout 不计入 `planning_time`，但计入同步的 `control_step_wall_time`；对 `threaded_asap`，它在 worker 内执行，不计入控制线程时间。
 
 因此应表述为：**当前 ASAP 实现在所测配置下同时取得更低的 CEM 计时和更低的跟踪误差**；不能将其简化为“ASAP 理论上必然降低 CEM 求解复杂度”。
 
@@ -228,6 +270,8 @@ ASAP 路径将“全候选、全 horizon 的速度/加速度投影”移出 CEM 
 | ASAP delay | H20/H25 与 H30 的 14.29–20 Hz 为 D=6；H30@10 Hz 为 D=7 |
 
 默认配置为 **ASAP H20@20 Hz**：`H=20`、每 5 个 10 ms 步重规划、`D=6`。
+
+真实线程配置不固定重规划间隔：上一次 worker solve 完成后立即消费最新 snapshot 并开始下一次 solve。因此 H20 线程实验的实际 planner rate 由 GPU 负载决定，本次为约 27.5 Hz，而控制层始终为 100 Hz。
 
 ```bash
 python scripts/run_cem_mpc.py \
@@ -309,6 +353,7 @@ python scripts/run_cem_mpc.py \
 | ASAP 圆轨迹频率网格 | `outputs/mpc/delay_aware/horizon_frequency_grid_circle/` |
 | H30 ASAP 频率实验 | `outputs/mpc/delay_aware/virtual_asap_h30*/` |
 | H25@16.67 Hz 全轨迹实验 | `outputs/mpc/delay_aware/h25_16p7hz_d6_all_tasks/` |
+| 真实 threaded ASAP H20（seed 0，1000 tick） | `outputs/mpc/threaded_asap_h20/` |
 | 旧低频 GRU 对照 | `outputs/mpc/multirate_gru_circle/` |
 
-本结果只覆盖进程内 MuJoCo、当前 GPU、当前 GRU checkpoint 和所列轨迹。真实 ASAP 部署仍需实现独立 planner worker、线程安全的 packet 发布、时钟/通信延迟测量、实际末端状态估计、packet 超时策略以及真机安全约束验证。
+本结果只覆盖进程内 MuJoCo、当前 GPU、当前 GRU checkpoint 和所列轨迹。`threaded_asap` 已实现独立 planner worker、线程安全 packet 发布和 packet 超时丢弃；它仍是 Python 软实时测量，而非真机硬实时保证。真机部署仍需要时钟/通信延迟测量、实际末端状态估计和独立安全约束验证。

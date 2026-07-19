@@ -71,6 +71,60 @@ def corrected_direct_ik_command(
     return command, command - nominal
 
 
+def corrected_direct_ik_command_np(
+    nominal_q_des: np.ndarray,
+    correction: np.ndarray,
+    previous_q_ref: np.ndarray,
+    previous_q_ref_velocity: np.ndarray,
+    joint_low: np.ndarray,
+    joint_high: np.ndarray,
+    joint_limit_margin: float,
+    velocity_limit: np.ndarray,
+    acceleration_limit: np.ndarray,
+    control_dt: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """CPU-only counterpart of :func:`corrected_direct_ik_command`."""
+    command, executed_correction, _ = project_executable_command_np(
+        nominal_q_des, correction, previous_q_ref, previous_q_ref_velocity,
+        joint_low, joint_high, joint_limit_margin, velocity_limit,
+        acceleration_limit, control_dt,
+    )
+    return command, executed_correction
+
+
+def project_executable_command_np(
+    nominal_q_ref: np.ndarray,
+    requested_correction: np.ndarray,
+    previous_command: np.ndarray,
+    previous_velocity: np.ndarray,
+    joint_low: np.ndarray,
+    joint_high: np.ndarray,
+    joint_limit_margin: float,
+    velocity_limit: np.ndarray,
+    acceleration_limit: np.ndarray,
+    control_dt: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Project one correction exactly as the ASAP execution layer does.
+
+    Returns the command, its executed correction relative to the clipped
+    nominal, and the command velocity.  The zero-correction Direct-IK bypass
+    deliberately remains exact, matching the safety fallback semantics.
+    """
+    nominal = np.clip(np.asarray(nominal_q_ref, dtype=np.float32), joint_low + joint_limit_margin, joint_high - joint_limit_margin)
+    requested_correction = np.asarray(requested_correction, dtype=np.float32)
+    previous_command = np.asarray(previous_command, dtype=np.float32)
+    previous_velocity = np.asarray(previous_velocity, dtype=np.float32)
+    if np.all(np.abs(requested_correction) <= 1e-8):
+        velocity = (nominal - previous_command) / control_dt
+        return nominal.astype(np.float32), np.zeros_like(nominal, dtype=np.float32), velocity.astype(np.float32)
+    requested = np.clip(nominal + requested_correction, joint_low + joint_limit_margin, joint_high - joint_limit_margin)
+    requested_velocity = (requested - previous_command) / control_dt
+    velocity = np.clip(requested_velocity, previous_velocity - acceleration_limit * control_dt, previous_velocity + acceleration_limit * control_dt)
+    velocity = np.clip(velocity, -velocity_limit, velocity_limit)
+    command = np.clip(previous_command + velocity * control_dt, joint_low + joint_limit_margin, joint_high - joint_limit_margin)
+    return command.astype(np.float32), (command - nominal).astype(np.float32), velocity.astype(np.float32)
+
+
 def feedback_correction(
     predicted_state: np.ndarray,
     measured_state: np.ndarray,

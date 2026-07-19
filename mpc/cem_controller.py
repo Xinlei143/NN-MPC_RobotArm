@@ -140,15 +140,28 @@ class CEMMPCController:
     def advance_after_execution(self, executed_steps: int) -> None:
         """Advance the CEM warm start after executing a buffered plan prefix.
 
-        ``plan`` already shifts the warm start by one command before returning.
-        A multi-rate caller that executes more than that first command uses this
-        method to discard the remaining stale prefix before its next replan.
+        ``plan`` without an explicit anchor shift already discards one step;
+        legacy multi-rate callers discard the remaining prefix here.
         """
         if executed_steps <= 1:
             return
-        extra_shift = min(int(executed_steps) - 1, self.config.horizon)
-        tail = self.mean[-1:].expand(extra_shift, -1)
-        self.mean = torch.cat([self.mean[extra_shift:], tail], dim=0).detach().clone()
+        self.shift_warm_start(int(executed_steps) - 1)
+
+    def shift_warm_start(self, shift_steps: int) -> None:
+        """Align the saved unshifted sequence to a later planning anchor."""
+        if shift_steps <= 0:
+            return
+        shift = min(int(shift_steps), self.config.horizon)
+        tail = self.mean[-1:].expand(shift, -1)
+        self.mean = torch.cat([self.mean[shift:], tail], dim=0).detach().clone()
+
+    def _shifted_warm_start(self, shift_steps: int) -> torch.Tensor:
+        """Return an aligned mean without mutating controller state."""
+        if shift_steps <= 0:
+            return self.mean.clone()
+        shift = min(int(shift_steps), self.config.horizon)
+        tail = self.mean[-1:].expand(shift, -1)
+        return torch.cat([self.mean[shift:], tail], dim=0).detach().clone()
 
     def _fallback(self, previous_q_ref: np.ndarray, start_time: float, reason: str) -> CEMMPCResult:
         previous = np.asarray(previous_q_ref, dtype=np.float32)
@@ -228,10 +241,11 @@ class CEMMPCController:
             return None
         return costs[0], q_ref_sequences[0], residual_sequences[0], terms, predicted_next_state, pred_state_sequence[0]
 
-    def plan(self, current_state: np.ndarray, previous_q_ref: np.ndarray) -> CEMMPCResult:
+    def plan(self, current_state: np.ndarray, previous_q_ref: np.ndarray, *, warm_start_shift_steps: int | None = None) -> CEMMPCResult:
         del current_state
         start_time = perf_counter()
-        mean = self.mean.clone()
+        asynchronous_anchor = warm_start_shift_steps is not None
+        mean = self._shifted_warm_start(warm_start_shift_steps) if asynchronous_anchor else self.mean.clone()
         std = self.initial_std.clone() if self.config.reset_std_each_step else self.std.clone()
         sampling_std_start_mean = float(std.mean().detach().cpu())
         best_sequence = None
@@ -378,9 +392,10 @@ class CEMMPCController:
             )
             selection_mode = selected_name
 
-        self.mean = torch.clamp(
-            torch.cat([selected_raw_sequence[1:], selected_raw_sequence[-1:].clone()], dim=0), min=-1.0, max=1.0
-        ).detach().clone()
+        saved_mean = selected_raw_sequence if asynchronous_anchor else torch.cat(
+            [selected_raw_sequence[1:], selected_raw_sequence[-1:].clone()], dim=0
+        )
+        self.mean = torch.clamp(saved_mean, min=-1.0, max=1.0).detach().clone()
         sampling_std_end_mean = float(std.mean().detach().cpu())
         self.std = self.initial_std.clone() if self.config.reset_std_each_step else std.detach().clone()
         selected_q_ref = selected_q_ref_sequence[0].detach().cpu().numpy().astype(np.float32)

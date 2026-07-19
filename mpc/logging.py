@@ -30,12 +30,13 @@ def _finite_stats(values: np.ndarray) -> dict[str, float | int]:
     finite = np.asarray(values, dtype=np.float64)
     finite = finite[np.isfinite(finite)]
     if finite.size == 0:
-        return {"samples": 0, "mean": float("nan"), "p50": float("nan"), "p95": float("nan"), "max": float("nan")}
+        return {"samples": 0, "mean": float("nan"), "p50": float("nan"), "p95": float("nan"), "p99": float("nan"), "max": float("nan")}
     return {
         "samples": int(finite.size),
         "mean": float(np.mean(finite)),
         "p50": float(np.percentile(finite, 50.0)),
         "p95": float(np.percentile(finite, 95.0)),
+        "p99": float(np.percentile(finite, 99.0)),
         "max": float(np.max(finite)),
     }
 
@@ -139,6 +140,7 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "timing": {
             "control_step_wall_time_s": _finite_stats(np.asarray(arrays.get("control_step_wall_time", np.empty(0)))),
             "planning_time_s": _finite_stats(replan_time),
+            "control_lateness_s": _finite_stats(np.asarray(arrays.get("control_lateness_s", np.empty(0)))),
         },
         "replanning": {
             "interval_steps": interval_steps,
@@ -147,6 +149,7 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "count": replan_count,
             "deadline_miss_count": deadline_miss_count,
             "deadline_miss_rate": float(deadline_miss_count / replan_count) if replan_count else float("nan"),
+            "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
         },
         "cem_sampling": {
             "reset_std_each_step": bool(np.asarray(arrays.get("cem_reset_std_each_step", False)).reshape(-1)[0]),
@@ -231,8 +234,8 @@ def print_run_summary(summary: dict[str, Any]) -> None:
     print("-" * 88)
     print(
         "TIMING    "
-        f"control [p50 / p95 / max] = {_fmt_ms(timing['control_step_wall_time_s']['p50']):>9} / "
-        f"{_fmt_ms(timing['control_step_wall_time_s']['p95']):>9} / {_fmt_ms(timing['control_step_wall_time_s']['max']):>9}"
+        f"control [p50 / p95 / p99 / max] = {_fmt_ms(timing['control_step_wall_time_s']['p50']):>9} / "
+        f"{_fmt_ms(timing['control_step_wall_time_s']['p95']):>9} / {_fmt_ms(timing['control_step_wall_time_s']['p99']):>9} / {_fmt_ms(timing['control_step_wall_time_s']['max']):>9}"
     )
     print(
         "          "
@@ -246,6 +249,8 @@ def print_run_summary(summary: dict[str, Any]) -> None:
             f"deadline misses: {replanning['deadline_miss_count']} "
             f"({_fmt(100.0 * replanning['deadline_miss_rate'])}%)"
         )
+    if replanning["control_deadline_miss_count"]:
+        print(f"          control deadline misses: {replanning['control_deadline_miss_count']}")
     print(
         "CEM       "
         f"std reset: {str(sampling['reset_std_each_step']):<5}  "
