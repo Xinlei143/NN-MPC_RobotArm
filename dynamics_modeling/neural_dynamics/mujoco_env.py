@@ -81,12 +81,31 @@ class MuJoCoArmEnv:
     @property
     def control_dt(self) -> float:
         return float(self.model.opt.timestep * self.frame_skip)
+    @property
+    def position_actuator_gains(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return Kp/Kd for MuJoCo position actuators in joint order.
+
+        This metadata is deliberately optional: only the actuator-aware MPC
+        profile consumes it, while the default black-box controller does not.
+        """
+        kp = np.asarray(self.model.actuator_gainprm[: self.n_joints, 0], dtype=np.float32)
+        kd = -np.asarray(self.model.actuator_biasprm[: self.n_joints, 2], dtype=np.float32)
+        if np.any(~np.isfinite(kp)) or np.any(~np.isfinite(kd)) or np.any(kp <= 0.0) or np.any(kd < 0.0):
+            raise ValueError("Position actuator metadata does not provide finite non-negative Kp/Kd gains")
+        return kp.copy(), kd.copy()
 
     def get_state(self) -> np.ndarray:
         qpos = np.asarray(self.data.qpos[: self.n_joints], dtype=np.float64)
         qvel = np.asarray(self.data.qvel[: self.n_joints], dtype=np.float64)
-        return np.concatenate([qpos, qvel]).astype(np.float32)
-
+        state = np.concatenate([qpos, qvel])
+        noise = self.rng.normal(
+          0,
+          0.001,
+          size=state.shape
+        )
+        state = state + noise
+        return state.astype(np.float32)
+    
     def validate_joint_positions(self, context: str = "step") -> None:
         qpos = np.asarray(self.data.qpos[: self.n_joints], dtype=np.float64)
         low = np.asarray(self.joint_low, dtype=np.float64) - self._JOINT_LIMIT_TOLERANCE
