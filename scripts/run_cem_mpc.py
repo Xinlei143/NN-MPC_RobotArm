@@ -87,6 +87,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", default=None, type=str, help="Dynamics checkpoint. Required for --controller_mode mpc.")
     parser.add_argument("--normalizer", default=None, type=str, help="Dynamics normalizer. Required for --controller_mode mpc.")
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer")
+    parser.add_argument(
+        "--dynamics_backend",
+        choices=["learned", "mujoco_oracle"],
+        default="learned",
+        help="State rollout backend. mujoco_oracle is an offline virtual-ASAP upper bound and does not require a checkpoint.",
+    )
     parser.add_argument("--history_len", default=None, type=int)
     parser.add_argument("--n_joints", default=6, type=int)
     parser.add_argument("--device", default="cuda", type=str)
@@ -101,14 +107,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--settle_steps", default=50, type=int)
     parser.add_argument(
         "--reference_mode",
-        choices=["hold", "step", "joint_sine", "multi_joint_sine", "task"],
+        choices=["hold", "step", "joint_sine", "multi_joint_sine", "waypoint", "chirp", "joint_file", "task"],
         default="multi_joint_sine",
     )
     parser.add_argument(
         "--reference_file",
         default=None,
         type=str,
-        help="Validated task-space ReferenceBundle .npz file. Required when --reference_mode task.",
+        help="Immutable reference .npz file. Required for --reference_mode task or joint_file.",
     )
     parser.add_argument("--ee_site_name", default="ee_site", type=str)
     parser.add_argument("--reference_amplitude", default=0.15, type=float)
@@ -399,6 +405,8 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     # end of a reference, rather than requiring a separately padded file.
     # The runner applies that prefix truncation before issuing a future plan.
     future_steps = args.horizon if args.controller_mode == "mpc" else 0
+    if args.controller_mode == "mpc" and args.multirate_mode in {"virtual_asap", "virtual_smooth"}:
+        future_steps += int(args.anticipation_delay_steps)
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
         expected_n_joints=args.n_joints,
@@ -406,6 +414,29 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     )
     _validate_task_reference(bundle, args.n_joints, future_steps)
     return bundle
+
+
+def _load_joint_file_reference(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    if not args.reference_file:
+        raise ValueError("--reference_file is required when --reference_mode joint_file")
+    path = resolve_runtime_path(args.reference_file)
+    with np.load(path, allow_pickle=False) as archive:
+        required = {"q_des", "dq_des", "ddq_des", "execution_steps"}
+        missing = required.difference(archive.files)
+        if missing:
+            raise KeyError(f"Joint benchmark reference {path} is missing {sorted(missing)}")
+        q_des = np.asarray(archive["q_des"], dtype=np.float32)
+        dq_des = np.asarray(archive["dq_des"], dtype=np.float32)
+        ddq_des = np.asarray(archive["ddq_des"], dtype=np.float32)
+        execution_steps = int(np.asarray(archive["execution_steps"]).item())
+    if q_des.ndim != 2 or q_des.shape[1] != args.n_joints or dq_des.shape != q_des.shape or ddq_des.shape != q_des.shape:
+        raise ValueError(f"Joint benchmark reference {path} has incompatible q/dq/ddq shapes")
+    future_steps = args.horizon + (int(args.anticipation_delay_steps) if args.multirate_mode in {"virtual_asap", "virtual_smooth"} else 0)
+    if execution_steps <= 0 or q_des.shape[0] < execution_steps + future_steps + 1:
+        raise ValueError("Joint benchmark reference lacks horizon plus delay padding")
+    if not np.all(np.isfinite(q_des)) or not np.all(np.isfinite(dq_des)) or not np.all(np.isfinite(ddq_des)):
+        raise ValueError("Joint benchmark reference contains non-finite values")
+    return q_des, dq_des, ddq_des, execution_steps
 
 
 def _reference_for_run(
@@ -430,6 +461,10 @@ def _reference_for_run(
             int(bundle.execution_steps),
             bundle,
         )
+
+    if args.reference_mode == "joint_file":
+        q_des, dq_des, ddq_des, execution_steps = _load_joint_file_reference(args)
+        return q_des, dq_des, ddq_des, execution_steps, None
 
     if control_dt is None:
         raise RuntimeError("Joint-space references require a loaded MPC dynamics bundle")
@@ -467,7 +502,9 @@ def _launch_mujoco_viewer(env: MuJoCoArmEnv) -> Any:
         ) from exc
 
 
-def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
+def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | None = None) -> dict[str, Any]:
+    if activation_observer is not None:
+        setattr(args, "activation_observer", activation_observer)
     if args.controller_mode == "ik_direct" and args.reference_mode != "task":
         raise ValueError("--controller_mode ik_direct requires --reference_mode task with a validated IK reference")
     if args.reference_mode != "task" and args.episode_len <= 0:
@@ -498,6 +535,12 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("recovery_min_tracking_error must be non-negative")
     if args.planner_guard_ms < 0.0 or args.planner_min_interval_ms < 0.0:
         raise ValueError("planner_guard_ms and planner_min_interval_ms must be non-negative")
+    dynamics_backend = getattr(args, "dynamics_backend", "learned")
+    if dynamics_backend == "mujoco_oracle":
+        if args.controller_mode != "mpc" or args.mpc_policy != "residual":
+            raise ValueError("mujoco_oracle requires --controller_mode mpc --mpc_policy residual")
+        if args.multirate_mode != "virtual_asap":
+            raise ValueError("mujoco_oracle is an offline upper bound and only supports --multirate_mode virtual_asap")
     if args.multirate_mode == "threaded_asap":
         return run_threaded_asap(args, globals())
     if args.multirate_mode != "synchronous":
@@ -505,7 +548,7 @@ def run_closed_loop_mpc(args: argparse.Namespace) -> dict[str, Any]:
     set_seed(args.seed)
     device = resolve_device(args.device)
     bundle = None
-    if args.controller_mode == "mpc":
+    if args.controller_mode == "mpc" and dynamics_backend == "learned":
         if not args.checkpoint or not args.normalizer:
             raise ValueError("--checkpoint and --normalizer are required when --controller_mode mpc")
         bundle = load_dynamics_bundle(

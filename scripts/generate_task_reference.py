@@ -44,6 +44,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repeat_count", type=int, default=3)
     parser.add_argument("--control_dt", type=float, default=0.01)
     parser.add_argument("--horizon", type=int, default=20)
+    parser.add_argument("--lookahead_steps", type=int, default=0, help="Additional delayed-MPC reference padding steps.")
     parser.add_argument("--ee_site_name", default="ee_site")
 
     parser.add_argument("--start_hold_duration", type=float, default=0.5)
@@ -53,6 +54,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--return_duration", type=float, default=2.0)
     parser.add_argument("--joint_return_duration", type=float, default=2.0)
     parser.add_argument("--final_hold_duration", type=float, default=0.5)
+    parser.add_argument("--collection_only", action="store_true")
+    parser.add_argument("--shape_end_hold_duration", type=float, default=0.2)
 
     parser.add_argument("--center_mode", choices=["relative", "absolute"], default="relative")
     parser.add_argument("--center_offset", type=float, nargs=3, metavar=("X", "Y", "Z"), default=(0.0, 0.0, 0.0))
@@ -110,6 +113,8 @@ def _reference_config_from_args(args: argparse.Namespace) -> ReferenceConfig:
         return_duration=args.return_duration,
         joint_return_duration=args.joint_return_duration,
         final_hold_duration=args.final_hold_duration,
+        collection_only=args.collection_only,
+        shape_end_hold_duration=args.shape_end_hold_duration,
         center_mode=args.center_mode,
         center_offset=tuple(args.center_offset),
         plane_axis_u=tuple(args.plane_axis_u),
@@ -223,6 +228,7 @@ def main(argv: list[str] | None = None) -> None:
         initial_q=np.zeros(model.nu, dtype=np.float64),
         control_dt=args.control_dt,
         horizon=args.horizon,
+        lookahead_steps=args.lookahead_steps,
     )
     save_dir.mkdir(parents=True, exist_ok=True)
     reference_path = save_reference_bundle(bundle, save_dir)
@@ -239,4 +245,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

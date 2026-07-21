@@ -18,6 +18,9 @@ class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         model_type: str = "mlp",
         history_len: int = 1,
         episode_ids: np.ndarray | None = None,
+        split_group_ids: np.ndarray | None = None,
+        source_ids: np.ndarray | None = None,
+        valid_target: np.ndarray | None = None,
         target_mode: str = "delta_state",
     ) -> None:
         if model_type not in {"mlp", "gru", "transformer"}:
@@ -41,6 +44,9 @@ class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 raise ValueError(f"episode_ids must be rank-1, got shape {episode_ids.shape}")
             if len(episode_ids) != len(states):
                 raise ValueError(f"episode_ids length={len(episode_ids)} does not match samples={len(states)}")
+        for name, values in (("split_group_ids", split_group_ids), ("source_ids", source_ids), ("valid_target", valid_target)):
+            if values is not None and (values.ndim != 1 or len(values) != len(states)):
+                raise ValueError(f"{name} must be rank-1 with length={len(states)}")
 
         self.states = torch.as_tensor(states, dtype=torch.float32)
         self.actions = torch.as_tensor(actions, dtype=torch.float32)
@@ -49,6 +55,9 @@ class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self.history_len = history_len
         self.target_mode = target_mode
         self.episode_ids = None if episode_ids is None else torch.as_tensor(episode_ids, dtype=torch.long)
+        self.split_group_ids = None if split_group_ids is None else torch.as_tensor(split_group_ids, dtype=torch.long)
+        self.source_ids = None if source_ids is None else torch.as_tensor(source_ids, dtype=torch.long)
+        self.valid_target = torch.ones(len(states), dtype=torch.bool) if valid_target is None else torch.as_tensor(valid_target, dtype=torch.bool)
         self.sequence_indices = self._build_sequence_indices()
 
     def _build_sequence_indices(self) -> np.ndarray | None:
@@ -68,7 +77,9 @@ class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 f"No valid sequence windows for history_len={self.history_len}; "
                 "each episode must contain at least history_len samples."
             )
-        return np.concatenate(starts_by_run)
+        indices = np.concatenate(starts_by_run)
+        valid = self.valid_target.cpu().numpy()
+        return indices[valid[indices + self.history_len - 1]]
 
     @property
     def state_dim(self) -> int:
@@ -120,6 +131,9 @@ class RolloutDynamicsDataset(DynamicsDataset):
         model_type: str = "mlp",
         history_len: int = 1,
         episode_ids: np.ndarray | None = None,
+        split_group_ids: np.ndarray | None = None,
+        source_ids: np.ndarray | None = None,
+        valid_target: np.ndarray | None = None,
         target_mode: str = "delta_state",
         rollout_steps: int = 1,
     ) -> None:
@@ -133,6 +147,9 @@ class RolloutDynamicsDataset(DynamicsDataset):
             model_type=model_type,
             history_len=history_len,
             episode_ids=episode_ids,
+            split_group_ids=split_group_ids,
+            source_ids=source_ids,
+            valid_target=valid_target,
             target_mode=target_mode,
         )
 
@@ -170,7 +187,11 @@ class RolloutDynamicsDataset(DynamicsDataset):
                 f"No valid rollout windows for history_len={self.history_len}, "
                 f"rollout_steps={self.rollout_steps}; each episode must contain enough samples."
             )
-        return np.concatenate(starts_by_run)
+        indices = np.concatenate(starts_by_run)
+        current = indices if self.model_type == "mlp" else indices + self.history_len - 1
+        valid = self.valid_target.cpu().numpy()
+        keep = np.asarray([np.all(valid[index : index + self.rollout_steps]) for index in current], dtype=bool)
+        return indices[keep]
 
     def __len__(self) -> int:
         if self.sequence_indices is None:
@@ -210,6 +231,9 @@ def load_npz_dataset(
     if missing:
         raise KeyError(f"Dataset file {data_path} is missing arrays: {sorted(missing)}")
     episode_ids = data["episode_ids"] if "episode_ids" in data.files else None
+    split_group_ids = data["split_group_ids"] if "split_group_ids" in data.files else None
+    source_ids = data["source_ids"] if "source_ids" in data.files else None
+    valid_target = data["valid_target"] if "valid_target" in data.files else None
     return DynamicsDataset(
         data["states"],
         data["actions"],
@@ -217,6 +241,9 @@ def load_npz_dataset(
         model_type,
         history_len,
         episode_ids,
+        split_group_ids,
+        source_ids,
+        valid_target,
         target_mode=target_mode,
     )
 
@@ -237,6 +264,9 @@ def load_rollout_npz_dataset(
     if missing:
         raise KeyError(f"Dataset file {data_path} is missing arrays: {sorted(missing)}")
     episode_ids = data["episode_ids"] if "episode_ids" in data.files else None
+    split_group_ids = data["split_group_ids"] if "split_group_ids" in data.files else None
+    source_ids = data["source_ids"] if "source_ids" in data.files else None
+    valid_target = data["valid_target"] if "valid_target" in data.files else None
     return RolloutDynamicsDataset(
         data["states"],
         data["actions"],
@@ -244,6 +274,9 @@ def load_rollout_npz_dataset(
         model_type,
         history_len,
         episode_ids,
+        split_group_ids,
+        source_ids,
+        valid_target,
         target_mode=target_mode,
         rollout_steps=rollout_steps,
     )
@@ -287,28 +320,33 @@ def split_dataset(
         run_starts = np.concatenate(([0], boundaries))
         run_ends = np.concatenate((boundaries, [len(episode_ids)]))
         run_episode_ids = episode_ids[run_starts]
-        if len(run_episode_ids) < 2:
+        group_ids = (
+            run_episode_ids
+            if dataset.split_group_ids is None
+            else dataset.split_group_ids.cpu().numpy()[run_starts]
+        )
+        if len(np.unique(group_ids)) < 2:
             return None
 
         rng = np.random.default_rng(seed)
-        shuffled = np.unique(run_episode_ids)
+        shuffled = np.unique(group_ids)
         rng.shuffle(shuffled)
         val_episode_count = min(len(shuffled) - 1, max(1, int(len(shuffled) * val_fraction)))
         val_episodes = set(int(episode_id) for episode_id in shuffled[:val_episode_count])
         sequence_indices = dataset.sequence_indices
         train_parts: list[np.ndarray] = []
         val_parts: list[np.ndarray] = []
-        runs = zip(run_starts, run_ends, run_episode_ids)
+        runs = zip(run_starts, run_ends, group_ids)
         if show_progress:
             runs = tqdm(list(runs), desc="split episodes", unit="episode")
-        for run_start, run_end, episode_id in runs:
+        for run_start, run_end, group_id in runs:
             sample_start = int(np.searchsorted(sequence_indices, run_start, side="left"))
             sample_end = int(np.searchsorted(sequence_indices, run_end, side="left"))
             if sample_start >= sample_end:
                 continue
-            stride = val_sample_stride if int(episode_id) in val_episodes else train_sample_stride
+            stride = val_sample_stride if int(group_id) in val_episodes else train_sample_stride
             indices = np.arange(sample_start, sample_end, stride, dtype=np.int64)
-            if int(episode_id) in val_episodes:
+            if int(group_id) in val_episodes:
                 val_parts.append(indices)
             else:
                 train_parts.append(indices)

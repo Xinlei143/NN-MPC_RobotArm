@@ -150,6 +150,13 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "actual_update_rate_hz": planner_rate,
         "late_drop_count": planner_late_drop_count,
         "late_drop_rate": float(planner_late_drop_count / planner_solve_count) if planner_solve_count else float("nan"),
+        "dynamics_backend": str(np.asarray(arrays.get("dynamics_backend", "not_applicable")).reshape(-1)[0]),
+        "oracle_fixed_logical_delay": bool(
+            np.asarray(arrays.get("oracle_fixed_logical_delay", False)).reshape(-1)[0]
+        ),
+        "oracle_wall_time_deadline_miss_count": int(
+            np.asarray(arrays.get("oracle_wall_time_deadline_miss_count", 0)).reshape(-1)[0]
+        ),
         "end_to_end_latency_s": _finite_stats(np.asarray(arrays.get("planner_end_to_end_latency_s", np.empty(0)))),
         "packet_publish_deadline_s": float(np.asarray(arrays.get("packet_publish_deadline_s", np.nan)).reshape(-1)[0]),
     }
@@ -170,6 +177,10 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "replanning": replanning,
         "planner": planner,
         "cem_sampling": {
+            "num_samples": int(np.asarray(arrays.get("cem_num_samples", 0)).reshape(-1)[0]),
+            "iterations": int(np.asarray(arrays.get("cem_iters", 0)).reshape(-1)[0]),
+            "horizon": int(np.asarray(arrays.get("cem_horizon", 0)).reshape(-1)[0]),
+            "seed": int(np.asarray(arrays.get("cem_seed", 0)).reshape(-1)[0]),
             "reset_std_each_step": bool(np.asarray(arrays.get("cem_reset_std_each_step", False)).reshape(-1)[0]),
             "uniform_sample_ratio": float(np.asarray(arrays.get("cem_uniform_sample_ratio", 0.0)).reshape(-1)[0]),
             "uniform_sample_count": int(np.asarray(arrays.get("cem_uniform_sample_count", 0)).reshape(-1)[0]),

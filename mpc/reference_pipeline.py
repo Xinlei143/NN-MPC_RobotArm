@@ -53,6 +53,8 @@ class ReferenceConfig:
     return_duration: float = 2.0
     joint_return_duration: float = 2.0
     final_hold_duration: float = 0.5
+    collection_only: bool = False
+    shape_end_hold_duration: float = 0.2
 
     center_mode: str = "relative"
     center_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -114,6 +116,8 @@ class ReferenceConfig:
             raise ValueError("safe_search_samples must be positive")
         if self.safe_joint_limit_margin < 0.0:
             raise ValueError("safe_joint_limit_margin must be non-negative")
+        if self.shape_end_hold_duration <= 0.0:
+            raise ValueError("shape_end_hold_duration must be positive")
         if self.singularity_reject < 0.0 or self.singularity_warning < self.singularity_reject:
             raise ValueError("singularity thresholds must satisfy 0 <= reject <= warning")
         if self.max_joint_jump <= 0.0:
@@ -421,6 +425,7 @@ def build_reference(
     initial_q: np.ndarray,
     control_dt: float,
     horizon: int,
+    lookahead_steps: int = 0,
 ) -> ReferenceBundle:
     """Generate, solve, validate, and pad an offline task-space reference.
 
@@ -430,7 +435,7 @@ def build_reference(
     rather than accidentally mixing task references with a different reset pose.
     """
 
-    if horizon < 0:
+    if horizon < 0 or lookahead_steps < 0:
         raise ValueError(f"horizon must be non-negative, got {horizon}")
     if control_dt <= 0.0:
         raise ValueError(f"control_dt must be positive, got {control_dt}")
@@ -465,6 +470,7 @@ def build_reference(
         figure8_axis_a=config.figure8_axis_a,
         figure8_axis_b=config.figure8_axis_b,
         square_half_side=config.square_half_side,
+        include_return=not config.collection_only,
     )
 
     solver = MujocoDLSIKSolver(
@@ -491,7 +497,7 @@ def build_reference(
     task_q = np.asarray(ik_result.q_des, dtype=np.float64)
     return_difference = wrap_to_pi(task_q[-1] - departure_q)
     return_error = float(np.max(np.abs(return_difference)))
-    if return_error > config.small_return_tolerance:
+    if not config.collection_only and return_error > config.small_return_tolerance:
         raise RuntimeError(
             "Task-space return converged to a different IK branch: "
             f"max wrapped joint difference={return_error:.6g} rad exceeds "
@@ -516,13 +522,13 @@ def build_reference(
     # The fixed task return should arrive very close to departure_q.  The joint
     # return starts from the actual final IK solution so there is never a hidden
     # discontinuity before returning exactly to the zero configuration.
-    if uses_safe_departure or return_error > config.final_return_tolerance:
+    if not config.collection_only and (uses_safe_departure or return_error > config.final_return_tolerance):
         joint_return = _joint_quintic_segment(task_q[-1], q0, config.joint_return_duration, control_dt)
         q_parts.append(joint_return)
         segment_parts.append(np.full(joint_return.shape[0], SEGMENT_JOINT_RETURN, dtype=np.int64))
         lap_parts.append(np.full(joint_return.shape[0], -1, dtype=np.int64))
 
-    final_hold = _joint_hold(q0, config.final_hold_duration, control_dt)
+    final_hold = _joint_hold(task_q[-1] if config.collection_only else q0, config.shape_end_hold_duration if config.collection_only else config.final_hold_duration, control_dt)
     q_parts.append(final_hold)
     segment_parts.append(np.full(final_hold.shape[0], SEGMENT_FINAL_HOLD, dtype=np.int64))
     lap_parts.append(np.full(final_hold.shape[0], -1, dtype=np.int64))
@@ -531,7 +537,8 @@ def build_reference(
     segment_execution = _combine_parts(segment_parts).astype(np.int64)
     lap_execution = _combine_parts(lap_parts).astype(np.int64)
     execution_steps = int(q_execution.shape[0])
-    padding = np.repeat(q0[None, :], int(horizon) + 1, axis=0)
+    padding_anchor = task_q[-1] if config.collection_only else q0
+    padding = np.repeat(padding_anchor[None, :], int(horizon) + int(lookahead_steps) + 1, axis=0)
     q_des = np.concatenate([q_execution, padding], axis=0)
     segment_ids = np.concatenate(
         [segment_execution, np.full(padding.shape[0], SEGMENT_HORIZON_PADDING, dtype=np.int64)]
@@ -566,6 +573,8 @@ def build_reference(
         "shape_name": config.shape_name.lower(),
         "control_dt": float(control_dt),
         "horizon_padding_steps": int(padding.shape[0]),
+        "lookahead_steps": int(lookahead_steps),
+        "collection_only": bool(config.collection_only),
         "uses_safe_departure": bool(uses_safe_departure),
         "initial_q": q0.tolist(),
         "departure_q": departure_q.tolist(),
@@ -706,18 +715,18 @@ def validate_reference_bundle(
 
     final_q_error = float(np.max(np.abs(wrap_to_pi(q[bundle.execution_steps - 1] - np.zeros(bundle.n_joints)))))
     final_dq_error = float(np.max(np.abs(bundle.dq_des[bundle.execution_steps - 1])))
-    if final_q_error > config.final_return_tolerance:
+    if not config.collection_only and final_q_error > config.final_return_tolerance:
         raise RuntimeError(
             "Reference does not return to zero joint pose: "
             f"max wrapped error={final_q_error:.6g} rad"
         )
-    if final_dq_error > config.final_return_tolerance:
+    if not config.collection_only and final_dq_error > config.final_return_tolerance:
         raise RuntimeError(
             "Reference does not settle at zero joint velocity: "
             f"max error={final_dq_error:.6g} rad/s"
         )
-    if not np.allclose(q[bundle.execution_steps :], 0.0, atol=config.final_return_tolerance):
-        raise RuntimeError("Horizon padding must be an exact zero joint reference")
+    if not np.allclose(q[bundle.execution_steps :], q[bundle.execution_steps - 1], atol=config.final_return_tolerance):
+        raise RuntimeError("Horizon padding must be an exact terminal joint reference")
 
     lap_closure: list[dict[str, float | int]] = []
     if bundle.task_positions_des is not None:

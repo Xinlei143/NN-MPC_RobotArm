@@ -7,8 +7,8 @@ import unittest
 import numpy as np
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("test_evaluate_model_abc", ROOT / "scripts" / "evaluate_model_abc.py")
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("test_model_c_evaluate", ROOT / "scripts" / "model_c" / "evaluate.py")
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

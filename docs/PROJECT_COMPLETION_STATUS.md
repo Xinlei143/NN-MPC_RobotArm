@@ -537,7 +537,7 @@ cost =
 
 ## 19. Model A/B/C 对比脚本
 
-脚本 `scripts/evaluate_model_abc.py` 已经完成多个 checkpoint 在统一 MPC 设置下的比较框架。
+脚本 `scripts/model_c/evaluate.py` 已经完成多个 checkpoint 在统一 MPC 设置下的比较框架。
 
 已完成能力包括：
 
