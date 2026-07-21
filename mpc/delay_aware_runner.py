@@ -17,6 +17,7 @@ from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction
 from mpc.history import commit_command_and_append_placeholder, future_history_tokens
+from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 
 
@@ -25,16 +26,34 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("virtual delay-aware modes require --controller_mode mpc --mpc_policy residual")
     if args.visualize:
         raise ValueError("--visualize is not supported by virtual delay-aware modes")
+    dynamics_backend = getattr(args, "dynamics_backend", "learned")
+    if dynamics_backend not in {"learned", "mujoco_oracle"}:
+        raise ValueError(f"Unsupported dynamics backend: {dynamics_backend!r}")
+    if dynamics_backend == "mujoco_oracle" and args.multirate_mode != "virtual_asap":
+        raise ValueError("mujoco_oracle only supports deterministic virtual_asap")
     delay = args.anticipation_delay_steps or args.replan_interval_steps
     if delay <= 0:
         raise ValueError("anticipation_delay_steps must be positive")
     device = api["resolve_device"](args.device)
     api["set_seed"](args.seed)
-    bundle = api["load_dynamics_bundle"](
-        checkpoint_path=api["resolve_runtime_path"](args.checkpoint), normalizer_path=api["resolve_runtime_path"](args.normalizer),
-        model_type=args.model_type, n_joints=args.n_joints, device=device, history_len=args.history_len,
-    )
+    bundle = None
+    if dynamics_backend == "learned":
+        if not args.checkpoint or not args.normalizer:
+            raise ValueError("--checkpoint and --normalizer are required for learned dynamics")
+        bundle = api["load_dynamics_bundle"](
+            checkpoint_path=api["resolve_runtime_path"](args.checkpoint), normalizer_path=api["resolve_runtime_path"](args.normalizer),
+            model_type=args.model_type, n_joints=args.n_joints, device=device, history_len=args.history_len,
+        )
     env = api["MuJoCoArmEnv"](str(api["resolve_runtime_path"](args.model_xml)), n_joints=args.n_joints, seed=args.seed)
+    oracle_env = (
+        api["MuJoCoArmEnv"](str(api["resolve_runtime_path"](args.model_xml)), n_joints=args.n_joints, seed=args.seed)
+        if dynamics_backend == "mujoco_oracle"
+        else None
+    )
+    control_dt = env.control_dt if bundle is None else bundle.control_dt
+    activation_observer = getattr(args, "activation_observer", None)
+    if activation_observer is not None and bundle is None:
+        raise ValueError("activation_observer data collection requires learned dynamics, not mujoco_oracle")
     stack = api["_stack_records"]
     try:
         state = env.reset_to_configuration(api["MPC_HOME_Q"][: args.n_joints])
@@ -44,7 +63,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             state = env.step(previous_command)
         states_history, command_history = [state.copy()], [previous_command.copy()]
         reference, dq_reference, ddq_reference, execution_steps, task_reference = api["_reference_for_run"](
-            args=args, state=state, env=env, control_dt=bundle.control_dt
+            args=args, state=state, env=env, control_dt=control_dt
         )
         if args.max_execution_steps is not None:
             execution_steps = min(execution_steps, args.max_execution_steps)
@@ -65,11 +84,11 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             w_terminal=args.w_terminal, w_joint_limit=args.w_joint_limit, w_dq_limit=args.w_dq_limit,
             q_tracking_scale=t(calibration["q_tracking_scale"]), dq_tracking_scale=t(calibration["dq_tracking_scale"]),
             residual_scale=t(0.5 * residual_max), servo_scale=t(parse(args.servo_scale, args.n_joints, "servo_scale")),
-            residual_velocity_scale=t(residual_max / bundle.control_dt), residual_acceleration_scale=t(residual_max / bundle.control_dt**2),
+            residual_velocity_scale=t(residual_max / control_dt), residual_acceleration_scale=t(residual_max / control_dt**2),
             qref_velocity_scale=t(physical_v), qref_acceleration_scale=t(physical_a), temporal_discount=args.temporal_discount,
             barrier_max_weight=args.barrier_max_weight, state_velocity_limit=t(parse(args.state_velocity_limit, args.n_joints, "state_velocity_limit")),
             joint_limit_safe_margin=args.joint_limit_safe_margin, joint_limit_temp=args.joint_limit_temp,
-            dq_limit_temp=args.dq_limit_temp, control_dt=bundle.control_dt, velocity_cost_mode=args.velocity_cost_mode,
+            dq_limit_temp=args.dq_limit_temp, control_dt=control_dt, velocity_cost_mode=args.velocity_cost_mode,
         )
         rollout = PlannerRolloutConfig(
             mpc_policy="residual", q_ref_velocity_limit=t(physical_v), q_ref_acceleration_limit=t(physical_a),
@@ -93,25 +112,57 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                     return nominal + active.residual_sequence[index]
             return nominal
 
-        def prediction_context(step: int) -> tuple[torch.Tensor, np.ndarray, np.ndarray, np.ndarray]:
-            history = api["build_history_tensor"](states_history, command_history, bundle.history_len, device)
+        def prediction_context(
+            step: int,
+        ) -> tuple[torch.Tensor | None, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
             actions = np.stack([active_action(step + i) for i in range(delay)]).astype(np.float32)
-            predicted = rollout_dynamics_batch(
-                model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type, initial_history=history,
-                future_q_ref=t(actions).unsqueeze(0), state_dim=bundle.state_dim, target_mode=bundle.target_mode,
-                control_dt=bundle.control_dt,
-            )[0].detach().cpu().numpy().astype(np.float32)
-            future_history = future_history_tokens(
-                states_history, command_history, predicted, actions, bundle.history_len
+            if bundle is not None:
+                history = api["build_history_tensor"](states_history, command_history, bundle.history_len, device)
+                predicted = rollout_dynamics_batch(
+                    model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type, initial_history=history,
+                    future_q_ref=t(actions).unsqueeze(0), state_dim=bundle.state_dim, target_mode=bundle.target_mode,
+                    control_dt=control_dt,
+                )[0].detach().cpu().numpy().astype(np.float32)
+                future_history = future_history_tokens(
+                    states_history, command_history, predicted, actions, bundle.history_len
+                )
+                anchor_snapshot = None
+            else:
+                if oracle_env is None:
+                    raise RuntimeError("MuJoCo oracle environment was not initialized")
+                oracle_env.restore_full_state(env.capture_full_state())
+                predicted = np.stack([oracle_env.step(action) for action in actions]).astype(np.float32)
+                future_history = None
+                anchor_snapshot = oracle_env.capture_full_state()
+            velocity = previous_velocity if delay == 1 else (actions[-1] - actions[-2]) / control_dt
+            return (
+                None if future_history is None else t(future_history),
+                predicted[-1],
+                actions[-1],
+                velocity.astype(np.float32),
+                anchor_snapshot,
             )
-            velocity = previous_velocity if delay == 1 else (actions[-1] - actions[-2]) / bundle.control_dt
-            return t(future_history), predicted[-1], actions[-1], velocity.astype(np.float32)
 
         for step in range(execution_steps):
             started = api["time"].perf_counter()
             event = ""
             if step in pending:
                 active = pending.pop(step); event = "packet_activated"
+                if activation_observer is not None:
+                    activation_observer(
+                        step=step,
+                        env=env,
+                        state=state.copy(),
+                        previous_command=previous_command.copy(),
+                        previous_velocity=previous_velocity.copy(),
+                        states_history=np.asarray(states_history, dtype=np.float32),
+                        command_history=np.asarray(command_history, dtype=np.float32),
+                        dynamics_bundle=bundle,
+                        packet=active,
+                        q_des_sequence=reference[step + 1 : step + 1 + args.horizon].copy(),
+                        dq_des_sequence=dq_reference[step + 1 : step + 1 + args.horizon].copy(),
+                        cost_config=cost,
+                    )
             nominal = np.asarray(reference[step + 1], dtype=np.float32)
             age = -1
             plan_residual = np.zeros(args.n_joints, dtype=np.float32)
@@ -129,25 +180,37 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             proposed = np.clip(plan_residual + feedback, -residual_max - feedback_max, residual_max + feedback_max)
             command_t, correction_t = corrected_direct_ik_command(
                 t(nominal), t(proposed), t(previous_command), t(previous_velocity), joint_low, joint_high,
-                args.joint_limit_margin, t(physical_v), t(physical_a), bundle.control_dt,
+                args.joint_limit_margin, t(physical_v), t(physical_a), control_dt,
             )
             command, executed = command_t.detach().cpu().numpy().astype(np.float32), correction_t.detach().cpu().numpy().astype(np.float32)
             planning_time = float("nan"); replanned = 0; failure = 0
             best = mean = baseline = selected = elite = float("nan")
             selection = "direct_ik_nominal" if age < 0 else "delayed_packet_feedback"
             if step % args.replan_interval_steps == 0 and step + delay + args.horizon < reference.shape[0]:
-                future_history, anchor_state, anchor_command, anchor_velocity = prediction_context(step)
+                future_history, anchor_state, anchor_command, anchor_velocity, anchor_snapshot = prediction_context(step)
                 anchor = step + delay
                 future_q = t(reference[anchor + 1 : anchor + 1 + args.horizon])
-                planner = LearnedDynamicsPlanner(
-                    model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type, state_dim=bundle.state_dim,
-                    target_mode=bundle.target_mode, control_dt=bundle.control_dt, initial_history=future_history, q_des=future_q,
-                    dq_des=t(dq_reference[anchor + 1 : anchor + 1 + args.horizon]), nominal_q_ref=future_q,
-                    previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
+                common_planner_args = dict(
+                    q_des=future_q, dq_des=t(dq_reference[anchor + 1 : anchor + 1 + args.horizon]),
+                    nominal_q_ref=future_q, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
                     previous_residual=torch.zeros(args.n_joints, dtype=torch.float32, device=device),
                     previous_residual_velocity=torch.zeros(args.n_joints, dtype=torch.float32, device=device),
                     joint_low=joint_low, joint_high=joint_high, cost_config=cost, rollout_config=rollout,
                 )
+                if bundle is not None:
+                    if future_history is None:
+                        raise RuntimeError("Learned dynamics prediction context is missing history")
+                    planner = LearnedDynamicsPlanner(
+                        model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type,
+                        state_dim=bundle.state_dim, target_mode=bundle.target_mode, control_dt=control_dt,
+                        initial_history=future_history, **common_planner_args,
+                    )
+                else:
+                    if oracle_env is None or anchor_snapshot is None:
+                        raise RuntimeError("MuJoCo oracle prediction context is missing its anchor snapshot")
+                    planner = MuJoCoOraclePlanner(
+                        env=oracle_env, anchor_snapshot=anchor_snapshot, **common_planner_args
+                    )
                 if controller is None:
                     controller = CEMMPCController(CEMMPCConfig(
                         horizon=args.horizon, action_dim=args.n_joints, num_samples=args.num_samples, num_elites=args.num_elites,
@@ -155,10 +218,11 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                         smoothing_alpha=args.smoothing_alpha, temporal_noise_alpha=args.temporal_noise_alpha,
                         reset_std_each_step=args.reset_std_each_step, uniform_sample_ratio=args.uniform_sample_ratio,
                         force_baseline_candidate=True, execute=args.cem_execute, seed=args.seed, device=str(device),
+                        alternative_distance_scale=residual_max,
                     ), planner, env.joint_low, env.joint_high)
                     # CUDA's first rollout is a runtime initialisation artefact,
                     # not a representative asynchronous-plan delay.
-                    if args.mpc_warmup_plans:
+                    if args.mpc_warmup_plans and bundle is not None:
                         generator_state = controller.generator.get_state()
                         for _ in range(args.mpc_warmup_plans):
                             controller.plan(anchor_state, anchor_command)
@@ -171,13 +235,22 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 best, mean, baseline, selected, elite, selection = result.best_cost, result.mean_cost, result.baseline_cost, result.selected_cost, result.elite_mean_cost, result.selection_mode
                 if result.failure:
                     event = "planner_failure"
-                elif planning_time > delay * bundle.control_dt:
+                elif planning_time > delay * control_dt and dynamics_backend == "learned":
                     event = "late_plan_dropped"
                 else:
-                    pending[anchor] = DelayedPlanPacket(step, anchor, result.selected_residual_sequence.copy(), result.selected_predicted_state_sequence.copy(), planning_time, args.multirate_mode)
-                    event = (event + ";" if event else "") + "packet_scheduled"
+                    pending[anchor] = DelayedPlanPacket(
+                        step, anchor, result.selected_residual_sequence.copy(),
+                        result.selected_predicted_state_sequence.copy(), planning_time, args.multirate_mode,
+                        result.branch_candidates,
+                    )
+                    schedule_event = (
+                        "oracle_overrun_scheduled"
+                        if dynamics_backend == "mujoco_oracle" and planning_time > delay * control_dt
+                        else "packet_scheduled"
+                    )
+                    event = (event + ";" if event else "") + schedule_event
             delta = command - previous_command
-            velocity, acceleration = delta / bundle.control_dt, (delta / bundle.control_dt - previous_velocity) / bundle.control_dt
+            velocity, acceleration = delta / control_dt, (delta / control_dt - previous_velocity) / control_dt
             torque = env.compute_torque_components(command)
             rec["actual_states"].append(state.copy()); rec["q_des"].append(reference[step].copy()); rec["dq_des"].append(dq_reference[step].copy())
             if task_reference is not None:
@@ -187,7 +260,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 rec["ee_position_errors"].append(float(np.linalg.norm(ap - dp))); rec["ee_orientation_errors"].append(api["_orientation_error"](dr, ar)); rec["segment_ids"].append(int(task_reference.segment_ids[step])); rec["lap_ids"].append(int(task_reference.lap_ids[step]))
             state = env.step(command)
             rec["next_states"].append(state.copy()); rec["actuator_q_ref"].append(command); rec["delta_q_ref"].append(delta); rec["command_velocity"].append(velocity); rec["command_acceleration"].append(acceleration)
-            rec["planning_time"].append(0.0 if not np.isfinite(planning_time) else planning_time); rec["replan_time"].append(planning_time); rec["mpc_replanned"].append(replanned); rec["replan_deadline_miss"].append(int(np.isfinite(planning_time) and planning_time > args.replan_interval_steps * bundle.control_dt)); rec["control_step_wall_time"].append(api["time"].perf_counter() - started)
+            rec["planning_time"].append(0.0 if not np.isfinite(planning_time) else planning_time); rec["replan_time"].append(planning_time); rec["mpc_replanned"].append(replanned); rec["replan_deadline_miss"].append(int(np.isfinite(planning_time) and planning_time > delay * control_dt)); rec["control_step_wall_time"].append(api["time"].perf_counter() - started)
             rec["buffer_index"].append(age); rec["buffer_length"].append(args.horizon if active is not None else 0); rec["best_cost"].append(best); rec["mean_cost"].append(mean); rec["baseline_cost"].append(baseline); rec["selected_cost"].append(selected); rec["elite_mean_cost"].append(elite); rec["selection_mode"].append(selection); rec["failure_flags"].append(failure); rec["joint_limit_violation_flags"].append(0); rec["command_velocity_violation_flags"].append(int(np.any(np.abs(velocity) > physical_v + 1e-6))); rec["command_acceleration_violation_flags"].append(int(np.any(np.abs(acceleration) > physical_a + 1e-6)))
             rec["nominal_q_ref"].append(nominal); rec["buffered_residual"].append(plan_residual); rec["executed_residual"].append(executed); rec["feedback_correction"].append(feedback); rec["predicted_feedback_state"].append(predicted_feedback); rec["packet_age"].append(age); rec["packet_event"].append(event)
             for source, target in (("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"), ("total_tau", "tau_total")):
@@ -198,6 +271,8 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             commit_command_and_append_placeholder(states_history, command_history, command, state)
     finally:
         env.close()
+        if oracle_env is not None:
+            oracle_env.close()
     int_keys = {"mpc_replanned", "replan_deadline_miss", "buffer_index", "buffer_length", "failure_flags", "joint_limit_violation_flags", "command_velocity_violation_flags", "command_acceleration_violation_flags", "packet_age", "segment_ids", "lap_ids"}
     string_keys = {"selection_mode", "packet_event"}
     arrays = {
@@ -206,12 +281,25 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
     }
     arrays.update({
         "controller_mode": np.asarray("mpc"), "mpc_policy": np.asarray("residual"), "cost_profile": np.asarray(args.cost_profile),
-        "replan_interval_steps": np.asarray(args.replan_interval_steps, dtype=np.int64), "replan_deadline_s": np.asarray(args.replan_interval_steps * bundle.control_dt, dtype=np.float32),
+        "replan_interval_steps": np.asarray(args.replan_interval_steps, dtype=np.int64), "replan_deadline_s": np.asarray(delay * control_dt, dtype=np.float32),
         "multirate_mode": np.asarray(args.multirate_mode), "anticipation_delay_steps": np.asarray(delay, dtype=np.int64), "feedback_kq": np.asarray(args.feedback_kq, dtype=np.float32), "feedback_kdq": np.asarray(args.feedback_kdq, dtype=np.float32), "feedback_max": feedback_max, "residual_max": residual_max, "q_ref_velocity_limit": physical_v, "q_ref_acceleration_limit": physical_a,
+        "dynamics_backend": np.asarray(dynamics_backend), "oracle_fixed_logical_delay": np.asarray(dynamics_backend == "mujoco_oracle"),
+        "planner_solve_count": np.asarray(int(np.sum(np.asarray(rec["mpc_replanned"], dtype=np.int64))), dtype=np.int64),
+        "planner_late_drop_count": np.asarray(sum("late_plan_dropped" in str(value) for value in rec["packet_event"]), dtype=np.int64),
         "recovery_active_flags": np.zeros(len(rec["actuator_q_ref"]), dtype=np.int64), "recovery_trigger_reasons": np.asarray([""] * len(rec["actuator_q_ref"])),
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step), "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32), "cem_uniform_sample_count": np.asarray(int(round((args.num_samples - 2) * args.uniform_sample_ratio)), dtype=np.int64),
+        "cem_num_samples": np.asarray(args.num_samples, dtype=np.int64), "cem_iters": np.asarray(args.cem_iters, dtype=np.int64),
+        "cem_horizon": np.asarray(args.horizon, dtype=np.int64), "cem_seed": np.asarray(args.seed, dtype=np.int64),
         "ddq_des": stack([ddq_reference[i] for i in range(len(rec["q_des"]))]),
     })
+    arrays["oracle_wall_time_deadline_miss"] = (
+        arrays["replan_deadline_miss"].copy()
+        if dynamics_backend == "mujoco_oracle"
+        else np.zeros_like(arrays["replan_deadline_miss"])
+    )
+    arrays["oracle_wall_time_deadline_miss_count"] = np.asarray(
+        int(np.sum(arrays["oracle_wall_time_deadline_miss"])), dtype=np.int64
+    )
     if task_reference is not None:
         arrays["execution_steps"] = np.asarray(execution_steps, dtype=np.int64)
     return {"arrays": arrays, "rows": rows, "failure_reasons": []}

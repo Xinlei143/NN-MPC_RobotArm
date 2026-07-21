@@ -36,8 +36,30 @@ def generate_joint_reference(
         phase = rng.uniform(0.0, 2.0 * np.pi, size=n_joints)
         scale = amplitude * rng.uniform(0.5, 1.0, size=n_joints)
         q_des = initial_q[None, :] + scale[None, :] * np.sin(2.0 * np.pi * time * freq[None, :] + phase[None, :])
+    elif mode == "waypoint":
+        waypoint_count = 4
+        knots = np.vstack([
+            initial_q,
+            rng.uniform(initial_q - amplitude, initial_q + amplitude, size=(waypoint_count - 1, n_joints)),
+            initial_q,
+        ])
+        q_des = np.empty_like(q_des)
+        segment_edges = np.linspace(0, total_steps, len(knots), dtype=int)
+        for index in range(len(knots) - 1):
+            start, end = segment_edges[index], segment_edges[index + 1]
+            tau = np.linspace(0.0, 1.0, max(1, end - start), endpoint=False, dtype=np.float32)[:, None]
+            smooth = 10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5
+            q_des[start:end] = knots[index] + smooth * (knots[index + 1] - knots[index])
+    elif mode == "chirp":
+        duration = max(float(total_steps - 1) * float(control_dt), float(control_dt))
+        f0, f1 = 0.10, 0.80
+        phase = rng.uniform(0.0, 2.0 * np.pi, size=n_joints)
+        scale = amplitude * rng.uniform(0.4, 0.8, size=n_joints)
+        t = time[:, 0]
+        chirp_phase = 2.0 * np.pi * (f0 * t + 0.5 * (f1 - f0) * np.square(t) / duration)
+        q_des = initial_q[None, :] + scale[None, :] * np.sin(chirp_phase[:, None] + phase[None, :])
     else:
-        raise ValueError(f"Unknown reference mode {mode!r}; expected hold/step/joint_sine/multi_joint_sine")
+        raise ValueError(f"Unknown reference mode {mode!r}; expected hold/step/joint_sine/multi_joint_sine/waypoint/chirp")
 
     return np.clip(q_des, joint_low, joint_high).astype(np.float32)
 

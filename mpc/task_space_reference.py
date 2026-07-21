@@ -313,6 +313,7 @@ def generate_task_space_trajectory(
     figure8_axis_a: float = 0.035,
     figure8_axis_b: float = 0.02,
     square_half_side: float = 0.025,
+    include_return: bool = True,
 ) -> TaskSpaceTrajectory:
     """Build ``approach -> shape repeat_count times -> return`` TCP poses.
 
@@ -378,7 +379,7 @@ def generate_task_space_trajectory(
         figure8_axis_b=figure8_axis_b,
         square_half_side=square_half_side,
     )
-    task_return = _quintic_line(shape_start, start, return_samples)
+    task_return = _quintic_line(shape_start, start, return_samples) if include_return else np.empty((0, 3), dtype=np.float64)
 
     positions = np.concatenate([approach, loop, task_return], axis=0)
     segment_ids = np.concatenate(
@@ -408,6 +409,7 @@ def generate_task_space_trajectory(
         "approach_duration": float(approach_duration),
         "lap_duration": float(lap_duration),
         "return_duration": float(return_duration),
+        "include_return": bool(include_return),
         "circle_radius": float(circle_radius),
         "ellipse_axis_a": float(ellipse_axis_a),
         "ellipse_axis_b": float(ellipse_axis_b),

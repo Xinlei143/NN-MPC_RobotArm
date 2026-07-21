@@ -20,49 +20,9 @@
 /tests/__pycache__
 
 /outputs
+/Paper
 
-
-  python scripts/run_cem_budget_sweep.py \
-    --model_type gru \
-    --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_152930/best_model.pt \
-    --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_152930/normalizer.pt \
-    --horizon 20 \
-    --tasks circle,ellipse,figure8,square \
-    --seeds 0,1,2 \
-    --num_samples_values 128 \
-    --rollout_batch_size_values 128 \
-    --cem_iters_values 2,3 \
-    --baseline_config n128_b128_i3 \
-    --device cuda \
-    --output_dir outputs/mpc/cem_horizon_grid_gru/h20
-
-  python scripts/run_cem_budget_sweep.py \
-    --model_type gru \
-    --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_152930/best_model.pt \
-    --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_152930/normalizer.pt \
-    --horizon 25 \
-    --tasks circle,ellipse,figure8,square \
-    --seeds 0,1,2 \
-    --num_samples_values 128,64,32 \
-    --rollout_batch_size_values 128,64,32 \
-    --cem_iters_values 2,3 \
-    --baseline_config n128_b128_i3 \
-    --device cuda \
-    --output_dir outputs/mpc/cem_horizon_grid_gru/h25 \
-    --reference_root outputs/references_h30
-
-  python scripts/run_cem_budget_sweep.py \
-    --model_type gru \
-    --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_152930/best_model.pt \
-    --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_152930/normalizer.pt \
-    --horizon 30 \
-    --tasks circle,ellipse,figure8,square \
-    --seeds 0,1,2 \
-    --num_samples_values 128,64,32 \
-    --rollout_batch_size_values 128,64,32 \
-    --cem_iters_values 2 \
-    --baseline_config n128_b128_i2 \
-    --device cuda \
-    --output_dir outputs/mpc/cem_horizon_grid_gru/h30 \
-    --reference_root outputs/references_h30
+# Python bytecode and caches
+__pycache__/
+*.pyc
 

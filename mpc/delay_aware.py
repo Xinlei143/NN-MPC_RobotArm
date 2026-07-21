@@ -25,6 +25,7 @@ class DelayedPlanPacket:
     predicted_state_sequence: np.ndarray
     planning_time_s: float
     mode: str
+    branch_candidates: tuple[object, ...] = ()
 
     @property
     def horizon(self) -> int:

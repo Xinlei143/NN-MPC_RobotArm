@@ -748,7 +748,7 @@ tau_total
 ```bash
 cd /home/xinlei/Data/RL_Projects/NN-MPC_RobotArm
 
-python scripts/evaluate_model_abc.py \
+python scripts/model_c/evaluate.py \
   --model_spec A,dynamics_modeling/outputs/checkpoints_A/best_model.pt,dynamics_modeling/outputs/checkpoints_A/normalizer.pt,transformer,dynamics_modeling/outputs/datasets/model_a.npz \
   --model_spec B,dynamics_modeling/outputs/checkpoints_B/best_model.pt,dynamics_modeling/outputs/checkpoints_B/normalizer.pt,transformer,dynamics_modeling/outputs/datasets/model_b.npz \
   --model_spec C,dynamics_modeling/outputs/checkpoints_C/best_model.pt,dynamics_modeling/outputs/checkpoints_C/normalizer.pt,transformer,dynamics_modeling/outputs/datasets/model_c.npz \

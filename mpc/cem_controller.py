@@ -31,6 +31,19 @@ class CEMMPCConfig:
     seed: int = 0
     device: str = "cpu"
     execute: str = "lowest_cost"
+    alternative_distance_scale: np.ndarray | None = None
+
+
+@dataclass
+class CEMCandidate:
+    """One projected counterfactual plan retained for offline validation."""
+
+    role_mask: tuple[str, ...]
+    q_ref_sequence: np.ndarray
+    residual_sequence: np.ndarray
+    predicted_state_sequence: np.ndarray
+    predicted_cost: float
+    cost_terms: dict[str, float]
 
 
 @dataclass
@@ -54,6 +67,7 @@ class CEMMPCResult:
     selected_predicted_state_sequence: np.ndarray
     sampling_std_start_mean: float
     sampling_std_end_mean: float
+    branch_candidates: tuple[CEMCandidate, ...] = ()
 
 
 class CEMMPCController:
@@ -85,6 +99,13 @@ class CEMMPCController:
         self.std = self.initial_std.clone()
         self.joint_low = torch.as_tensor(joint_low, dtype=torch.float32, device=self.device)
         self.joint_high = torch.as_tensor(joint_high, dtype=torch.float32, device=self.device)
+        if config.alternative_distance_scale is None:
+            self.alternative_distance_scale = torch.ones(config.action_dim, dtype=torch.float32, device=self.device)
+        else:
+            scale = torch.as_tensor(config.alternative_distance_scale, dtype=torch.float32, device=self.device)
+            if scale.shape != (config.action_dim,) or not bool(torch.all(torch.isfinite(scale))) or bool(torch.any(scale <= 0)):
+                raise ValueError("alternative_distance_scale must contain one finite positive value per action dimension")
+            self.alternative_distance_scale = scale
 
     @property
     def num_elites(self) -> int:
@@ -256,6 +277,9 @@ class CEMMPCController:
         best_predicted_state_sequence: torch.Tensor | None = None
         best_cost = torch.as_tensor(float("inf"), device=self.device)
         elite_mean_cost = torch.as_tensor(float("inf"), device=self.device)
+        final_samples: torch.Tensor | None = None
+        final_evaluation: dict[str, torch.Tensor] | None = None
+        final_elite_indices: torch.Tensor | None = None
 
         try:
             for _ in range(self.config.cem_iters):
@@ -288,6 +312,9 @@ class CEMMPCController:
                 alpha = float(self.config.smoothing_alpha)
                 mean = alpha * mean + (1.0 - alpha) * new_mean
                 std = alpha * std + (1.0 - alpha) * new_std
+                final_samples = samples.detach().clone()
+                final_evaluation = evaluation
+                final_elite_indices = elite_indices.detach().clone()
         except RuntimeError as exc:
             return self._fallback(previous_q_ref, start_time, f"planner_runtime_error:{exc}")
 
@@ -330,6 +357,12 @@ class CEMMPCController:
                 if self.config.execute == "mean":
                     selection_mode = "best_fallback_invalid_mean"
 
+        baseline_evaluation = None
+        if self.config.force_baseline_candidate:
+            baseline_evaluation = self._evaluate_sequence(torch.zeros_like(mean))
+            if baseline_evaluation is not None:
+                baseline_cost = float(baseline_evaluation[0].detach().cpu())
+
         if self.config.execute == "lowest_cost":
             candidates: list[tuple[str, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor]] = [
                 (
@@ -349,31 +382,27 @@ class CEMMPCController:
                 candidates.append(
                     ("mean", mean, mean_cost_tensor, mean_q_ref_sequence, mean_residual_sequence, mean_cost_terms, mean_predicted_next_state, mean_predicted_state_sequence)
                 )
-            if self.config.force_baseline_candidate:
-                baseline = torch.zeros_like(mean)
-                baseline_evaluation = self._evaluate_sequence(baseline)
-                if baseline_evaluation is not None:
+            if baseline_evaluation is not None:
+                (
+                    baseline_cost_tensor,
+                    baseline_q_ref_sequence,
+                    baseline_residual_sequence,
+                    baseline_cost_terms,
+                    baseline_predicted_next_state,
+                    baseline_predicted_state_sequence,
+                ) = baseline_evaluation
+                candidates.append(
                     (
+                        "baseline",
+                        torch.zeros_like(mean),
                         baseline_cost_tensor,
                         baseline_q_ref_sequence,
                         baseline_residual_sequence,
                         baseline_cost_terms,
                         baseline_predicted_next_state,
                         baseline_predicted_state_sequence,
-                    ) = baseline_evaluation
-                    baseline_cost = float(baseline_cost_tensor.detach().cpu())
-                    candidates.append(
-                        (
-                            "baseline",
-                            baseline,
-                            baseline_cost_tensor,
-                            baseline_q_ref_sequence,
-                            baseline_residual_sequence,
-                            baseline_cost_terms,
-                            baseline_predicted_next_state,
-                            baseline_predicted_state_sequence,
-                        )
                     )
+                )
             # Equal costs should prefer the deterministic baseline, then mean,
             # over a sampled action.  This makes the direct nominal fallback
             # stable instead of depending on population ordering.
@@ -401,6 +430,57 @@ class CEMMPCController:
         selected_q_ref = selected_q_ref_sequence[0].detach().cpu().numpy().astype(np.float32)
         previous = np.asarray(previous_q_ref, dtype=np.float32)
         selected_delta = (selected_q_ref - previous).astype(np.float32)
+        candidate_specs: list[tuple[tuple[str, ...], torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float]]] = [
+            (
+                ("selected",),
+                selected_q_ref_sequence,
+                selected_residual_sequence,
+                selected_predicted_state_sequence,
+                selected_cost,
+                selected_cost_terms,
+            )
+        ]
+        if baseline_evaluation is not None:
+            baseline_cost_tensor, baseline_q_ref, baseline_residual, baseline_terms, _, baseline_predicted = baseline_evaluation
+            duplicate = torch.allclose(baseline_q_ref, selected_q_ref_sequence, atol=1e-6, rtol=0.0)
+            if duplicate:
+                candidate_specs[0] = (
+                    ("selected", "baseline"), selected_q_ref_sequence, selected_residual_sequence,
+                    selected_predicted_state_sequence, selected_cost, selected_cost_terms,
+                )
+            else:
+                candidate_specs.append((("baseline",), baseline_q_ref, baseline_residual, baseline_predicted, baseline_cost_tensor, baseline_terms))
+
+        if final_samples is not None and final_evaluation is not None and final_elite_indices is not None:
+            final_q = final_evaluation.get("q_ref_sequences")
+            final_residual = final_evaluation.get("residual_sequences")
+            final_predicted = final_evaluation.get("pred_states")
+            final_costs = final_evaluation.get("costs")
+            if all(isinstance(value, torch.Tensor) for value in (final_q, final_residual, final_predicted, final_costs)):
+                distances = torch.sqrt(torch.mean(torch.square((final_q[final_elite_indices] - selected_q_ref_sequence) / self.alternative_distance_scale), dim=(1, 2)))
+                valid_distinct = distances > 1e-6
+                if bool(torch.any(valid_distinct)):
+                    masked = torch.where(valid_distinct, distances, torch.full_like(distances, -1.0))
+                    alternative_index = final_elite_indices[torch.argmax(masked)]
+                    alternative_q = final_q[alternative_index]
+                    if not any(torch.allclose(alternative_q, spec[1], atol=1e-6, rtol=0.0) for spec in candidate_specs):
+                        alternative_terms, _ = self._diagnostics_from_evaluation(final_evaluation, int(alternative_index))
+                        candidate_specs.append((
+                            ("alternative_elite",), alternative_q, final_residual[alternative_index],
+                            final_predicted[alternative_index], final_costs[alternative_index], alternative_terms,
+                        ))
+
+        branch_candidates = tuple(
+            CEMCandidate(
+                role_mask=roles,
+                q_ref_sequence=q_ref.detach().cpu().numpy().astype(np.float32),
+                residual_sequence=residual.detach().cpu().numpy().astype(np.float32),
+                predicted_state_sequence=predicted.detach().cpu().numpy().astype(np.float32),
+                predicted_cost=float(cost.detach().cpu()),
+                cost_terms=terms,
+            )
+            for roles, q_ref, residual, predicted, cost, terms in candidate_specs
+        )
         return CEMMPCResult(
             q_ref=selected_q_ref,
             delta_q_ref=selected_delta,
@@ -421,4 +501,5 @@ class CEMMPCController:
             selected_predicted_state_sequence=selected_predicted_state_sequence.detach().cpu().numpy().astype(np.float32),
             sampling_std_start_mean=sampling_std_start_mean,
             sampling_std_end_mean=sampling_std_end_mean,
+            branch_candidates=branch_candidates,
         )

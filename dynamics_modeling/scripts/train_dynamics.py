@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +15,7 @@ if str(ROOT) not in sys.path:
 import torch
 import numpy as np
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from neural_dynamics.dataset import load_npz_dataset, load_rollout_npz_dataset, split_dataset
@@ -44,6 +47,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--resume_checkpoint", default=None, type=str)
     parser.add_argument("--init_from_checkpoint", default=None, type=str)
+    parser.add_argument("--normalizer_path", default=None, type=str)
+    parser.add_argument("--freeze_normalizer", action="store_true")
+    parser.add_argument("--source_weights", default=None, type=str, help="Comma-separated source_id:weight pairs, e.g. 0:0.5,1:0.5.")
+    parser.add_argument("--steps_per_epoch", default=None, type=int)
     parser.add_argument("--q_weight", default=1.0, type=float)
     parser.add_argument("--dq_weight", default=1.0, type=float)
     parser.add_argument("--q_extra_weights", default=None, type=str)
@@ -65,17 +72,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def validate_checkpoint_config(checkpoint: dict, expected: dict) -> None:
+def validate_checkpoint_config(checkpoint: dict, expected: dict, expected_state_dict: dict[str, torch.Tensor] | None = None) -> None:
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         raise ValueError("Checkpoint config must be a mapping")
-    for key in ("model_type", "history_len", "state_dim", "action_dim"):
+    for key in ("model_type", "history_len", "state_dim", "action_dim", "output_dim", "target_mode", "control_dt"):
         if key not in config:
-            continue
+            raise ValueError(f"Checkpoint config is missing required compatibility field {key!r}")
         if config[key] != expected[key]:
             raise ValueError(
                 f"Checkpoint {key}={config[key]!r} does not match current {key}={expected[key]!r}"
             )
+    if expected_state_dict is not None:
+        actual_state_dict = checkpoint.get("model_state_dict")
+        if not isinstance(actual_state_dict, dict):
+            raise ValueError("Checkpoint is missing model_state_dict")
+        expected_shapes = {name: tuple(value.shape) for name, value in expected_state_dict.items()}
+        actual_shapes = {name: tuple(value.shape) for name, value in actual_state_dict.items()}
+        if expected_shapes != actual_shapes:
+            raise ValueError("Checkpoint model structure/state-dict shapes do not match the current architecture")
 
 
 def checkpoint_metadata(
@@ -123,6 +138,75 @@ def parse_extra_weights(value: str | None, n_joints: int, name: str) -> torch.Te
     if any(weight < 0 for weight in weights):
         raise ValueError(f"{name} values must be non-negative, got {value!r}")
     return torch.tensor(weights, dtype=torch.float32)
+
+
+def parse_source_weights(value: str | None) -> dict[int, float] | None:
+    if value is None:
+        return None
+    result: dict[int, float] = {}
+    for item in value.split(","):
+        source, separator, weight = item.strip().partition(":")
+        if not separator:
+            raise ValueError("--source_weights must use source_id:weight pairs")
+        source_id, parsed_weight = int(source), float(weight)
+        if source_id < 0 or parsed_weight <= 0 or not np.isfinite(parsed_weight):
+            raise ValueError("source IDs must be non-negative and source weights finite positive values")
+        if source_id in result:
+            raise ValueError(f"Duplicate source ID in --source_weights: {source_id}")
+        result[source_id] = parsed_weight
+    total = sum(result.values())
+    return {source: weight / total for source, weight in result.items()}
+
+
+def build_source_sampler(
+    dataset: DynamicsDataset,
+    subset,
+    source_weights: dict[int, float] | None,
+    steps_per_epoch: int | None,
+    batch_size: int,
+) -> tuple[WeightedRandomSampler | None, dict[str, object]]:
+    if source_weights is None:
+        return None, {}
+    if dataset.source_ids is None or dataset.sequence_indices is None:
+        raise ValueError("--source_weights requires source_ids and sequence-aware dataset windows")
+    indices = np.asarray(subset.indices, dtype=np.int64)
+    starts = dataset.sequence_indices[indices]
+    current = starts if dataset.model_type == "mlp" else starts + dataset.history_len - 1
+    sources = dataset.source_ids.cpu().numpy()[current]
+    counts = {int(source): int(np.sum(sources == source)) for source in np.unique(sources)}
+    missing = set(source_weights).difference(counts)
+    if missing:
+        raise ValueError(f"Requested source IDs have no training windows: {sorted(missing)}")
+    sample_weights = np.empty(len(sources), dtype=np.float64)
+    for source_id, count in counts.items():
+        target = source_weights.get(source_id, 0.0)
+        sample_weights[sources == source_id] = 0.0 if target == 0.0 else target / count
+    total_samples = (
+        int(steps_per_epoch) * int(batch_size)
+        if steps_per_epoch is not None
+        else max(int(np.ceil(counts[source] / source_weights[source])) for source in source_weights)
+    )
+    if total_samples <= 0:
+        raise ValueError("--steps_per_epoch must be positive")
+    return WeightedRandomSampler(torch.as_tensor(sample_weights, dtype=torch.double), total_samples, replacement=True), {
+        "source_weights": source_weights,
+        "source_window_counts": counts,
+        "samples_per_epoch": total_samples,
+        "batches_per_epoch": int(np.ceil(total_samples / batch_size)),
+        "source_resampling_factor": {str(source): float(total_samples * source_weights[source] / counts[source]) for source in source_weights},
+    }
+
+
+def source_window_subsets(dataset: DynamicsDataset, subset) -> tuple[dict[int, np.ndarray], dict[int, int]]:
+    """Partition sequence windows by the source of their current target."""
+    if dataset.source_ids is None or dataset.sequence_indices is None:
+        return {}, {}
+    indices = np.asarray(subset.indices, dtype=np.int64)
+    starts = dataset.sequence_indices[indices]
+    current = starts if dataset.model_type == "mlp" else starts + dataset.history_len - 1
+    sources = dataset.source_ids.cpu().numpy()[current]
+    partitions = {int(source): indices[sources == source] for source in np.unique(sources)}
+    return partitions, {source: int(len(values)) for source, values in partitions.items()}
 
 
 def validate_q_ref_dataset(data_path: Path, model_type: str) -> None:
@@ -397,6 +481,8 @@ def main() -> None:
     args = parse_args()
     if args.resume_checkpoint and args.init_from_checkpoint:
         raise ValueError("--resume_checkpoint and --init_from_checkpoint cannot be used together")
+    if args.freeze_normalizer and not args.normalizer_path:
+        raise ValueError("--freeze_normalizer requires --normalizer_path")
     if args.model_type == "mlp":
         args.history_len = 1
     if args.history_len <= 0:
@@ -415,6 +501,8 @@ def main() -> None:
         raise ValueError(f"rollout_loss_discount must be positive, got {args.rollout_loss_discount}")
     if args.train_sample_stride <= 0:
         raise ValueError(f"train_sample_stride must be positive, got {args.train_sample_stride}")
+    if args.steps_per_epoch is not None and args.steps_per_epoch <= 0:
+        raise ValueError("--steps_per_epoch must be positive when provided")
     if args.val_sample_stride <= 0:
         raise ValueError(f"val_sample_stride must be positive, got {args.val_sample_stride}")
     if args.q_weight < 0 or args.dq_weight < 0:
@@ -440,6 +528,7 @@ def main() -> None:
         dataset = load_npz_dataset(Path(args.data_path), args.model_type, args.history_len, target_mode=args.target_mode)
     q_extra_weights = parse_extra_weights(args.q_extra_weights, dataset.state_dim // 2, "q_extra_weights")
     dq_extra_weights = parse_extra_weights(args.dq_extra_weights, dataset.state_dim // 2, "dq_extra_weights")
+    source_weights = parse_source_weights(args.source_weights)
     print(
         f"loaded dataset: samples={len(dataset)} state_dim={dataset.state_dim} "
         f"action_dim={dataset.action_dim} history_len={args.history_len}",
@@ -463,14 +552,20 @@ def main() -> None:
         flush=True,
     )
 
-    print("fitting normalizer", flush=True)
-    deltas = dataset.next_states - dataset.states
-    if args.target_mode == "delta_dq":
-        deltas = deltas[:, dataset.state_dim // 2 :]
-    normalizer = StandardNormalizer()
-    fit_normalizer_with_progress(normalizer, dataset.states, dataset.actions, deltas)
-    del deltas
-    print("normalizer ready", flush=True)
+    normalizer_source: Path | None = None
+    if args.freeze_normalizer:
+        normalizer_source = Path(args.normalizer_path).expanduser().resolve()
+        normalizer = StandardNormalizer.load(normalizer_source)
+        print(f"loaded frozen normalizer: {normalizer_source}", flush=True)
+    else:
+        print("fitting normalizer", flush=True)
+        deltas = dataset.next_states - dataset.states
+        if args.target_mode == "delta_dq":
+            deltas = deltas[:, dataset.state_dim // 2 :]
+        normalizer = StandardNormalizer()
+        fit_normalizer_with_progress(normalizer, dataset.states, dataset.actions, deltas)
+        del deltas
+        print("normalizer ready", flush=True)
 
     model = build_model(
         args.model_type,
@@ -505,6 +600,10 @@ def main() -> None:
         "rollout_loss_discount": args.rollout_loss_discount,
         "train_sample_stride": args.train_sample_stride,
         "val_sample_stride": args.val_sample_stride,
+        "normalizer_path": None if normalizer_source is None else str(normalizer_source),
+        "freeze_normalizer": bool(args.freeze_normalizer),
+        "source_weights": source_weights,
+        "steps_per_epoch": args.steps_per_epoch,
     }
 
     start_epoch = 1
@@ -513,7 +612,7 @@ def main() -> None:
 
     if args.resume_checkpoint:
         checkpoint = require_resume_checkpoint(load_checkpoint(Path(args.resume_checkpoint), map_location=device))
-        validate_checkpoint_config(checkpoint, config)
+        validate_checkpoint_config(checkpoint, config, model.state_dict())
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         for group in optimizer.param_groups:
@@ -527,7 +626,7 @@ def main() -> None:
     else:
         if args.init_from_checkpoint:
             checkpoint = load_checkpoint(Path(args.init_from_checkpoint), map_location=device)
-            validate_checkpoint_config(checkpoint, config)
+            validate_checkpoint_config(checkpoint, config, model.state_dict())
             model.load_state_dict(checkpoint["model_state_dict"])
         run_name = f"{args.model_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         save_dir = Path(args.save_dir) / run_name
@@ -538,10 +637,21 @@ def main() -> None:
             f"but --epochs={args.epochs}. Increase --epochs to continue training."
         )
 
+    train_sampler, sampler_metadata = build_source_sampler(
+        dataset, train_set, source_weights, args.steps_per_epoch, args.batch_size
+    )
+    if sampler_metadata:
+        config["sampler"] = sampler_metadata
+        print(f"source sampler: {sampler_metadata}", flush=True)
+    validation_source_indices, validation_source_counts = source_window_subsets(dataset, val_set)
+    if validation_source_counts:
+        config["validation_source_window_counts"] = validation_source_counts
+        print(f"validation source windows: {validation_source_counts}", flush=True)
     train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=args.num_workers,
         pin_memory=args.pin_memory and device.type == "cuda",
     )
@@ -555,7 +665,18 @@ def main() -> None:
 
     save_dir.mkdir(parents=True, exist_ok=True)
     save_yaml(save_dir / "config.yaml", config)
-    normalizer.save(save_dir / "normalizer.pt")
+    normalizer_output = save_dir / "normalizer.pt"
+    if normalizer_source is None:
+        normalizer.save(normalizer_output)
+    else:
+        shutil.copyfile(normalizer_source, normalizer_output)
+        digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest(normalizer_source) != digest(normalizer_output):
+            raise RuntimeError("Frozen normalizer copy hash mismatch")
+        normalizer_provenance = {"source_normalizer_sha256": digest(normalizer_source), "output_normalizer_sha256": digest(normalizer_output)}
+        save_yaml(save_dir / "normalizer_provenance.yaml", normalizer_provenance)
+
+    validation_source_path = save_dir / "validation_by_source.jsonl"
 
     for epoch in range(start_epoch, args.epochs + 1):
         train_loss, train_rmse, train_rollout_loss = run_epoch(
@@ -597,6 +718,25 @@ def main() -> None:
             rollout_loss_weight=args.rollout_loss_weight,
             rollout_loss_discount=args.rollout_loss_discount,
         )
+        per_source_validation: dict[str, dict[str, float | int]] = {}
+        for source_id, source_indices in validation_source_indices.items():
+            source_loader = DataLoader(
+                torch.utils.data.Subset(dataset, source_indices.tolist()), batch_size=args.batch_size, shuffle=False,
+                num_workers=args.num_workers, pin_memory=args.pin_memory and device.type == "cuda",
+            )
+            source_loss, _, source_rollout_loss = run_epoch(
+                model, source_loader, normalizer, dataset.state_dim, args.model_type, device,
+                q_weight=args.q_weight, dq_weight=args.dq_weight, q_extra_weights=q_extra_weights,
+                dq_extra_weights=dq_extra_weights, target_mode=args.target_mode, control_dt=args.control_dt,
+                loss_type=args.loss_type, huber_delta=args.huber_delta, rollout_loss_weight=args.rollout_loss_weight,
+                rollout_loss_discount=args.rollout_loss_discount,
+            )
+            per_source_validation[str(source_id)] = {
+                "loss": source_loss, "rollout_loss": source_rollout_loss, "windows": int(len(source_indices)),
+            }
+        if per_source_validation:
+            with validation_source_path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps({"epoch": epoch, "sources": per_source_validation}, sort_keys=True) + "\n")
         is_best = val_loss < best_val
         is_best_rollout = bool(use_rollout_loss and val_rollout_loss < best_rollout)
         if is_best:

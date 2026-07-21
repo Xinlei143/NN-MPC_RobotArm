@@ -126,13 +126,33 @@ class MuJoCoArmEnv:
             return state
 
         noise = self._observation_rng.normal(
-          loc=0.0,
-          scale=self.observation_noise_std,
-          size=state.shape,
-         )
+            loc=0.0,
+            scale=self.observation_noise_std,
+            size=state.shape,
+        )
 
         return (state.astype(np.float64) + noise).astype(np.float32)
-    
+
+    @property
+    def full_state_spec(self) -> int:
+        """MuJoCo state fields needed to reproduce a counterfactual branch."""
+        return int(mujoco.mjtState.mjSTATE_FULLPHYSICS) | int(mujoco.mjtState.mjSTATE_CTRL)
+
+    def capture_full_state(self) -> np.ndarray:
+        spec = self.full_state_spec
+        snapshot = np.empty(mujoco.mj_stateSize(self.model, spec), dtype=np.float64)
+        mujoco.mj_getState(self.model, self.data, snapshot, spec)
+        return snapshot
+
+    def restore_full_state(self, snapshot: np.ndarray) -> None:
+        spec = self.full_state_spec
+        values = np.asarray(snapshot, dtype=np.float64)
+        expected = mujoco.mj_stateSize(self.model, spec)
+        if values.shape != (expected,):
+            raise ValueError(f"Full MuJoCo state must have shape ({expected},), got {values.shape}")
+        mujoco.mj_setState(self.model, self.data, values, spec)
+        mujoco.mj_forward(self.model, self.data)
+
     def validate_joint_positions(self, context: str = "step") -> None:
         qpos = np.asarray(self.data.qpos[: self.n_joints], dtype=np.float64)
         low = np.asarray(self.joint_low, dtype=np.float64) - self._JOINT_LIMIT_TOLERANCE
