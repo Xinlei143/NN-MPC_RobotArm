@@ -19,6 +19,7 @@ from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feed
 from mpc.history import commit_command_and_append_placeholder, future_history_tokens
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.uncertainty import DynamicsEnsemble, selected_branch_sequences
 
 
 def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
@@ -43,6 +44,16 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         bundle = api["load_dynamics_bundle"](
             checkpoint_path=api["resolve_runtime_path"](args.checkpoint), normalizer_path=api["resolve_runtime_path"](args.normalizer),
             model_type=args.model_type, n_joints=args.n_joints, device=device, history_len=args.history_len,
+        )
+    ensemble = None
+    if args.uncertainty_mode == "ensemble_gate":
+        if bundle is None:
+            raise RuntimeError("ensemble uncertainty requires learned dynamics")
+        ensemble = DynamicsEnsemble.from_replica_paths(
+            bundle,
+            [api["resolve_runtime_path"](path) for path in args.uncertainty_checkpoints],
+            [api["resolve_runtime_path"](path) for path in args.uncertainty_normalizers],
+            device,
         )
     env = api["MuJoCoArmEnv"](str(api["resolve_runtime_path"](args.model_xml)), n_joints=args.n_joints, seed=args.seed)
     oracle_env = (
@@ -100,7 +111,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         active: DelayedPlanPacket | None = None
         pending: dict[int, DelayedPlanPacket] = {}
         rec: dict[str, list[Any]] = {key: [] for key in (
-            "actual_states next_states q_des dq_des actuator_q_ref delta_q_ref command_velocity command_acceleration planning_time replan_time mpc_replanned replan_deadline_miss control_step_wall_time buffer_index buffer_length best_cost mean_cost baseline_cost selected_cost elite_mean_cost selection_mode failure_flags joint_limit_violation_flags command_velocity_violation_flags command_acceleration_violation_flags realized_tracking_error nominal_q_ref buffered_residual executed_residual feedback_correction predicted_feedback_state packet_age packet_event tau_actuator tau_gravity tau_total desired_ee_positions desired_ee_rotations actual_ee_positions actual_ee_rotations ee_position_errors ee_orientation_errors segment_ids lap_ids".split()
+            "actual_states next_states q_des dq_des actuator_q_ref delta_q_ref command_velocity command_acceleration planning_time replan_time mpc_replanned replan_deadline_miss control_step_wall_time buffer_index buffer_length best_cost mean_cost baseline_cost selected_cost elite_mean_cost selection_mode failure_flags joint_limit_violation_flags command_velocity_violation_flags command_acceleration_violation_flags realized_tracking_error nominal_q_ref buffered_residual executed_residual feedback_correction predicted_feedback_state packet_age packet_event uncertainty_score uncertainty_max_score uncertainty_evaluation_time uncertainty_gate_flags tau_actuator tau_gravity tau_total desired_ee_positions desired_ee_rotations actual_ee_positions actual_ee_rotations ee_position_errors ee_orientation_errors segment_ids lap_ids".split()
         )}
         rows: list[dict[str, Any]] = []
 
@@ -167,6 +178,10 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             age = -1
             plan_residual = np.zeros(args.n_joints, dtype=np.float32)
             predicted_feedback = np.full(2 * args.n_joints, np.nan, dtype=np.float32)
+            active_uncertainty_gate = False
+            active_uncertainty_score = float("nan")
+            active_uncertainty_max_score = float("nan")
+            active_uncertainty_evaluation_time = 0.0
             if active is not None:
                 age = active.index_at(step)
                 if age is None:
@@ -174,7 +189,11 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 else:
                     plan_residual = active.residual_sequence[age].copy()
                     predicted_feedback = active.predicted_state_sequence[age].copy()
-            feedback = np.zeros(args.n_joints, dtype=np.float32) if age < 0 else feedback_correction(
+                    active_uncertainty_gate = bool(active.uncertainty_gate)
+                    active_uncertainty_score = float(active.uncertainty_score)
+                    active_uncertainty_max_score = float(active.uncertainty_max_score)
+                    active_uncertainty_evaluation_time = float(active.uncertainty_evaluation_time_s)
+            feedback = np.zeros(args.n_joints, dtype=np.float32) if age < 0 or active_uncertainty_gate else feedback_correction(
                 predicted_feedback, state, args.feedback_kq, args.feedback_kdq, feedback_max
             )
             proposed = np.clip(plan_residual + feedback, -residual_max - feedback_max, residual_max + feedback_max)
@@ -185,6 +204,10 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             command, executed = command_t.detach().cpu().numpy().astype(np.float32), correction_t.detach().cpu().numpy().astype(np.float32)
             planning_time = float("nan"); replanned = 0; failure = 0
             best = mean = baseline = selected = elite = float("nan")
+            uncertainty_score = active_uncertainty_score
+            uncertainty_max_score = active_uncertainty_max_score
+            uncertainty_evaluation_time = active_uncertainty_evaluation_time
+            uncertainty_gate = int(active_uncertainty_gate)
             selection = "direct_ik_nominal" if age < 0 else "delayed_packet_feedback"
             if step % args.replan_interval_steps == 0 and step + delay + args.horizon < reference.shape[0]:
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_snapshot = prediction_context(step)
@@ -233,15 +256,37 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 result = controller.plan(anchor_state, anchor_command)
                 planning_time, replanned, failure = float(result.planning_time), 1, int(result.failure)
                 best, mean, baseline, selected, elite, selection = result.best_cost, result.mean_cost, result.baseline_cost, result.selected_cost, result.elite_mean_cost, result.selection_mode
+                planned_residual_sequence = result.selected_residual_sequence.copy()
+                planned_prediction_sequence = result.selected_predicted_state_sequence.copy()
+                plan_uncertainty_gate = False
+                plan_uncertainty_score = float("nan")
+                plan_uncertainty_max_score = float("nan")
+                plan_uncertainty_time = 0.0
+                if ensemble is not None and not result.failure:
+                    report = ensemble.evaluate(future_history, selected_branch_sequences(result))
+                    plan_uncertainty_score = report.selected_score
+                    plan_uncertainty_max_score = report.max_candidate_score
+                    plan_uncertainty_time = report.evaluation_time_s
+                    planning_time += plan_uncertainty_time
+                    plan_uncertainty_gate = bool(plan_uncertainty_score > args.uncertainty_threshold)
+                    if plan_uncertainty_gate:
+                        planned_residual_sequence = np.zeros_like(planned_residual_sequence)
+                        planned_prediction_sequence = report.selected_mean_prediction
+                        selection = "uncertainty_nominal_fallback"
+                        controller.reset()
+                uncertainty_score = plan_uncertainty_score
+                uncertainty_max_score = plan_uncertainty_max_score
+                uncertainty_evaluation_time = plan_uncertainty_time
+                uncertainty_gate = int(plan_uncertainty_gate)
                 if result.failure:
                     event = "planner_failure"
                 elif planning_time > delay * control_dt and dynamics_backend == "learned":
                     event = "late_plan_dropped"
                 else:
                     pending[anchor] = DelayedPlanPacket(
-                        step, anchor, result.selected_residual_sequence.copy(),
-                        result.selected_predicted_state_sequence.copy(), planning_time, args.multirate_mode,
-                        result.branch_candidates,
+                        step, anchor, planned_residual_sequence, planned_prediction_sequence,
+                        planning_time, args.multirate_mode, result.branch_candidates,
+                        plan_uncertainty_gate, plan_uncertainty_score, plan_uncertainty_max_score, plan_uncertainty_time,
                     )
                     schedule_event = (
                         "oracle_overrun_scheduled"
@@ -263,17 +308,18 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             rec["planning_time"].append(0.0 if not np.isfinite(planning_time) else planning_time); rec["replan_time"].append(planning_time); rec["mpc_replanned"].append(replanned); rec["replan_deadline_miss"].append(int(np.isfinite(planning_time) and planning_time > delay * control_dt)); rec["control_step_wall_time"].append(api["time"].perf_counter() - started)
             rec["buffer_index"].append(age); rec["buffer_length"].append(args.horizon if active is not None else 0); rec["best_cost"].append(best); rec["mean_cost"].append(mean); rec["baseline_cost"].append(baseline); rec["selected_cost"].append(selected); rec["elite_mean_cost"].append(elite); rec["selection_mode"].append(selection); rec["failure_flags"].append(failure); rec["joint_limit_violation_flags"].append(0); rec["command_velocity_violation_flags"].append(int(np.any(np.abs(velocity) > physical_v + 1e-6))); rec["command_acceleration_violation_flags"].append(int(np.any(np.abs(acceleration) > physical_a + 1e-6)))
             rec["nominal_q_ref"].append(nominal); rec["buffered_residual"].append(plan_residual); rec["executed_residual"].append(executed); rec["feedback_correction"].append(feedback); rec["predicted_feedback_state"].append(predicted_feedback); rec["packet_age"].append(age); rec["packet_event"].append(event)
+            rec["uncertainty_score"].append(uncertainty_score); rec["uncertainty_max_score"].append(uncertainty_max_score); rec["uncertainty_evaluation_time"].append(uncertainty_evaluation_time); rec["uncertainty_gate_flags"].append(uncertainty_gate)
             for source, target in (("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"), ("total_tau", "tau_total")):
                 rec[target].append(torque[source].astype(np.float32))
             tracking = float(np.linalg.norm(state[: args.n_joints] - reference[step + 1])); rec["realized_tracking_error"].append(tracking)
-            rows.append({"step": step, "controller_mode": "mpc", "tracking_error": tracking, "planning_time": planning_time, "replan_time": planning_time, "mpc_replanned": replanned, "replan_deadline_miss": rec["replan_deadline_miss"][-1], "multirate_mode": args.multirate_mode, "packet_event": event, "packet_age": age, "feedback_correction_norm": float(np.linalg.norm(feedback)), "executed_residual_norm": float(np.linalg.norm(executed)), "selection_mode": selection})
+            rows.append({"step": step, "controller_mode": "mpc", "tracking_error": tracking, "planning_time": planning_time, "replan_time": planning_time, "mpc_replanned": replanned, "replan_deadline_miss": rec["replan_deadline_miss"][-1], "multirate_mode": args.multirate_mode, "packet_event": event, "packet_age": age, "feedback_correction_norm": float(np.linalg.norm(feedback)), "executed_residual_norm": float(np.linalg.norm(executed)), "selection_mode": selection, "uncertainty_score": uncertainty_score, "uncertainty_gate": uncertainty_gate})
             previous_command, previous_velocity = command.copy(), velocity.astype(np.float32)
             commit_command_and_append_placeholder(states_history, command_history, command, state)
     finally:
         env.close()
         if oracle_env is not None:
             oracle_env.close()
-    int_keys = {"mpc_replanned", "replan_deadline_miss", "buffer_index", "buffer_length", "failure_flags", "joint_limit_violation_flags", "command_velocity_violation_flags", "command_acceleration_violation_flags", "packet_age", "segment_ids", "lap_ids"}
+    int_keys = {"mpc_replanned", "replan_deadline_miss", "buffer_index", "buffer_length", "failure_flags", "joint_limit_violation_flags", "command_velocity_violation_flags", "command_acceleration_violation_flags", "packet_age", "uncertainty_gate_flags", "segment_ids", "lap_ids"}
     string_keys = {"selection_mode", "packet_event"}
     arrays = {
         key: stack(value, dtype=(str if key in string_keys else np.int64 if key in int_keys else np.float32))
@@ -290,6 +336,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step), "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32), "cem_uniform_sample_count": np.asarray(int(round((args.num_samples - 2) * args.uniform_sample_ratio)), dtype=np.int64),
         "cem_num_samples": np.asarray(args.num_samples, dtype=np.int64), "cem_iters": np.asarray(args.cem_iters, dtype=np.int64),
         "cem_horizon": np.asarray(args.horizon, dtype=np.int64), "cem_seed": np.asarray(args.seed, dtype=np.int64),
+        "uncertainty_mode": np.asarray(args.uncertainty_mode), "uncertainty_threshold": np.asarray(args.uncertainty_threshold, dtype=np.float32), "uncertainty_ensemble_size": np.asarray(0 if ensemble is None else ensemble.size, dtype=np.int64),
         "ddq_des": stack([ddq_reference[i] for i in range(len(rec["q_des"]))]),
     })
     arrays["oracle_wall_time_deadline_miss"] = (

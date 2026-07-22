@@ -440,12 +440,39 @@ class CEMMPCController:
                 selected_cost_terms,
             )
         ]
+        # Preserve the named CEM decision branches for the post-planning
+        # uncertainty gate.  These are at most baseline/best/mean/selected,
+        # independent of the 128-candidate search population.
+        best_duplicate = torch.allclose(best_q_ref_sequence, selected_q_ref_sequence, atol=1e-6, rtol=0.0)
+        if best_duplicate:
+            candidate_specs[0] = (
+                tuple((*candidate_specs[0][0], "best")), selected_q_ref_sequence, selected_residual_sequence,
+                selected_predicted_state_sequence, selected_cost, selected_cost_terms,
+            )
+        else:
+            candidate_specs.append((
+                ("best",), best_q_ref_sequence, best_residual_sequence, best_predicted_state_sequence,
+                best_cost, best_cost_terms,
+            ))
+        if mean_evaluation is not None:
+            _, mean_q_ref, mean_residual, mean_terms, _, mean_predicted = mean_evaluation
+            mean_duplicate = torch.allclose(mean_q_ref, selected_q_ref_sequence, atol=1e-6, rtol=0.0)
+            if mean_duplicate:
+                candidate_specs[0] = (
+                    tuple((*candidate_specs[0][0], "mean")), selected_q_ref_sequence, selected_residual_sequence,
+                    selected_predicted_state_sequence, selected_cost, selected_cost_terms,
+                )
+            else:
+                candidate_specs.append((
+                    ("mean",), mean_q_ref, mean_residual, mean_predicted,
+                    mean_evaluation[0], mean_terms,
+                ))
         if baseline_evaluation is not None:
             baseline_cost_tensor, baseline_q_ref, baseline_residual, baseline_terms, _, baseline_predicted = baseline_evaluation
             duplicate = torch.allclose(baseline_q_ref, selected_q_ref_sequence, atol=1e-6, rtol=0.0)
             if duplicate:
                 candidate_specs[0] = (
-                    ("selected", "baseline"), selected_q_ref_sequence, selected_residual_sequence,
+                    tuple((*candidate_specs[0][0], "baseline")), selected_q_ref_sequence, selected_residual_sequence,
                     selected_predicted_state_sequence, selected_cost, selected_cost_terms,
                 )
             else:

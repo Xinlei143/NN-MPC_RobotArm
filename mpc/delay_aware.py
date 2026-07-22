@@ -26,6 +26,10 @@ class DelayedPlanPacket:
     planning_time_s: float
     mode: str
     branch_candidates: tuple[object, ...] = ()
+    uncertainty_gate: bool = False
+    uncertainty_score: float = float("nan")
+    uncertainty_max_score: float = float("nan")
+    uncertainty_evaluation_time_s: float = 0.0
 
     @property
     def horizon(self) -> int:

@@ -20,6 +20,10 @@ class ASAPPlanPacket:
     anchor_state: np.ndarray
     selection_mode: str
     selected_cost: float
+    uncertainty_gate: bool = False
+    uncertainty_score: float = float("nan")
+    uncertainty_max_score: float = float("nan")
+    uncertainty_evaluation_time_s: float = 0.0
 
     @property
     def horizon(self) -> int:

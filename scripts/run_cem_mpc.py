@@ -32,6 +32,7 @@ from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
+from mpc.uncertainty import DynamicsEnsemble, selected_branch_sequences
 from mpc.utils import build_history_tensor
 from mpc.history import commit_command_and_append_placeholder
 
@@ -94,6 +95,30 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="State rollout backend. mujoco_oracle is an offline virtual-ASAP upper bound and does not require a checkpoint.",
     )
     parser.add_argument("--history_len", default=None, type=int)
+    parser.add_argument(
+        "--uncertainty_mode",
+        choices=["off", "ensemble_gate"],
+        default="off",
+        help="Post-CEM uncertainty mode. ensemble_gate checks only selected CEM branches with a dynamics ensemble.",
+    )
+    parser.add_argument(
+        "--uncertainty_checkpoints",
+        nargs="*",
+        default=[],
+        help="Four independently trained replica checkpoints. The primary --checkpoint is ensemble member zero.",
+    )
+    parser.add_argument(
+        "--uncertainty_normalizers",
+        nargs="*",
+        default=[],
+        help="Normalizers paired one-to-one with --uncertainty_checkpoints.",
+    )
+    parser.add_argument(
+        "--uncertainty_threshold",
+        default=0.10,
+        type=float,
+        help="Gate threshold for normalized RMS inter-model state disagreement.",
+    )
     parser.add_argument("--n_joints", default=6, type=int)
     parser.add_argument("--device", default="cuda", type=str)
     parser.add_argument("--seed", default=0, type=int)
@@ -535,6 +560,15 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("recovery_min_tracking_error must be non-negative")
     if args.planner_guard_ms < 0.0 or args.planner_min_interval_ms < 0.0:
         raise ValueError("planner_guard_ms and planner_min_interval_ms must be non-negative")
+    if args.uncertainty_threshold <= 0.0:
+        raise ValueError("uncertainty_threshold must be positive")
+    if args.uncertainty_mode == "ensemble_gate":
+        if args.controller_mode != "mpc" or getattr(args, "dynamics_backend", "learned") == "mujoco_oracle":
+            raise ValueError("ensemble_gate requires learned --controller_mode mpc")
+        if len(args.uncertainty_checkpoints) != 4 or len(args.uncertainty_normalizers) != 4:
+            raise ValueError("ensemble_gate requires exactly four replica checkpoints and four paired normalizers")
+    elif args.uncertainty_checkpoints or args.uncertainty_normalizers:
+        raise ValueError("uncertainty replica paths require --uncertainty_mode ensemble_gate")
     dynamics_backend = getattr(args, "dynamics_backend", "learned")
     if dynamics_backend == "mujoco_oracle":
         if args.controller_mode != "mpc" or args.mpc_policy != "residual":
