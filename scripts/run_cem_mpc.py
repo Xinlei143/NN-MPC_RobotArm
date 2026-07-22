@@ -137,19 +137,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--replan_interval_steps",
         default=5,
         type=int,
-        help="Number of 100 Hz command steps executed from each CEM plan before replanning.",
+        help="Fixed replan interval for synchronous/virtual modes; threaded_asap replans whenever its worker finishes.",
     )
     parser.add_argument(
         "--multirate_mode",
         choices=["synchronous", "virtual_asap", "virtual_smooth", "threaded_asap"],
-        default="virtual_asap",
-        help="virtual_asap is deterministic virtual time; threaded_asap runs wall-clock 100 Hz control with a CUDA planner thread.",
+        default="threaded_asap",
+        help="Default threaded_asap runs wall-clock 100 Hz control with a CUDA planner thread; virtual_asap is the deterministic ablation mode.",
     )
     parser.add_argument(
         "--anticipation_delay_steps",
         default=6,
         type=int,
-        help="Virtual MPC computation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
+        help="Expected planner-to-activation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
     )
     parser.add_argument("--planner_guard_ms", default=5.0, type=float, help="threaded_asap drops a packet published within this many ms of its activation deadline.")
     parser.add_argument("--planner_min_interval_ms", default=0.0, type=float, help="Minimum delay between threaded planner launches; zero means strict ASAP.")

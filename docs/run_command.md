@@ -28,14 +28,13 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --model_type transformer \
   --reference_mode task \
   --reference_file outputs/references/figure8/reference.npz \
-  --horizon 20 --replan_interval_steps 5 \
-  --multirate_mode virtual_asap --anticipation_delay_steps 6 \
+  --horizon 20 --multirate_mode threaded_asap --anticipation_delay_steps 6 \
   --num_samples 128 --cem_iters 2 --rollout_batch_size 128 \
   --mpc_policy residual --cem_execute lowest_cost \
   --save_dir outputs/mpc/task_figure8_residual
 ```
 
-task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。本地图形环境可在命令末尾添加 `--visualize`。
+task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。`threaded_asap` 需要 CUDA，且不支持 `--visualize`；主实验请记录 control deadline miss、planner update rate、late packet drop 和 fallback。若要进行确定性逻辑延迟消融，显式使用 `--multirate_mode virtual_asap`。
 
 ## IK direct baseline
 
@@ -57,6 +56,7 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
   --model_type transformer --reference_mode multi_joint_sine \
   --episode_len 200 --horizon 10 --num_samples 128 --cem_iters 3 \
+  --multirate_mode threaded_asap \
   --rollout_batch_size 128 --mpc_policy residual --cem_execute lowest_cost \
   --save_dir outputs/mpc/joint_sine_residual
 ```

@@ -175,6 +175,7 @@ class OracleMPCTests(unittest.TestCase):
     def test_oracle_overrun_is_scheduled_at_fixed_logical_delay(self) -> None:
         args = RUN_CEM_MPC.parse_args([
             "--dynamics_backend", "mujoco_oracle", "--device", "cpu",
+            "--multirate_mode", "virtual_asap",
             "--reference_mode", "multi_joint_sine", "--episode_len", "12",
             "--max_execution_steps", "2", "--settle_steps", "1", "--horizon", "3",
             "--num_samples", "3", "--cem_iters", "1", "--replan_interval_steps", "1",

@@ -696,8 +696,11 @@ python scripts/run_cem_mpc.py \
   --mpc_policy residual \
   --cem_execute lowest_cost \
   --reference_mode multi_joint_sine \
+  --multirate_mode threaded_asap \
   --save_dir outputs/mpc/transformer_20260606_154206
 ```
+
+通用闭环测试默认使用 CUDA 上的 `threaded_asap`；它以 100 Hz 控制线程和后台 GPU planner 运行。需要固定逻辑延迟、可重复的算法消融时，才显式指定 `--multirate_mode virtual_asap`。Model A/B/C 的专用工作流仍保留自身的 virtual-time 协议。
 
 输出包括：
 

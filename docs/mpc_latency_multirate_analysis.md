@@ -9,15 +9,15 @@
 | 对照 | TCP RMSE | CEM planning p95 | 结果 |
 |---|---:|---:|---|
 | 旧 GRU H20@20 Hz | 71.6 ± 23.2 mm | 47.4 ± 0.1 ms | 低频缓存绝对命令，劣于 Direct IK |
-| **ASAP H20@20 Hz** | **38.5 ± 0.3 mm** | **32.0 ± 0.3 ms** | 默认配置；优于 Direct IK |
-| **threaded ASAP H20（修复后，单 seed）** | **35.38 mm** | **35.90 ms** | 真实双线程；projected anchor 与 warm start 对齐；deadline miss 为 0 |
+| **virtual ASAP H20@20 Hz** | **38.5 ± 0.3 mm** | **32.0 ± 0.3 ms** | 确定性逻辑延迟消融；优于 Direct IK |
+| **threaded ASAP H20（修复后，单 seed）** | **35.38 mm** | **35.90 ms** | 默认主控制器；真实双线程；deadline miss 为 0 |
 | 旧 GRU H30@10 Hz | 79.1 ± 19.0 mm | 67.0 ± 2.2 ms | 低频缓存绝对命令，劣于 Direct IK |
 | **ASAP H30@10 Hz** | **37.8 ± 0.2 mm** | **44.1 ± 0.7 ms** | 明显改善，但更新频率较低 |
 | Direct IK | 53.2 mm | — | 无模型、100 Hz nominal 基线 |
 
 ASAP 的误差收益来自三项结构变化：**在计划真正生效的未来状态处优化、缓存 residual 而不是过时的绝对 `q_ref`、以及在每个 10 ms 控制步使用当前状态作小幅反馈修正**。这使慢速 CEM 只负责预测性补偿，快速层持续保留 Direct IK 的实时跟踪能力。
 
-`virtual_asap` 仍是确定性基线：CEM 在单进程中同步测时，但其结果被安排在固定的未来控制步才可生效。它能可重复地验证计算延迟补偿逻辑，**并不等同于**真实后台调度。项目另提供 `threaded_asap`：主线程按真实墙钟 100 Hz 执行 MuJoCo、反馈和 NumPy 投影，后台线程独占 CUDA 执行 GRU+CEM，并经线程安全 packet store 发布结果。
+`threaded_asap` 是当前主控制器：主线程按真实墙钟 100 Hz 执行 MuJoCo、反馈和 NumPy 投影，后台线程独占 CUDA 执行 GRU+CEM，并经线程安全 packet store 发布结果。`virtual_asap` 保留为确定性基线：CEM 在单进程中同步测时，但其结果被安排在固定的未来控制步才可生效；它能可重复地验证计算延迟补偿逻辑，**并不等同于**真实后台调度。
 
 相关方法学参考：Dirckx 等提出的 [ASAP-MPC](https://arxiv.org/abs/2402.06263) 将慢速最优轨迹生成与快速线性状态反馈结合，并在新解完成后异步更新、平滑衔接轨迹。本文实现借鉴其“慢规划 + 快反馈 + 未来状态锚定”的原则；`threaded_asap` 实现真实后台求解，`virtual_asap` 保留为算法消融基线。
 
@@ -59,7 +59,7 @@ x_t=[q_t,\dot q_t]\in\mathbb R^{12},\qquad u_t=q_{\mathrm{ref},t}\in\mathbb R^6.
 | MuJoCo 物理积分 | 2 ms / 500 Hz | position actuator、阻尼和重力补偿 |
 | 快速命令层 | 10 ms / 100 Hz | 读取状态、重建 nominal、反馈、投影与下发 `q_ref` |
 | GRU 动力学模型 | 10 ms / 100 Hz | CEM rollout 的状态预测粒度 |
-| CEM 重规划层 | 10–20 Hz（本实验） | 预测 future residual 序列 |
+| CEM 重规划层 | threaded: 由 GPU solve time 决定；virtual: 10–20 Hz | 预测 future residual 序列 |
 
 本项目没有单独手写的底层 PD 循环；MuJoCo XML 的 position actuator 以 `kp` 和 `dampratio=1` 在 500 Hz 物理积分内实现位置伺服。
 
@@ -269,7 +269,7 @@ worker 两次 solve 的观察间隔为 3–4 个控制 tick。CEM p95 小于 55 
 | 快速层 | 100 Hz；MuJoCo position actuator 500 Hz |
 | ASAP delay | H20/H25 与 H30 的 14.29–20 Hz 为 D=6；H30@10 Hz 为 D=7 |
 
-默认配置为 **ASAP H20@20 Hz**：`H=20`、每 5 个 10 ms 步重规划、`D=6`。
+主实验默认配置为 **threaded ASAP H20**：`H=20`、`D=6`、128 candidates × 2 CEM iterations；worker 在完成上一求解后消费最新 snapshot 并尽快重规划。**virtual ASAP H20@20 Hz**（每 5 个 10 ms 步重规划）仅用于确定性频率消融。
 
 真实线程配置不固定重规划间隔：上一次 worker solve 完成后立即消费最新 snapshot 并开始下一次 solve。因此 H20 线程实验的实际 planner rate 由 GPU 负载决定，本次为约 27.5 Hz，而控制层始终为 100 Hz。
 
@@ -280,11 +280,10 @@ python scripts/run_cem_mpc.py \
   --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_152930/normalizer.pt \
   --reference_mode task \
   --reference_file outputs/references/circle_3laps/reference.npz \
-  --horizon 20 --replan_interval_steps 5 \
-  --multirate_mode virtual_asap --anticipation_delay_steps 6 \
+  --horizon 20 --multirate_mode threaded_asap --anticipation_delay_steps 6 \
   --num_samples 128 --rollout_batch_size 128 --cem_iters 2 \
   --device cuda --mpc_policy residual --cem_execute lowest_cost \
-  --save_dir outputs/mpc/asap_h20_20hz_circle
+  --save_dir outputs/mpc/threaded_asap_h20_circle
 ```
 
 ---
@@ -310,7 +309,7 @@ python scripts/run_cem_mpc.py \
 
 ### 7.1 网格结论
 
-- **默认 H20@20 Hz** 的计划 p95 为 32.0 ms、控制 p95 为 35.7 ms，低于 50 ms 重规划周期，且有较小的 seed 方差，是当前实时裕度和精度最平衡的配置。
+- **virtual H20@20 Hz** 的计划 p95 为 32.0 ms、控制 p95 为 35.7 ms，低于其 50 ms 固定重规划周期，且有较小的 seed 方差；它是当前最稳定的确定性消融配置。
 - H25@16.67 Hz 的圆轨迹误差更低，但曾出现超过 60 ms 周期的端到端单次尾部值；它适合作为精度候选，不应按严格 16.67 Hz 实时配置部署。
 - H25@20 Hz 的误差和跨 seed 方差明显变差，说明该 horizon 在 20 Hz 下缺少足够调度/模型鲁棒性。
 - H30@20 Hz 的圆轨迹平均 TCP RMSE 最低，但 control p95 已接近 50 ms，且跨 seed 波动大于 H20；它没有 H20@20 Hz 的实时裕度。
@@ -346,7 +345,7 @@ python scripts/run_cem_mpc.py \
 
 | 内容 | 位置 |
 |---|---|
-| CLI、默认 H20@20 Hz ASAP 配置 | `scripts/run_cem_mpc.py` |
+| CLI、默认 threaded ASAP H20 配置 | `scripts/run_cem_mpc.py` |
 | 未来锚定 packet 调度、反馈与快速执行 | `mpc/delay_aware_runner.py` |
 | packet、反馈和单步重锚定投影 | `mpc/delay_aware.py` |
 | residual sequence 构造和 CEM rollout | `mpc/planner_rollout.py`, `mpc/cem_controller.py` |
