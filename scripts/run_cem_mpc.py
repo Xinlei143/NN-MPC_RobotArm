@@ -21,7 +21,7 @@ from neural_dynamics.rollout import load_dynamics_bundle, rollout_dynamics_batch
 from neural_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.constraints import project_nominal_q_ref_sequence
-from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction
+from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction, project_executable_command_np
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
@@ -159,6 +159,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="mpc",
         help="mpc uses learned CEM-MPC; ik_direct sends the validated task-space IK q_des directly to position actuators.",
     )
+    parser.add_argument(
+        "--ik_preview_steps",
+        default=0,
+        type=int,
+        help="Fixed task-reference preview for Direct/Preview IK; calibrated once and frozen across test trajectories.",
+    )
+    parser.add_argument(
+        "--ik_command_projection",
+        choices=["raw", "physical"],
+        default="raw",
+        help="Raw reproduces the historical Direct-IK baseline; physical applies the shared command projector.",
+    )
 
     parser.add_argument("--horizon", default=20, type=int)
     parser.add_argument(
@@ -179,8 +191,44 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         help="Expected planner-to-activation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
     )
+    parser.add_argument(
+        "--delay_protocol",
+        choices=["full", "naive_delayed", "no_future_alignment", "no_reanchor", "no_feedback"],
+        default="full",
+        help="Canonical fixed-delay causal variant. Threaded deployment only supports full.",
+    )
     parser.add_argument("--planner_guard_ms", default=5.0, type=float, help="threaded_asap drops a packet published within this many ms of its activation deadline.")
     parser.add_argument("--planner_min_interval_ms", default=0.0, type=float, help="Minimum delay between threaded planner launches; zero means strict ASAP.")
+    parser.add_argument(
+        "--planner_projection",
+        choices=["on", "off"],
+        default="off",
+        help="Optionally project every planner candidate through command kinematics. Execution always uses the physical safety projection.",
+    )
+    parser.add_argument(
+        "--residual_cost_semantics",
+        choices=["requested", "projected_offset"],
+        default="requested",
+        help="Residual regularization input. The formal configuration regularizes the requested MPC residual.",
+    )
+    parser.add_argument(
+        "--packet_residual_semantics",
+        choices=["requested", "projected_offset"],
+        default="requested",
+        help="Residual sequence transmitted by delayed packets. projected_offset is diagnostic-only.",
+    )
+    parser.add_argument(
+        "--residual_feasibility_semantics",
+        choices=["finite", "projected_bound"],
+        default="finite",
+        help="Candidate feasibility rule. projected_bound reproduces the legacy effective-offset bound.",
+    )
+    parser.add_argument(
+        "--nominal_command_semantics",
+        choices=["raw_ik", "executable_ik"],
+        default="raw_ik",
+        help="Optimize and execute around raw IK or its braking-aware executable projection.",
+    )
     parser.add_argument(
         "--asap_history_mode",
         choices=["aligned", "legacy_shifted"],
@@ -396,7 +444,13 @@ def _reference_calibration(
     }
 
 
-def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_steps: int) -> None:
+def _validate_task_reference(
+    bundle: ReferenceBundle,
+    n_joints: int,
+    future_steps: int,
+    *,
+    execution_steps: int | None = None,
+) -> None:
     """Validate the reference invariants needed by the selected online controller."""
     q_des = np.asarray(bundle.q_des)
     dq_des = np.asarray(bundle.dq_des)
@@ -406,7 +460,13 @@ def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_step
         raise ValueError(f"Task reference dq_des must match q_des shape {q_des.shape}, got {dq_des.shape}")
     if bundle.execution_steps <= 0:
         raise ValueError(f"Task reference execution_steps must be positive, got {bundle.execution_steps}")
-    minimum_length = int(bundle.execution_steps) + int(future_steps) + 1
+    validated_execution_steps = int(bundle.execution_steps if execution_steps is None else execution_steps)
+    if validated_execution_steps <= 0 or validated_execution_steps > int(bundle.execution_steps):
+        raise ValueError(
+            "Validated task-reference execution_steps must be in "
+            f"[1, {bundle.execution_steps}], got {validated_execution_steps}"
+        )
+    minimum_length = validated_execution_steps + int(future_steps) + 1
     if q_des.shape[0] < minimum_length:
         raise ValueError(
             "Task reference is too short for the requested controller look-ahead: "
@@ -432,15 +492,22 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     # Virtual delay-aware execution shortens the executable prefix near the
     # end of a reference, rather than requiring a separately padded file.
     # The runner applies that prefix truncation before issuing a future plan.
-    future_steps = args.horizon if args.controller_mode == "mpc" else 0
+    future_steps = args.horizon if args.controller_mode == "mpc" else int(args.ik_preview_steps)
     if args.controller_mode == "mpc" and args.multirate_mode in {"virtual_asap", "virtual_smooth"}:
         future_steps += int(args.anticipation_delay_steps)
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
         expected_n_joints=args.n_joints,
-        min_horizon=future_steps,
     )
-    _validate_task_reference(bundle, args.n_joints, future_steps)
+    effective_execution_steps = int(bundle.execution_steps)
+    if args.max_execution_steps is not None:
+        effective_execution_steps = min(effective_execution_steps, int(args.max_execution_steps))
+    _validate_task_reference(
+        bundle,
+        args.n_joints,
+        future_steps,
+        execution_steps=effective_execution_steps,
+    )
     return bundle
 
 
@@ -535,6 +602,12 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         setattr(args, "activation_observer", activation_observer)
     if args.controller_mode == "ik_direct" and args.reference_mode != "task":
         raise ValueError("--controller_mode ik_direct requires --reference_mode task with a validated IK reference")
+    if args.ik_preview_steps < 0:
+        raise ValueError("--ik_preview_steps must be non-negative")
+    if args.controller_mode != "ik_direct" and args.ik_preview_steps:
+        raise ValueError("--ik_preview_steps is only valid with --controller_mode ik_direct")
+    if args.anticipation_delay_steps < 0:
+        raise ValueError("--anticipation_delay_steps must be non-negative")
     if args.reference_mode != "task" and args.episode_len <= 0:
         raise ValueError(f"episode_len must be positive, got {args.episode_len}")
     if args.controller_mode == "mpc" and args.horizon <= 0:
@@ -573,6 +646,8 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         if args.multirate_mode != "virtual_asap":
             raise ValueError("mujoco_oracle is an offline upper bound and only supports --multirate_mode virtual_asap")
     if args.multirate_mode == "threaded_asap":
+        if args.delay_protocol != "full":
+            raise ValueError("threaded_asap only supports --delay_protocol full")
         return run_threaded_asap(args, globals())
     if args.multirate_mode != "synchronous":
         return run_delay_aware_virtual(args, globals())
@@ -769,6 +844,8 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 residual_max=torch.as_tensor(residual_max, dtype=torch.float32, device=device),
                 joint_limit_margin=args.joint_limit_margin,
                 rollout_batch_size=args.rollout_batch_size,
+                residual_cost_semantics=args.residual_cost_semantics,
+                residual_feasibility_semantics=args.residual_feasibility_semantics,
             )
         controller: CEMMPCController | None = None
         # ``command_buffer`` is retained for the old absolute-command action
@@ -1020,7 +1097,24 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                         command_buffer_plan_length = buffer_length
                         delta_q_ref = q_ref_command - previous_q_ref
             else:
-                q_ref_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
+                ik_target = np.asarray(
+                    reference[step_idx + 1 + int(args.ik_preview_steps)], dtype=np.float32
+                ).copy()
+                if args.ik_command_projection == "physical":
+                    q_ref_command, _, _ = project_executable_command_np(
+                        ik_target,
+                        np.zeros(args.n_joints, dtype=np.float32),
+                        previous_q_ref,
+                        previous_q_ref_velocity,
+                        env.joint_low,
+                        env.joint_high,
+                        args.joint_limit_margin,
+                        physical_velocity_limit,
+                        physical_acceleration_limit,
+                        env.control_dt,
+                    )
+                else:
+                    q_ref_command = ik_target
                 delta_q_ref = q_ref_command - previous_q_ref
                 planning_time = 0.0
                 replan_time = float("nan")
@@ -1255,6 +1349,19 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
 
     arrays: dict[str, np.ndarray] = {
         "controller_mode": np.asarray(args.controller_mode),
+        "control_semantics_version": np.asarray(2, dtype=np.int64),
+        "projection_semantics_version": np.asarray(2, dtype=np.int64),
+        "projection_backend": np.asarray("shared_physical_v2"),
+        "planner_projection": np.asarray(args.planner_projection),
+        "residual_cost_semantics": np.asarray(args.residual_cost_semantics),
+        "packet_residual_semantics": np.asarray(args.packet_residual_semantics),
+        "residual_feasibility_semantics": np.asarray(args.residual_feasibility_semantics),
+        "nominal_command_semantics": np.asarray(args.nominal_command_semantics),
+        "projection_tolerance": np.asarray(1e-6, dtype=np.float32),
+        "ik_preview_steps": np.asarray(args.ik_preview_steps, dtype=np.int64),
+        "ik_command_projection": np.asarray(args.ik_command_projection),
+        "delay_protocol": np.asarray(args.delay_protocol),
+        "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
         "actual_states": _stack_records(actual_states),
         "observed_states": _stack_records(observed_states),
         "observation_noise": _stack_records(observation_noise),
@@ -1370,7 +1477,7 @@ def main() -> None:
     args = parse_args()
     result = run_closed_loop_mpc(args)
     save_dir = resolve_runtime_path(args.save_dir)
-    save_mpc_run(save_dir, result["arrays"], result["rows"])
+    save_mpc_run(save_dir, result["arrays"], result["rows"], result.get("planner_events"))
     print(f"Saved CEM-MPC rollout to {save_dir}")
 
 
