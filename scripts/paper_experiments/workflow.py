@@ -120,7 +120,17 @@ def _base_args() -> argparse.Namespace:
     args.replan_interval_steps = 5; args.mpc_warmup_plans = 1
     args.controller_mode = "mpc"; args.mpc_policy = "residual"
     args.delay_protocol = "full"; args.dynamics_backend = "learned"
+    # The 100 Hz execution layer always applies the shared physical projector.
+    # Keeping projection out of the CEM population rollout avoids serial GPU
+    # kernels that reduce the real worker update rate and is tracked explicitly
+    # through planner_execution_qref_error.
+    args.planner_projection = "off"
+    args.residual_cost_semantics = "requested"
+    args.packet_residual_semantics = "requested"
+    args.residual_feasibility_semantics = "finite"
+    args.nominal_command_semantics = "raw_ik"
     args.visualize = False; args.settle_steps = 50
+    args.ik_command_projection = "physical"
     return args
 
 
@@ -261,7 +271,9 @@ def build_manifest(output: Path, allow_dirty: bool, profile: str) -> Path:
         base.pop(key, None)
     references = {name: file_identity(output / "references" / name / "reference.npz") for name in (*TRAJECTORIES, "preview_calibration")}
     payload = {
-        "schema_version": 2, "kind": "paper_delay_aware", "profile": profile,
+        "schema_version": 3, "kind": "paper_delay_aware", "profile": profile,
+        "control_semantics_version": 2, "projection_semantics_version": 2,
+        "projection_backend": "shared_physical_v2", "projection_tolerance": 1e-6,
         "environment": environment, "checkpoint": file_identity(CHECKPOINT), "normalizer": file_identity(NORMALIZER),
         "model_xml": file_identity(MODEL_XML), "delay_calibration": load_json(delay_file),
         "preview_calibration": load_json(preview_file), "base_run_args": base, "references": references,
@@ -339,7 +351,7 @@ def _run_case(output: Path, manifest: dict[str, Any], case: dict[str, Any], resu
     if arrays is None:
         args.save_dir = str(run_dir)
         result = RUNNER.run_closed_loop_mpc(args); arrays = result["arrays"]
-        save_mpc_run(run_dir, arrays, result["rows"])
+        save_mpc_run(run_dir, arrays, result["rows"], result.get("planner_events"))
         write_json(run_dir / "run_fingerprint.json", fingerprint)
     elif resume:
         print(f"Reused completed rollout: {run_dir}")
@@ -372,6 +384,13 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
             row.update({key: entry[key] for key in ("trajectory", "seed", "label")})
             row["case_id"] = f"{entry['trajectory']}:{entry['seed']}"
             rows.append(row)
+        control_versions = {int(row["control_semantics_version"]) for row in rows}
+        projection_versions = {int(row["projection_semantics_version"]) for row in rows}
+        if len(control_versions) != 1 or len(projection_versions) != 1:
+            raise ValueError(
+                f"Refusing to mix semantics versions in {name}: "
+                f"control={sorted(control_versions)}, projection={sorted(projection_versions)}"
+            )
         write_csv(output / "summaries" / f"{name}.csv", rows)
         groups = ("label", "trajectory") if name != "delay_sweep" else ("delay_protocol", "trajectory", "delay_steps")
         write_csv(output / "summaries" / f"{name}_aggregate.csv", aggregate_rows(rows, groups))
@@ -385,6 +404,10 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
                     rows, left="NaiveDelayed", right="ThreadedASAP",
                     metrics=("tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad", "failure_rate"),
                     samples=bootstrap_samples, seed=20260723),
+                "ThreadedASAP_minus_FullVirtual": paired_bootstrap_rows(
+                    rows, left="FullVirtual", right="ThreadedASAP",
+                    metrics=("tcp_rmse_m", "lap_tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad", "failure_rate"),
+                    samples=bootstrap_samples, seed=20260724),
             }
             write_json(output / "summaries" / "main_paired_bootstrap.json", comparisons)
             write_json(output / "summaries" / "latency_recovery.json", latency_recovery(rows))
@@ -430,7 +453,7 @@ def smoke(output: Path) -> None:
         if controller == "ik_direct": args.checkpoint = args.normalizer = None
         payload = {"smoke": True, "label": label, "args": {key: value for key, value in vars(args).items() if key != "save_dir"}}
         fingerprint = run_fingerprint(payload); run_dir = output / "smoke" / label
-        result = RUNNER.run_closed_loop_mpc(args); save_mpc_run(run_dir, result["arrays"], result["rows"])
+        result = RUNNER.run_closed_loop_mpc(args); save_mpc_run(run_dir, result["arrays"], result["rows"], result.get("planner_events"))
         write_json(run_dir / "run_fingerprint.json", fingerprint)
         entries.append({"label": label, "trajectory": "circle_smoke", "seed": 0, "suite": "smoke", "fingerprint": fingerprint["sha256"], "run_dir": str(run_dir)})
     write_json(output / "runs" / "indexes" / "smoke.json", {"suite": "smoke", "entries": entries})

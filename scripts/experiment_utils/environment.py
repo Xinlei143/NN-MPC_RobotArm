@@ -25,9 +25,13 @@ def environment_snapshot(root: Path) -> dict[str, Any]:
     status = _command(["git", "status", "--porcelain"], root)
     return {
         "git_commit": _command(["git", "rev-parse", "HEAD"], root),
+        "git_branch": _command(["git", "branch", "--show-current"], root),
         "git_dirty": bool(status and status != "unavailable"),
         "python": sys.version,
         "platform": platform.platform(),
+        "kernel": platform.release(),
+        "cpu": platform.processor() or platform.machine(),
         "packages": packages,
+        "cuda": str(getattr(getattr(__import__("torch"), "version", None), "cuda", "unavailable")) if packages.get("torch") != "missing" else "missing",
         "gpu": _command(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"], root),
     }

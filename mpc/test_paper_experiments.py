@@ -111,6 +111,21 @@ class ExperimentStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["failure_rate"], 1.0)
         self.assertEqual(summary["planner_failure_step_rate"], 0.25)
 
+    def test_threaded_failure_uses_unique_events_not_persistent_status(self) -> None:
+        summary = summarize_arrays(
+            "threaded",
+            {
+                "actuator_q_ref": np.zeros((5, 1), dtype=np.float32),
+                "failure_flags": np.zeros(5, dtype=np.int64),
+                "planner_failure": np.ones(5, dtype=np.int64),
+                "planner_failure_event": np.asarray([0, 1, 0, 0, 0], dtype=np.int64),
+                "planner_failure_count": np.asarray(1, dtype=np.int64),
+            },
+        )
+        self.assertEqual(summary["failure_rate"], 1.0)
+        self.assertEqual(summary["planner_failure_count"], 1)
+        self.assertEqual(summary["planner_failure_step_rate"], 0.2)
+
 
 class PaperMatrixTests(unittest.TestCase):
     @staticmethod

@@ -296,13 +296,128 @@ Latency recovery 定义为：
 
 | 字段 | 定义 |
 |---|---|
-| `planner_requested_residual` | CEM normalized action 经 residual bound 后、候选运动学投影前的 residual |
-| `buffered_residual` | CEM 真正评估并写入 packet 的 projected residual |
+| `requested_mpc_residual` | CEM 请求并写入 packet 的 bounded residual；用于 warm start、mean shift 和 packet 传输 |
+| `buffered_residual` | packet 实际用于在线重锚定的 residual；正式配置与 `requested_mpc_residual` 相同 |
+| `residual_cost_semantics` | 正式配置为 `requested`：residual magnitude/velocity/acceleration cost 只作用于 CEM 请求的 MPC residual，不混入 feedback 或 safety projection lag |
+| `requested_feedback_correction` | 执行层根据预测状态与实测状态计算并限幅后的在线反馈；planner rollout 假设未来该项为零 |
+| `requested_total_correction` | `clip(requested_mpc_residual + requested_feedback_correction)` |
+| `requested_absolute_command` | 当前 IK nominal 加 `requested_total_correction` |
+| `safety_projection_offset` | `actual_command - requested_absolute_command`；表示物理执行投影修改了多少 |
+| `command_nominal_offset` | `actual_command - current_nominal`，同时包含 MPC、反馈与安全投影 lag |
+| `planned_q_ref` | planner 当初送入 dynamics rollout 和 tracking cost 的 actuator command；是否经过 planner-side projection 由 manifest 明确记录 |
+| `planner_execution_qref_error` | `actual_command - planned_q_ref[packet_age]`；表示预测动作与真实执行动作不一致 |
 | `feedback_raw` | feedback bound 前的状态反馈 |
-| `feedback_correction` | feedback bound 后的反馈 |
-| `requested_correction` | 当前 tick 请求的 MPC + feedback correction |
-| `executed_residual` | 实际 actuator command 相对当前 IK nominal 的 residual |
-| `projection_discrepancy` | `requested_correction - executed_residual` |
-| `projection_active` | discrepancy 任一关节大于 `1e-6 rad` |
+| `projection_discrepancy` | 兼容字段，恒等于 `-safety_projection_offset` |
+| `projection_active` | safety projection offset 任一关节大于 `1e-6 rad` |
+
+所有新 rollout 写入：
+
+```text
+control_semantics_version = 2
+projection_semantics_version = 2
+projection_backend = shared_physical_v2
+```
+
+汇总脚本拒绝混合不同 semantics version。absolute-command 消融和
+`constraint_projected_direct_ik` fallback 也使用同一个物理投影；`raw_direct_ik`
+仅用于复现旧结果。planner projection 由 `--planner_projection on|off` 显式记录。
+正式配置使用 `off`，但 100 Hz 执行层的 shared physical projection 始终开启。
+
+正式 residual 数据流固定为：
+
+```text
+planner_projection = off
+residual_cost_semantics = requested
+packet_residual_semantics = requested
+residual_feasibility_semantics = finite
+nominal_command_semantics = raw_ik
+```
+
+planner rollout 假设未来在线 feedback 为零。实际执行命令仍由同一 braking-aware
+physical projector 限制关节位置、速度和加速度；其修改量通过
+`safety_projection_offset` 记录，planner 预测动作与实际执行动作的差异通过
+`planner_execution_qref_error` 记录。因此 `off` 不表示绕过安全约束，而表示将
+physical projection 明确放在 100 Hz execution safety filter 中。
+
+选择 `off` 的依据不是让 threaded 数字看起来更好，而是同一旧 GRU、circle、D7
+的配对诊断。`on` 在 seed 1 将真实 worker rate 降到约 18.8 Hz，并产生 late drop；
+`off` 在两个已复核 seed 中维持约 25.9 Hz、0 late、0 expiration，同时所有命令
+加速度仍不超过 12.5 rad/s²：
+
+| planner projection | seed | virtual full / lap (mm) | threaded full / lap (mm) | threaded E2E p95 | threaded rate |
+|---|---:|---:|---:|---:|---:|
+| on | 0 | 36.62 / 39.91 | 41.15 / 43.99 | 62.50 ms | 19.08 Hz |
+| on | 1 | 36.49 / 39.53 | 44.95 / 49.78 | 63.58 ms | 18.77 Hz |
+| off | 0 | 37.07 / 37.49 | 37.61 / 39.83 | 48.72 ms | 25.82 Hz |
+| off | 1 | 44.04 / 49.03 | 41.92 / 45.85 | 48.36 ms | 25.94 Hz |
+
+`off` 的两个 paired threaded-minus-virtual 差值分别为 `+0.54/-2.13 mm`
+（full）和 `+2.35/-3.17 mm`（lap）。这也说明此前观察到的“差距缩小”不是靠
+把 virtual 恶化到 threaded：seed 1 中 threaded 实际优于其 paired virtual。
+该配置下 planner 侧只有 joint-limit clip；诊断 rollout 中
+`planned_q_ref - nominal - requested_mpc_residual` 的最大绝对误差为
+`2.98e-8 rad`，所以这里的 `requested` 与 planner 实际使用的 offset 数值一致。
+正式五 seed 结果仍必须写入新目录并单独汇总，不能把这两组诊断当作论文结果。
+
+threaded 另存 `planner_events.jsonl`。每次异步结果具有唯一 `result_id`，类型为
+`success_published`、`success_late_dropped`、`planner_failure` 或 `worker_fatal`；
+事件只记录一次，不应对逐 tick 的持久 worker 状态求和。启动等待不计 packet
+expiration，只有已激活 packet 真正耗尽且 replacement 尚未激活时才产生
+`packet_expired_event`。
 
 virtual 的固定逻辑 D 与 threaded 的真实 snapshot-to-publication E2E 必须分开报告。只有 threaded 结果可以用于 soft-real-time、late packet、planner rate、period、jitter 和 deadline-miss 结论。
+
+## 15. Projection v2 修复后的旧 GRU D7 复核
+
+planner/execution projection 的问题演化、zero-correction bug、seed 方差和当前尚未
+冻结的设计选择详见
+[`ASAP_MPC_PROJECTION_AND_SEED_VARIANCE_ISSUES.md`](ASAP_MPC_PROJECTION_AND_SEED_VARIANCE_ISSUES.md)。
+
+下面的命令用同一旧 GRU、同一正式 circle reference、D=7 和 seeds 0--4
+比较 fixed-delay virtual 与真实 threaded。结果必须写入新的 v2 目录，不得覆盖或
+与旧语义日志合并。
+
+```bash
+MODEL_DIR=dynamics_modeling/outputs/checkpoints/gru_20260717_152930
+REF=outputs/references/circle_3laps/reference.npz
+OUT=outputs/old_gru_circle_d7_projection_v2_off
+
+for SEED in 0 1 2 3 4; do
+  python scripts/run_cem_mpc.py \
+    --model_type gru --reference_mode task --device cuda \
+    --multirate_mode virtual_asap --delay_protocol full \
+    --anticipation_delay_steps 7 --planner_projection off \
+    --residual_cost_semantics requested \
+    --packet_residual_semantics requested --residual_feasibility_semantics finite \
+    --nominal_command_semantics raw_ik \
+    --checkpoint "$MODEL_DIR/best_model.pt" \
+    --normalizer "$MODEL_DIR/normalizer.pt" \
+    --reference_file "$REF" --seed "$SEED" \
+    --max_execution_steps 1807 \
+    --horizon 20 --num_samples 128 --cem_iters 2 --rollout_batch_size 128 \
+    --feedback_kq 0.3 --feedback_kdq 0.015 \
+    --save_dir "$OUT/virtual_asap/seed_$SEED"
+
+  python scripts/run_cem_mpc.py \
+    --model_type gru --reference_mode task --device cuda \
+    --multirate_mode threaded_asap --delay_protocol full \
+    --anticipation_delay_steps 7 --planner_guard_ms 5 \
+    --planner_min_interval_ms 0 --planner_projection off \
+    --residual_cost_semantics requested \
+    --packet_residual_semantics requested --residual_feasibility_semantics finite \
+    --nominal_command_semantics raw_ik \
+    --checkpoint "$MODEL_DIR/best_model.pt" \
+    --normalizer "$MODEL_DIR/normalizer.pt" \
+    --reference_file "$REF" --seed "$SEED" \
+    --max_execution_steps 1807 \
+    --horizon 20 --num_samples 128 --cem_iters 2 --rollout_batch_size 128 \
+    --feedback_kq 0.3 --feedback_kdq 0.015 \
+    --save_dir "$OUT/threaded_asap/seed_$SEED"
+done
+```
+
+安全硬标准为：无 NaN/Inf、无 worker fatal、命令关节/速度/加速度约束零违规，
+并且注入 packet gap 时无命令尖峰。正式 D7 的可用性目标为
+`all_costs_invalid=0`、首包后 expiration=0、late drop 接近零和 control deadline
+miss 接近零。性能报告同时给出 paired lap-RMSE 均值差、95% bootstrap CI 与
+worst-seed 差值；目标是 threaded 相对 virtual 不超过 5 mm。
