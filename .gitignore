@@ -22,7 +22,9 @@
 /outputs
 /Paper
 
+# Local investigation notes; intentionally excluded from commits.
+/docs/2026.7.22_work.md
+
 # Python bytecode and caches
 __pycache__/
 *.pyc
-
