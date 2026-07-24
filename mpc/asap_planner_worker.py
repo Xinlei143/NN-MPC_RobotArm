@@ -423,7 +423,9 @@ class ASAPPlannerWorker(threading.Thread):
                     reason_code=reason_code,
                     reason_detail=reason_detail,
                     plan_id=-1 if result.failure or late_dropped else plan_id,
-                    planning_time_s=float(result.planning_time),
+                    # Event, status, and packet timing all include stage-2
+                    # selected-trajectory uncertainty evaluation.
+                    planning_time_s=planning_time,
                     end_to_end_latency_s=(publish_ns - snapshot.launch_time_ns) / 1e9,
                     candidate_count=int(result.candidate_count),
                     valid_candidate_count=int(result.valid_candidate_count),

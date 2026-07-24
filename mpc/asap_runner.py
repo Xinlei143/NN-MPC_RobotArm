@@ -10,9 +10,42 @@ import numpy as np
 from mpc.asap_planner_worker import ASAPPlannerWorker
 from mpc.asap_shared import LatestSnapshotStore, PacketFallbackStateMachine, PlanPacketStore, PlannerResultStore
 from mpc.asap_types import PlanningSnapshot
-from mpc.delay_aware import feedback_correction, project_executable_command_np
+from mpc.delay_aware import project_executable_command_np
 from mpc.history import commit_command_and_append_placeholder
 from mpc.asap_timing import control_timing_sample
+
+
+def compose_requested_correction(
+    plan_residual: np.ndarray,
+    predicted_state: np.ndarray,
+    observed_state: np.ndarray,
+    *,
+    packet_age: int,
+    uncertainty_gate: bool,
+    feedback_kq: float,
+    feedback_kdq: float,
+    feedback_max: np.ndarray,
+    residual_max: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return feedback and final correction for one active delayed packet.
+
+    A hard uncertainty gate is a strict nominal fallback.  It must suppress
+    prediction-based feedback as well as the MPC residual.
+    """
+    n_joints = plan_residual.shape[0]
+    feedback_raw = np.zeros(n_joints, dtype=np.float32)
+    if packet_age >= 0 and not uncertainty_gate:
+        feedback_raw = (
+            feedback_kq * (predicted_state[:n_joints] - observed_state[:n_joints])
+            + feedback_kdq * (predicted_state[n_joints:] - observed_state[n_joints:])
+        ).astype(np.float32)
+    feedback = np.clip(feedback_raw, -feedback_max, feedback_max).astype(np.float32)
+    requested = np.clip(
+        plan_residual + feedback,
+        -residual_max - feedback_max,
+        residual_max + feedback_max,
+    ).astype(np.float32)
+    return feedback_raw, feedback, requested
 
 
 def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
@@ -153,13 +186,17 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             packet_expired_event = fallback.packet_expired_event
             fallback_started_event = fallback.fallback_started_event
             fallback_ended_event = fallback.fallback_ended_event
-            feedback_raw = np.zeros(args.n_joints, dtype=np.float32)
-            if age >= 0:
-                feedback_raw = (
-                    float(args.feedback_kq) * (predicted[: args.n_joints] - state[: args.n_joints])
-                    + float(args.feedback_kdq) * (predicted[args.n_joints :] - state[args.n_joints :])
-                ).astype(np.float32)
-            feedback = np.clip(feedback_raw, -feedback_max, feedback_max).astype(np.float32)
+            feedback_raw, feedback, requested_correction = compose_requested_correction(
+                plan_residual,
+                predicted,
+                state,
+                packet_age=age,
+                uncertainty_gate=uncertainty_gate,
+                feedback_kq=float(args.feedback_kq),
+                feedback_kdq=float(args.feedback_kdq),
+                feedback_max=feedback_max,
+                residual_max=residual_max,
+            )
             nominal = np.asarray(reference[step + 1], dtype=np.float32)
             execution_nominal = nominal.copy()
             if args.nominal_command_semantics == "executable_ik":
@@ -167,7 +204,6 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                     nominal, np.zeros(args.n_joints, dtype=np.float32), previous_command, previous_velocity,
                     env.joint_low, env.joint_high, args.joint_limit_margin, physical_v, physical_a, env.control_dt,
                 )
-            requested_correction = np.clip(plan_residual + feedback, -residual_max - feedback_max, residual_max + feedback_max).astype(np.float32)
             requested_absolute_command = (execution_nominal + requested_correction).astype(np.float32)
             command, _, velocity = project_executable_command_np(execution_nominal, requested_correction, previous_command, previous_velocity, env.joint_low, env.joint_high, args.joint_limit_margin, physical_v, physical_a, env.control_dt)
             command_nominal_offset = (command - nominal).astype(np.float32)
