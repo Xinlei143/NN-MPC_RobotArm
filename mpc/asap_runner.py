@@ -33,8 +33,11 @@ def compose_requested_correction(
     prediction-based feedback as well as the MPC residual.
     """
     n_joints = plan_residual.shape[0]
+    if uncertainty_gate:
+        zeros = np.zeros(n_joints, dtype=np.float32)
+        return zeros, zeros.copy(), zeros.copy()
     feedback_raw = np.zeros(n_joints, dtype=np.float32)
-    if packet_age >= 0 and not uncertainty_gate:
+    if packet_age >= 0:
         feedback_raw = (
             feedback_kq * (predicted_state[:n_joints] - observed_state[:n_joints])
             + feedback_kdq * (predicted_state[n_joints:] - observed_state[n_joints:])
