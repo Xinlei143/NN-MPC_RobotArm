@@ -18,6 +18,13 @@ from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import project_executable_command_np
 from mpc.history import future_history_tokens, history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.budgeted_uncertainty import (
+    DynamicsEnsemble,
+    evaluate_replicas_with_primary_predictions,
+    high_risk_prediction,
+    selected_cem_candidates,
+    soft_residual_scale,
+)
 
 
 def warm_start_shift_for_anchor(mean_anchor_step: int | None, new_anchor_step: int) -> tuple[int, bool]:
@@ -68,6 +75,12 @@ class PlannerWorkerStatus:
     planner_failure_count: int
     consecutive_planner_failure_count: int
     last_successful_plan_id: int
+    uncertainty_score: float
+    uncertainty_max_score: float
+    uncertainty_evaluation_time_s: float
+    uncertainty_gate: bool
+    uncertainty_residual_scale: float
+    uncertainty_high_risk: bool
 
 
 class ASAPPlannerWorker(threading.Thread):
@@ -107,6 +120,12 @@ class ASAPPlannerWorker(threading.Thread):
         self._planner_failure_count = 0
         self._consecutive_planner_failure_count = 0
         self._last_successful_plan_id = -1
+        self._uncertainty_score = float("nan")
+        self._uncertainty_max_score = float("nan")
+        self._uncertainty_evaluation_time_s = 0.0
+        self._uncertainty_gate = False
+        self._uncertainty_residual_scale = 1.0
+        self._uncertainty_high_risk = False
 
     def status(self) -> PlannerWorkerStatus:
         with self._status_lock:
@@ -121,6 +140,8 @@ class ASAPPlannerWorker(threading.Thread):
                 self._planner_result_id, self._planner_failure_reason,
                 self._planner_failure_count, self._consecutive_planner_failure_count,
                 self._last_successful_plan_id,
+                self._uncertainty_score, self._uncertainty_max_score, self._uncertainty_evaluation_time_s,
+                self._uncertainty_gate, self._uncertainty_residual_scale, self._uncertainty_high_risk,
             )
 
     def _fail(self, reason: str) -> None:
@@ -214,6 +235,14 @@ class ASAPPlannerWorker(threading.Thread):
                 raise ValueError("threaded_asap requires a CUDA device so the worker exclusively owns GPU operations")
             self.api["set_seed"](self.args.seed)
             bundle = self.api["load_dynamics_bundle"](checkpoint_path=self.api["resolve_runtime_path"](self.args.checkpoint), normalizer_path=self.api["resolve_runtime_path"](self.args.normalizer), model_type=self.args.model_type, n_joints=self.args.n_joints, device=device, history_len=self.args.history_len)
+            ensemble = None
+            if self.args.uncertainty_mode != "off":
+                ensemble = DynamicsEnsemble.from_replica_paths(
+                    bundle,
+                    [self.api["resolve_runtime_path"](path) for path in self.args.uncertainty_checkpoints],
+                    [self.api["resolve_runtime_path"](path) for path in self.args.uncertainty_normalizers],
+                    device,
+                )
             self.control_dt = float(bundle.control_dt)
             self.history_len = int(bundle.history_len)
             parse = self.api["_parse_joint_vector"]
@@ -278,6 +307,77 @@ class ASAPPlannerWorker(threading.Thread):
                     mean_anchor_step = None
                 result = controller.plan(anchor_state, anchor_command, warm_start_shift_steps=shift)
                 mean_anchor_step = mean_anchor_after_plan(mean_anchor_step, anchor, result.failure)
+                planning_time = float(result.planning_time)
+                uncertainty_score = float("nan")
+                uncertainty_max_score = float("nan")
+                uncertainty_evaluation_time = 0.0
+                uncertainty_gate = False
+                uncertainty_residual_scale = 1.0
+                uncertainty_high_risk = False
+                residual_sequence = result.selected_residual_sequence.copy()
+                predicted_sequence = result.selected_predicted_state_sequence.copy()
+                selection_mode = result.selection_mode
+                if ensemble is not None and not result.failure:
+                    candidates, primary_predictions = selected_cem_candidates(
+                        result, horizon=self.args.uncertainty_horizon
+                    )
+                    report = evaluate_replicas_with_primary_predictions(
+                        ensemble,
+                        future_history,
+                        candidates,
+                        primary_predictions,
+                        budget_ms=self.args.uncertainty_budget_ms,
+                    )
+                    uncertainty_score = report.selected_score
+                    uncertainty_max_score = report.max_candidate_score
+                    uncertainty_evaluation_time = report.evaluation_time_s
+                    planning_time += uncertainty_evaluation_time
+                    if report.timed_out:
+                        # Monitoring is observational by definition.  The soft
+                        # supervisor alone treats an incomplete estimate as a
+                        # conservative nominal fallback.
+                        uncertainty_gate = self.args.uncertainty_mode == "ensemble_soft_gate"
+                        uncertainty_residual_scale = 0.0 if uncertainty_gate else 1.0
+                    else:
+                        uncertainty_residual_scale = soft_residual_scale(
+                            uncertainty_score,
+                            self.args.uncertainty_low_threshold,
+                            self.args.uncertainty_high_threshold,
+                        )
+                        current_error = float(np.linalg.norm(anchor_state[: self.args.n_joints] - self.reference[anchor]))
+                        reference_window = self.reference[anchor + 1 : anchor + predicted_sequence.shape[0]]
+                        uncertainty_high_risk = high_risk_prediction(
+                            predicted_sequence,
+                            reference_window,
+                            residual_sequence,
+                            residual_max,
+                            self.joint_low,
+                            self.joint_high,
+                            joint_limit_margin=self.args.joint_limit_margin,
+                            residual_saturation_fraction=self.args.uncertainty_residual_saturation_fraction,
+                            current_tracking_error=current_error,
+                            tracking_error_growth_ratio=self.args.uncertainty_tracking_error_growth_ratio,
+                            min_tracking_error=self.args.uncertainty_min_tracking_error,
+                        )
+                        if not uncertainty_high_risk:
+                            uncertainty_residual_scale = max(
+                                uncertainty_residual_scale,
+                                self.args.uncertainty_min_residual_scale,
+                            )
+                        uncertainty_gate = bool(
+                            self.args.uncertainty_mode == "ensemble_soft_gate"
+                            and uncertainty_score >= self.args.uncertainty_high_threshold
+                            and uncertainty_high_risk
+                        )
+                    if uncertainty_gate:
+                        residual_sequence = np.zeros_like(residual_sequence)
+                        selection_mode = "uncertainty_budget_fallback" if report.timed_out else "uncertainty_nominal_fallback"
+                        controller.reset()
+                        mean_anchor_step = None
+                    elif self.args.uncertainty_mode == "ensemble_soft_gate":
+                        residual_sequence *= uncertainty_residual_scale
+                        if uncertainty_residual_scale < 1.0:
+                            selection_mode = "uncertainty_soft_gate"
                 publish_ns = time.perf_counter_ns()
                 activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
                 late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))
@@ -286,7 +386,7 @@ class ASAPPlannerWorker(threading.Thread):
                 result_id = self._planner_result_id + 1
                 with self._status_lock:
                     self.solve_count += 1
-                    self.last_planning_time_s = float(result.planning_time)
+                    self.last_planning_time_s = planning_time
                     self.last_best_cost = float(result.best_cost)
                     self.last_selected_cost = float(result.selected_cost)
                     if self.first_solve_complete_ns == 0:
@@ -303,6 +403,12 @@ class ASAPPlannerWorker(threading.Thread):
                     self._planner_mean_updated = not result.failure
                     self._planner_failure = bool(result.failure)
                     self._packet_late_dropped = late_dropped
+                    self._uncertainty_score = uncertainty_score
+                    self._uncertainty_max_score = uncertainty_max_score
+                    self._uncertainty_evaluation_time_s = uncertainty_evaluation_time
+                    self._uncertainty_gate = uncertainty_gate
+                    self._uncertainty_residual_scale = uncertainty_residual_scale
+                    self._uncertainty_high_risk = uncertainty_high_risk
                     self.late_drop_count += int(late_dropped)
                     self._planner_result_id = result_id
                     self._planner_failure_reason = result.failure_reason
@@ -317,7 +423,9 @@ class ASAPPlannerWorker(threading.Thread):
                     reason_code=reason_code,
                     reason_detail=reason_detail,
                     plan_id=-1 if result.failure or late_dropped else plan_id,
-                    planning_time_s=float(result.planning_time),
+                    # Event, status, and packet timing all include stage-2
+                    # selected-trajectory uncertainty evaluation.
+                    planning_time_s=planning_time,
                     end_to_end_latency_s=(publish_ns - snapshot.launch_time_ns) / 1e9,
                     candidate_count=int(result.candidate_count),
                     valid_candidate_count=int(result.valid_candidate_count),
@@ -325,27 +433,37 @@ class ASAPPlannerWorker(threading.Thread):
                 ))
                 if result.failure or late_dropped:
                     continue
-                requested_residual_sequence = result.selected_residual_sequence.copy()
+                requested_residual_sequence = residual_sequence.copy()
                 planner_nominal_np = planner_nominal.detach().cpu().numpy()
-                projected_offset_sequence = (result.selected_q_ref_sequence - planner_nominal_np).astype(np.float32)
+                # Soft gating changes the residual after CEM selection.  The
+                # threaded runner uses requested semantics and applies the
+                # common physical projection at each execution tick.
+                q_ref_sequence = (planner_nominal_np + requested_residual_sequence).astype(np.float32)
+                projected_offset_sequence = (q_ref_sequence - planner_nominal_np).astype(np.float32)
                 packet_residual_sequence = (
                     requested_residual_sequence
                     if self.args.packet_residual_semantics == "requested"
                     else projected_offset_sequence
                 )
                 planned_projection_offset = (
-                    result.selected_q_ref_sequence - (planner_nominal_np + requested_residual_sequence)
+                    q_ref_sequence - (planner_nominal_np + requested_residual_sequence)
                 ).astype(np.float32)
                 packet = ASAPPlanPacket(
                     plan_id=plan_id, launch_step=snapshot.launch_step, launch_time_ns=snapshot.launch_time_ns,
                     activation_step=anchor, activation_time_ns=activation_ns, publish_time_ns=publish_ns,
                     residual_sequence=packet_residual_sequence,
-                    predicted_state_sequence=result.selected_predicted_state_sequence.copy(),
-                    planning_time_s=float(result.planning_time), anchor_state=anchor_state.copy(),
-                    selection_mode=result.selection_mode, selected_cost=float(result.selected_cost),
-                    q_ref_sequence=result.selected_q_ref_sequence.copy(),
+                    predicted_state_sequence=predicted_sequence,
+                    planning_time_s=planning_time, anchor_state=anchor_state.copy(),
+                    selection_mode=selection_mode, selected_cost=float(result.selected_cost),
+                    q_ref_sequence=q_ref_sequence,
                     requested_residual_sequence=requested_residual_sequence,
                     planned_projection_offset_sequence=planned_projection_offset,
+                    uncertainty_gate=uncertainty_gate,
+                    uncertainty_score=uncertainty_score,
+                    uncertainty_max_score=uncertainty_max_score,
+                    uncertainty_evaluation_time_s=uncertainty_evaluation_time,
+                    uncertainty_residual_scale=uncertainty_residual_scale,
+                    uncertainty_high_risk=uncertainty_high_risk,
                 )
                 with self._status_lock:
                     self._last_successful_plan_id = plan_id

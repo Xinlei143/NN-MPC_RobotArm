@@ -90,6 +90,12 @@ def _copy_packet(packet: ASAPPlanPacket) -> ASAPPlanPacket:
         q_ref_sequence=packet.q_ref_sequence.copy(),
         requested_residual_sequence=packet.requested_residual_sequence.copy(),
         planned_projection_offset_sequence=packet.planned_projection_offset_sequence.copy(),
+        uncertainty_gate=packet.uncertainty_gate,
+        uncertainty_score=packet.uncertainty_score,
+        uncertainty_max_score=packet.uncertainty_max_score,
+        uncertainty_evaluation_time_s=packet.uncertainty_evaluation_time_s,
+        uncertainty_residual_scale=packet.uncertainty_residual_scale,
+        uncertainty_high_risk=packet.uncertainty_high_risk,
     )
 
 
