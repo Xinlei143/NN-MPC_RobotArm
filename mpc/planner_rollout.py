@@ -63,12 +63,15 @@ def construct_residual_q_ref_sequence(
     q_ref_acceleration_limit: torch.Tensor | float,
     control_dt: float = 0.01,
     project_kinematics: bool = True,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    projection_backend: str = "eager",
+    enforce_projected_offset_bound: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Map bounded residual candidates to executable q_ref sequences.
 
-    Returns command sequences, their *executed* residuals and a per-candidate
-    feasibility mask.  The latter prevents the kinematic projection from
-    silently turning a bounded proposal into a command outside ``r_max``.
+    Returns projected commands, bounded requested residuals, projected nominal
+    offsets, and a feasibility mask.  Projection lag is not an MPC
+    residual-bound violation: a raw IK nominal may itself be unreachable in
+    one command step.
     """
     if candidate_normalized_residual.ndim != 3:
         raise ValueError(
@@ -108,15 +111,21 @@ def construct_residual_q_ref_sequence(
             joint_low=joint_low,
             joint_high=joint_high,
             joint_limit_margin=joint_limit_margin,
+            backend=projection_backend,
         )
     else:
         # The delay-aware controller keeps Direct IK as its exact zero-correction
         # baseline.  It constrains only the MPC/feedback correction at execution
         # time, rather than slowing the nominal trajectory towards an old command.
         q_ref_sequences = clip_to_joint_limits(requested, joint_low, joint_high, joint_limit_margin)
-    executed_residual = q_ref_sequences - nominal
-    feasible = torch.all(torch.abs(executed_residual) <= residual_limit.view(1, 1, -1) + 1e-5, dim=(1, 2))
-    return q_ref_sequences, executed_residual, feasible
+    projected_nominal_offset = q_ref_sequences - nominal
+    feasible = torch.all(torch.isfinite(q_ref_sequences), dim=(1, 2))
+    if enforce_projected_offset_bound:
+        feasible = feasible & torch.all(
+            torch.abs(projected_nominal_offset) <= residual_limit.view(1, 1, -1) + 1e-5,
+            dim=(1, 2),
+        )
+    return q_ref_sequences, proposed_residual, projected_nominal_offset, feasible
 
 
 def reanchor_residual_command(
@@ -151,7 +160,7 @@ def reanchor_residual_command(
     if residual_limit.shape != buffered_residual.shape or bool(torch.any(residual_limit <= 0)):
         raise ValueError("residual_max must contain one positive limit per action")
     normalized = torch.clamp(buffered_residual / residual_limit, min=-1.0, max=1.0)
-    q_ref, executed_residual, feasible = construct_residual_q_ref_sequence(
+    q_ref, _, projected_nominal_offset, feasible = construct_residual_q_ref_sequence(
         normalized.view(1, 1, -1),
         nominal_q_ref=nominal_q_ref.view(1, -1),
         residual_max=residual_limit,
@@ -164,7 +173,7 @@ def reanchor_residual_command(
         q_ref_acceleration_limit=q_ref_acceleration_limit,
         control_dt=control_dt,
     )
-    return q_ref[0, 0], executed_residual[0, 0], bool(feasible[0])
+    return q_ref[0, 0], projected_nominal_offset[0, 0], bool(feasible[0])
 
 
 @dataclass(frozen=True)
@@ -176,6 +185,10 @@ class PlannerRolloutConfig:
     joint_limit_margin: float = 0.0
     rollout_batch_size: int | None = None
     project_residual_kinematics: bool = True
+    projection_backend: str = "eager"
+    projection_strategy: str = "full"
+    residual_cost_semantics: str = "requested"
+    residual_feasibility_semantics: str = "finite"
 
 
 @dataclass
@@ -214,11 +227,21 @@ class LearnedDynamicsPlanner:
             joint_limit_margin=self.rollout_config.joint_limit_margin,
         )
 
-    def evaluate(self, candidate_action: torch.Tensor) -> dict[str, torch.Tensor]:
+    def evaluate(
+        self,
+        candidate_action: torch.Tensor,
+        *,
+        project_kinematics_override: bool | None = None,
+    ) -> dict[str, torch.Tensor]:
         if self.rollout_config.mpc_policy == "residual":
             if self.rollout_config.residual_max is None:
                 raise ValueError("residual MPC requires residual_max")
-            q_ref_sequences, residual_sequences, feasible = construct_residual_q_ref_sequence(
+            project_kinematics = (
+                self.rollout_config.project_residual_kinematics
+                if project_kinematics_override is None
+                else project_kinematics_override
+            )
+            q_ref_sequences, requested_residual_sequences, projected_nominal_offsets, feasible = construct_residual_q_ref_sequence(
                 candidate_action,
                 nominal_q_ref=self.nominal_sequence(),
                 residual_max=self.rollout_config.residual_max,
@@ -230,7 +253,20 @@ class LearnedDynamicsPlanner:
                 q_ref_velocity_limit=self.rollout_config.q_ref_velocity_limit,
                 q_ref_acceleration_limit=self.rollout_config.q_ref_acceleration_limit,
                 control_dt=self.control_dt,
-                project_kinematics=self.rollout_config.project_residual_kinematics,
+                project_kinematics=project_kinematics,
+                projection_backend=self.rollout_config.projection_backend,
+                enforce_projected_offset_bound=self.rollout_config.residual_feasibility_semantics == "projected_bound",
+            )
+            if self.rollout_config.residual_feasibility_semantics not in {"finite", "projected_bound"}:
+                raise ValueError("residual_feasibility_semantics must be 'finite' or 'projected_bound'")
+            if self.rollout_config.residual_cost_semantics not in {"requested", "projected_offset"}:
+                raise ValueError(
+                    "residual_cost_semantics must be 'requested' or 'projected_offset'"
+                )
+            residual_cost_sequence = (
+                requested_residual_sequences
+                if self.rollout_config.residual_cost_semantics == "requested"
+                else projected_nominal_offsets
             )
         elif self.rollout_config.mpc_policy == "legacy_acceleration":
             q_ref_sequences = construct_actuator_q_ref_sequence(
@@ -244,7 +280,9 @@ class LearnedDynamicsPlanner:
                 q_ref_acceleration_limit=self.rollout_config.q_ref_acceleration_limit,
                 control_dt=self.control_dt,
             )
-            residual_sequences = torch.empty_like(q_ref_sequences)
+            requested_residual_sequences = torch.empty_like(q_ref_sequences)
+            projected_nominal_offsets = torch.empty_like(q_ref_sequences)
+            residual_cost_sequence = torch.empty_like(q_ref_sequences)
             feasible = torch.ones(q_ref_sequences.shape[0], dtype=torch.bool, device=q_ref_sequences.device)
         else:
             raise ValueError("mpc_policy must be 'residual' or 'legacy_acceleration'")
@@ -270,6 +308,8 @@ class LearnedDynamicsPlanner:
             joint_high=self.joint_high.to(device=pred_states.device, dtype=pred_states.dtype),
             config=self.cost_config,
             nominal_q_ref=None if self.rollout_config.mpc_policy == "legacy_acceleration" else self.nominal_sequence().to(device=pred_states.device, dtype=pred_states.dtype),
+            requested_residual=None if self.rollout_config.mpc_policy == "legacy_acceleration" else requested_residual_sequences,
+            residual_cost_sequence=None if self.rollout_config.mpc_policy == "legacy_acceleration" else residual_cost_sequence,
             previous_residual=None if self.previous_residual is None else self.previous_residual.to(device=pred_states.device, dtype=pred_states.dtype),
             previous_residual_velocity=None
             if self.previous_residual_velocity is None
@@ -282,7 +322,19 @@ class LearnedDynamicsPlanner:
             "costs": costs,
             "cost_terms": cost_terms,
             "q_ref_sequences": q_ref_sequences,
-            "residual_sequences": residual_sequences,
+            "residual_sequences": requested_residual_sequences,
+            "requested_residual_sequences": requested_residual_sequences,
+            "projected_nominal_offsets": projected_nominal_offsets,
+            "residual_cost_sequences": residual_cost_sequence,
             "candidate_feasible": feasible,
+            "requested_residual_valid": torch.all(torch.isfinite(requested_residual_sequences), dim=(1, 2)),
+            "projected_command_valid": torch.all(torch.isfinite(q_ref_sequences), dim=(1, 2)),
+            "rollout_valid": torch.all(torch.isfinite(pred_states), dim=(1, 2)),
+            "hard_state_constraint_valid": cost_terms["hard_state_constraint_violation"] == 0,
+            "cost_valid": torch.isfinite(costs),
             "pred_states": pred_states,
         }
+
+    def evaluate_exact(self, candidate_action: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Evaluate candidates with exact physical projection regardless of stage-one mode."""
+        return self.evaluate(candidate_action, project_kinematics_override=True)

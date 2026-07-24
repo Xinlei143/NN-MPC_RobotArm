@@ -1,7 +1,7 @@
 """Immutable values exchanged by the real-time ASAP-MPC threads."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -20,10 +20,9 @@ class ASAPPlanPacket:
     anchor_state: np.ndarray
     selection_mode: str
     selected_cost: float
-    uncertainty_gate: bool = False
-    uncertainty_score: float = float("nan")
-    uncertainty_max_score: float = float("nan")
-    uncertainty_evaluation_time_s: float = 0.0
+    q_ref_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
+    requested_residual_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
+    planned_projection_offset_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
 
     @property
     def horizon(self) -> int:
@@ -43,6 +42,25 @@ class PlanningSnapshot:
     command_history: np.ndarray
     previous_q_ref: np.ndarray
     previous_q_ref_velocity: np.ndarray
-    previous_executed_residual: np.ndarray
-    previous_executed_residual_velocity: np.ndarray
+    previous_requested_mpc_residual: np.ndarray
+    previous_requested_mpc_residual_velocity: np.ndarray
+    previous_command_nominal_offset: np.ndarray
+    previous_command_nominal_offset_velocity: np.ndarray
     packet_schedule: tuple[ASAPPlanPacket, ...]
+
+
+@dataclass(frozen=True)
+class PlannerResultEvent:
+    """One immutable worker result; unlike status fields it is never repeated."""
+
+    result_id: int
+    request_id: int
+    result_type: str
+    reason_code: str
+    reason_detail: str
+    plan_id: int
+    planning_time_s: float
+    end_to_end_latency_s: float
+    candidate_count: int
+    valid_candidate_count: int
+    candidate_diagnostics: dict[str, int] = field(default_factory=dict)

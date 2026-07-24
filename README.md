@@ -13,6 +13,8 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py --help
 
 依赖与动力学数据采集、训练和开环评估说明见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
+冻结 Model A 在 payload、执行器失配、外力和观测噪声下的 threaded-asap 鲁棒性评测见 [docs/260723_MODEL_A_ROBUSTNESS.md](docs/260723_MODEL_A_ROBUSTNESS.md)。
+
 ## 当前 MPC 方法
 
 MuJoCo 和 learned dynamics 的动作语义始终是绝对 position-actuator target：
@@ -41,7 +43,7 @@ q_des[t+1:t+H]
 
 ## 推荐运行
 
-默认配置是 ASAP residual MPC：预测 horizon 20、每 5 个 10 ms 快速控制步重规划一次（20 Hz）、6 步计算延迟补偿、128 candidates、2 次 CEM iteration、batch 128。100 Hz 快速层持续重锚定 residual 并施加状态反馈。
+默认配置是 CUDA 上的 **threaded ASAP residual MPC**：预测 horizon 20、6 步计划激活延迟补偿、128 candidates、2 次 CEM iteration、batch 128。主线程以 100 Hz 持续重锚定 residual 并施加状态反馈；后台 CUDA worker 在每次求解完成后使用最新 snapshot 尽快启动下一次规划，因此实际 planner update rate 由 GPU 负载决定，而不是固定 20 Hz。
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
@@ -51,8 +53,7 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --reference_mode multi_joint_sine \
   --episode_len 200 \
   --horizon 20 \
-  --replan_interval_steps 5 \
-  --multirate_mode virtual_asap \
+  --multirate_mode threaded_asap \
   --anticipation_delay_steps 6 \
   --num_samples 128 \
   --cem_iters 2 \
@@ -61,6 +62,8 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --cem_execute lowest_cost \
   --save_dir outputs/mpc/joint_sine_residual
 ```
+
+`threaded_asap` 需要 `--device cuda`（默认值）。主实验除 tracking 指标外，应同时报告 planner update rate、control deadline miss、late packet drop 和 Direct-IK fallback。若需要可重复的逻辑延迟消融，可显式传入 `--multirate_mode virtual_asap`；该模式不是默认部署控制器。
 
 参数含义：
 
@@ -95,6 +98,7 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --model_type transformer \
   --reference_mode task \
   --reference_file outputs/references/circle_3laps/reference.npz \
+  --multirate_mode threaded_asap \
   --mpc_policy residual --cem_execute lowest_cost \
   --save_dir outputs/mpc/task_circle_residual
 ```
@@ -130,15 +134,16 @@ outputs/            生成的模型、参考和运行结果
 快速验证 residual MPC 单元测试：
 
 ```bash
-conda run -n pendulum-rl python -m unittest mpc/test_residual_mpc.py -v
+conda run -n pendulum-rl python -m unittest mpc/tests/test_residual_mpc.py -v
 ```
 
 完整项目测试入口见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
 ## 相关文档
 
-- [Cost function](docs/CostFunction.md)
-- [MPC 伪代码](docs/mpc-pseudocode.md)
-- [运行命令](docs/run_command.md)
-- [项目结构](docs/PROJECT_STRUCTURE.md)
-- [完成状态（历史快照）](docs/PROJECT_COMPLETION_STATUS.md)
+- [Cost function](docs/260715_CostFunction.md)
+- [MPC 伪代码](docs/260715_mpc-pseudocode.md)
+- [运行命令](docs/260723_run_command.md)
+- [Delay-Aware MPC 论文实验操作手册](docs/260724_PAPER_DELAY_AWARE_EXPERIMENTS.md)
+- [项目结构](docs/260719_PROJECT_STRUCTURE.md)
+- [完成状态（历史快照）](docs/260722_PROJECT_COMPLETION_STATUS.md)

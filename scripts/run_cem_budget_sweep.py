@@ -177,19 +177,19 @@ def parse_args() -> argparse.Namespace:
         "--replan_interval_steps",
         type=int,
         default=5,
-        help="Number of 100 Hz command steps executed between CEM replans.",
+        help="Fixed replan interval for synchronous/virtual modes; ignored by threaded_asap.",
     )
     parser.add_argument(
         "--multirate_mode",
-        choices=["synchronous", "virtual_asap", "virtual_smooth"],
-        default="virtual_asap",
-        help="Execution architecture passed to run_cem_mpc.py.",
+        choices=["synchronous", "virtual_asap", "virtual_smooth", "threaded_asap"],
+        default="threaded_asap",
+        help="Execution architecture passed to run_cem_mpc.py; threaded_asap is the default CUDA soft-real-time controller.",
     )
     parser.add_argument(
         "--anticipation_delay_steps",
         type=int,
         default=6,
-        help="ASAP/Smooth virtual computation delay in 100 Hz command steps.",
+        help="Expected planner-to-activation delay in 100 Hz command steps.",
     )
     parser.add_argument(
         "--mpc_warmup_plans",

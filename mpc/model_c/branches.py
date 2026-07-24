@@ -94,7 +94,8 @@ def evaluate_branch_cost(
     low, high = torch.as_tensor(parent_env.joint_low, device=device), torch.as_tensor(parent_env.joint_high, device=device)
     return float(joint_space_tracking_cost(
         states_tensor, q_tensor, dq_tensor, actions_tensor, previous, velocity, low, high, cost_config,
-        nominal_q_ref=q_tensor[0], previous_residual=torch.zeros_like(previous),
+        nominal_q_ref=q_tensor[0], requested_residual=actions_tensor - q_tensor,
+        previous_residual=torch.zeros_like(previous),
         previous_residual_velocity=torch.zeros_like(previous),
     )[0].detach().cpu())
 
@@ -123,6 +124,9 @@ def execute_open_loop_action_branch(
     branch_env = MuJoCoArmEnv(
         str(parent_env.model_xml), n_joints=parent_env.n_joints,
         gravity_compensation=parent_env.gravity_compensation, frame_skip=parent_env.frame_skip,
+        gravity_compensation_model_xml=str(parent_env.gravity_compensation_model_xml),
+        actuator_kp_scale=parent_env.actuator_kp_scale,
+        actuator_kd_scale=parent_env.actuator_kd_scale,
     )
     try:
         branch_env.restore_full_state(full_state)

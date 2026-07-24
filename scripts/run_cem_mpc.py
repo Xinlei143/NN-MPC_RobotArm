@@ -21,7 +21,7 @@ from neural_dynamics.rollout import load_dynamics_bundle, rollout_dynamics_batch
 from neural_dynamics.train_utils import set_seed
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.constraints import project_nominal_q_ref_sequence
-from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction
+from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction, project_executable_command_np
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.kinematics_utils import site_pose
 from mpc.logging import save_mpc_run
@@ -32,7 +32,7 @@ from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
-from mpc.uncertainty import DynamicsEnsemble, selected_branch_sequences
+from mpc.robustness import RobustnessConfig, config_arrays, resolve_robustness_config
 from mpc.utils import build_history_tensor
 from mpc.history import commit_command_and_append_placeholder
 
@@ -79,12 +79,39 @@ def resolve_runtime_path(path: str) -> Path:
     return root_path
 
 
+def _robustness_config(args: argparse.Namespace) -> RobustnessConfig:
+    return resolve_robustness_config(args, resolve_runtime_path)
+
+
+def _build_control_env(args: argparse.Namespace, *, seed: int | None = None) -> MuJoCoArmEnv:
+    config = _robustness_config(args)
+    environment_seed = args.seed if seed is None else seed
+    return MuJoCoArmEnv(
+        str(config.plant_model_xml), n_joints=args.n_joints, seed=environment_seed,
+        gravity_compensation_model_xml=str(config.nominal_model_xml),
+        actuator_kp_scale=config.actuator_kp_scale,
+        actuator_kd_scale=config.actuator_kd_scale,
+        observation_q_noise_std=config.observation_q_std_rad,
+        observation_dq_noise_std=config.observation_dq_std_rad_s,
+        observation_seed=environment_seed + 104729,
+    )
+
+
+def _force_for_step(config: RobustnessConfig, step: int, execution_steps: int) -> np.ndarray:
+    start, stop = config.pulse_window(execution_steps)
+    return config.force_world() if start <= step < stop else np.zeros(3, dtype=np.float32)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run learned CEM-MPC in closed-loop MuJoCo simulation.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--model_xml", default=DEFAULT_MODEL_XML, type=str)
+    parser.add_argument("--payload_level", choices=range(7), default=0, type=int)
+    parser.add_argument("--actuator_gain_level", choices=range(7), default=0, type=int)
+    parser.add_argument("--force_pulse_level", choices=range(7), default=0, type=int)
+    parser.add_argument("--observation_noise_level", choices=range(7), default=0, type=int)
     parser.add_argument("--checkpoint", default=None, type=str, help="Dynamics checkpoint. Required for --controller_mode mpc.")
     parser.add_argument("--normalizer", default=None, type=str, help="Dynamics normalizer. Required for --controller_mode mpc.")
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer")
@@ -156,28 +183,88 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="mpc",
         help="mpc uses learned CEM-MPC; ik_direct sends the validated task-space IK q_des directly to position actuators.",
     )
+    parser.add_argument(
+        "--ik_preview_steps",
+        default=0,
+        type=int,
+        help="Fixed task-reference preview for Direct/Preview IK; calibrated once and frozen across test trajectories.",
+    )
+    parser.add_argument(
+        "--ik_command_projection",
+        choices=["raw", "physical"],
+        default="raw",
+        help="Raw reproduces the historical Direct-IK baseline; physical applies the shared command projector.",
+    )
 
     parser.add_argument("--horizon", default=20, type=int)
     parser.add_argument(
         "--replan_interval_steps",
         default=5,
         type=int,
-        help="Number of 100 Hz command steps executed from each CEM plan before replanning.",
+        help="Fixed replan interval for synchronous/virtual modes; threaded_asap replans whenever its worker finishes.",
     )
     parser.add_argument(
         "--multirate_mode",
         choices=["synchronous", "virtual_asap", "virtual_smooth", "threaded_asap"],
-        default="virtual_asap",
-        help="virtual_asap is deterministic virtual time; threaded_asap runs wall-clock 100 Hz control with a CUDA planner thread.",
+        default="threaded_asap",
+        help="Default threaded_asap runs wall-clock 100 Hz control with a CUDA planner thread; virtual_asap is the deterministic ablation mode.",
     )
     parser.add_argument(
         "--anticipation_delay_steps",
         default=6,
         type=int,
-        help="Virtual MPC computation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
+        help="Expected planner-to-activation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
+    )
+    parser.add_argument(
+        "--delay_protocol",
+        choices=["full", "naive_delayed", "no_future_alignment", "no_reanchor", "no_feedback"],
+        default="full",
+        help="Canonical fixed-delay causal variant. Threaded deployment only supports full.",
     )
     parser.add_argument("--planner_guard_ms", default=5.0, type=float, help="threaded_asap drops a packet published within this many ms of its activation deadline.")
     parser.add_argument("--planner_min_interval_ms", default=0.0, type=float, help="Minimum delay between threaded planner launches; zero means strict ASAP.")
+    parser.add_argument(
+        "--planner_projection",
+        choices=["on", "off"],
+        default="on",
+        help="Project planner candidates through command kinematics (default: on). Execution also uses the physical safety projection.",
+    )
+    parser.add_argument(
+        "--planner_projection_backend",
+        choices=["eager", "compiled"],
+        default="compiled",
+        help="Exact planner projection implementation. Compiled preserves the eager mathematics after one-time warmup.",
+    )
+    parser.add_argument(
+        "--planner_projection_strategy",
+        choices=["full", "two_stage"],
+        default="two_stage",
+        help="Full projects every population; two_stage searches cheaply then exactly validates final elites/mean/best/baseline.",
+    )
+    parser.add_argument(
+        "--residual_cost_semantics",
+        choices=["requested", "projected_offset"],
+        default="requested",
+        help="Residual regularization input. The formal configuration regularizes the requested MPC residual.",
+    )
+    parser.add_argument(
+        "--packet_residual_semantics",
+        choices=["requested", "projected_offset"],
+        default="requested",
+        help="Residual sequence transmitted by delayed packets. projected_offset is diagnostic-only.",
+    )
+    parser.add_argument(
+        "--residual_feasibility_semantics",
+        choices=["finite", "projected_bound"],
+        default="finite",
+        help="Candidate feasibility rule. projected_bound reproduces the legacy effective-offset bound.",
+    )
+    parser.add_argument(
+        "--nominal_command_semantics",
+        choices=["raw_ik", "executable_ik"],
+        default="raw_ik",
+        help="Optimize and execute around raw IK or its braking-aware executable projection.",
+    )
     parser.add_argument(
         "--asap_history_mode",
         choices=["aligned", "legacy_shifted"],
@@ -393,7 +480,13 @@ def _reference_calibration(
     }
 
 
-def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_steps: int) -> None:
+def _validate_task_reference(
+    bundle: ReferenceBundle,
+    n_joints: int,
+    future_steps: int,
+    *,
+    execution_steps: int | None = None,
+) -> None:
     """Validate the reference invariants needed by the selected online controller."""
     q_des = np.asarray(bundle.q_des)
     dq_des = np.asarray(bundle.dq_des)
@@ -403,7 +496,13 @@ def _validate_task_reference(bundle: ReferenceBundle, n_joints: int, future_step
         raise ValueError(f"Task reference dq_des must match q_des shape {q_des.shape}, got {dq_des.shape}")
     if bundle.execution_steps <= 0:
         raise ValueError(f"Task reference execution_steps must be positive, got {bundle.execution_steps}")
-    minimum_length = int(bundle.execution_steps) + int(future_steps) + 1
+    validated_execution_steps = int(bundle.execution_steps if execution_steps is None else execution_steps)
+    if validated_execution_steps <= 0 or validated_execution_steps > int(bundle.execution_steps):
+        raise ValueError(
+            "Validated task-reference execution_steps must be in "
+            f"[1, {bundle.execution_steps}], got {validated_execution_steps}"
+        )
+    minimum_length = validated_execution_steps + int(future_steps) + 1
     if q_des.shape[0] < minimum_length:
         raise ValueError(
             "Task reference is too short for the requested controller look-ahead: "
@@ -429,15 +528,22 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     # Virtual delay-aware execution shortens the executable prefix near the
     # end of a reference, rather than requiring a separately padded file.
     # The runner applies that prefix truncation before issuing a future plan.
-    future_steps = args.horizon if args.controller_mode == "mpc" else 0
+    future_steps = args.horizon if args.controller_mode == "mpc" else int(args.ik_preview_steps)
     if args.controller_mode == "mpc" and args.multirate_mode in {"virtual_asap", "virtual_smooth"}:
         future_steps += int(args.anticipation_delay_steps)
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
         expected_n_joints=args.n_joints,
-        min_horizon=future_steps,
     )
-    _validate_task_reference(bundle, args.n_joints, future_steps)
+    effective_execution_steps = int(bundle.execution_steps)
+    if args.max_execution_steps is not None:
+        effective_execution_steps = min(effective_execution_steps, int(args.max_execution_steps))
+    _validate_task_reference(
+        bundle,
+        args.n_joints,
+        future_steps,
+        execution_steps=effective_execution_steps,
+    )
     return bundle
 
 
@@ -532,6 +638,12 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         setattr(args, "activation_observer", activation_observer)
     if args.controller_mode == "ik_direct" and args.reference_mode != "task":
         raise ValueError("--controller_mode ik_direct requires --reference_mode task with a validated IK reference")
+    if args.ik_preview_steps < 0:
+        raise ValueError("--ik_preview_steps must be non-negative")
+    if args.controller_mode != "ik_direct" and args.ik_preview_steps:
+        raise ValueError("--ik_preview_steps is only valid with --controller_mode ik_direct")
+    if args.anticipation_delay_steps < 0:
+        raise ValueError("--anticipation_delay_steps must be non-negative")
     if args.reference_mode != "task" and args.episode_len <= 0:
         raise ValueError(f"episode_len must be positive, got {args.episode_len}")
     if args.controller_mode == "mpc" and args.horizon <= 0:
@@ -560,22 +672,25 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("recovery_min_tracking_error must be non-negative")
     if args.planner_guard_ms < 0.0 or args.planner_min_interval_ms < 0.0:
         raise ValueError("planner_guard_ms and planner_min_interval_ms must be non-negative")
-    if args.uncertainty_threshold <= 0.0:
-        raise ValueError("uncertainty_threshold must be positive")
-    if args.uncertainty_mode == "ensemble_gate":
-        if args.controller_mode != "mpc" or getattr(args, "dynamics_backend", "learned") == "mujoco_oracle":
-            raise ValueError("ensemble_gate requires learned --controller_mode mpc")
-        if len(args.uncertainty_checkpoints) != 4 or len(args.uncertainty_normalizers) != 4:
-            raise ValueError("ensemble_gate requires exactly four replica checkpoints and four paired normalizers")
-    elif args.uncertainty_checkpoints or args.uncertainty_normalizers:
-        raise ValueError("uncertainty replica paths require --uncertainty_mode ensemble_gate")
+    using_two_stage_mpc = args.controller_mode == "mpc" and args.planner_projection_strategy == "two_stage"
+    if using_two_stage_mpc and args.planner_projection != "on":
+        raise ValueError("two_stage planner projection requires --planner_projection on")
+    if using_two_stage_mpc and args.mpc_policy != "residual":
+        raise ValueError("two_stage planner projection requires residual MPC")
     dynamics_backend = getattr(args, "dynamics_backend", "learned")
+    if using_two_stage_mpc and dynamics_backend != "learned":
+        raise ValueError("two_stage planner projection currently supports only learned dynamics")
+    robustness = _robustness_config(args)
+    if robustness.enabled and dynamics_backend == "mujoco_oracle":
+        raise ValueError("Robustness perturbations are only defined for learned MPC and Direct IK, not mujoco_oracle")
     if dynamics_backend == "mujoco_oracle":
         if args.controller_mode != "mpc" or args.mpc_policy != "residual":
             raise ValueError("mujoco_oracle requires --controller_mode mpc --mpc_policy residual")
         if args.multirate_mode != "virtual_asap":
             raise ValueError("mujoco_oracle is an offline upper bound and only supports --multirate_mode virtual_asap")
     if args.multirate_mode == "threaded_asap":
+        if args.delay_protocol != "full":
+            raise ValueError("threaded_asap only supports --delay_protocol full")
         return run_threaded_asap(args, globals())
     if args.multirate_mode != "synchronous":
         return run_delay_aware_virtual(args, globals())
@@ -593,11 +708,13 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             device=device,
             history_len=args.history_len,
         )
-    env = MuJoCoArmEnv(str(resolve_runtime_path(args.model_xml)), n_joints=args.n_joints, seed=args.seed)
+    env = _build_control_env(args)
 
     states_history: list[np.ndarray] = []
     q_ref_history: list[np.ndarray] = []
     actual_states: list[np.ndarray] = []
+    observed_states: list[np.ndarray] = []
+    observation_noise: list[np.ndarray] = []
     next_states: list[np.ndarray] = []
     selected_q_refs: list[np.ndarray] = []
     selected_delta_q_refs: list[np.ndarray] = []
@@ -636,7 +753,12 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
     recovery_active_flags: list[int] = []
     recovery_trigger_reasons: list[str] = []
     cost_term_records: dict[str, list[float]] = {name: [] for name in COST_TERM_NAMES}
-    torque_records: dict[str, list[np.ndarray]] = {"tau_actuator": [], "tau_gravity": [], "tau_total": []}
+    torque_records: dict[str, list[np.ndarray]] = {
+        "tau_actuator": [], "tau_gravity": [], "tau_total": [],
+        "tau_gravity_true": [], "tau_gravity_mismatch": [],
+    }
+    external_force_world_records: list[np.ndarray] = []
+    external_generalized_force_records: list[np.ndarray] = []
     desired_ee_positions: list[np.ndarray] = []
     desired_ee_rotations: list[np.ndarray] = []
     actual_ee_positions: list[np.ndarray] = []
@@ -653,21 +775,22 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
     try:
         if args.n_joints > MPC_HOME_Q.shape[0]:
             raise ValueError(f"MPC home pose supports at most {MPC_HOME_Q.shape[0]} joints, got {args.n_joints}")
-        state = env.reset_to_configuration(MPC_HOME_Q[: args.n_joints])
-        previous_q_ref = np.asarray(state[: args.n_joints], dtype=np.float32).copy()
+        true_state = env.reset_to_configuration(MPC_HOME_Q[: args.n_joints])
+        previous_q_ref = np.asarray(true_state[: args.n_joints], dtype=np.float32).copy()
         previous_q_ref_velocity = np.zeros(args.n_joints, dtype=np.float32)
         previous_residual = np.zeros(args.n_joints, dtype=np.float32)
         previous_residual_velocity = np.zeros(args.n_joints, dtype=np.float32)
         recovery_remaining = 0
         residual_saturation_streak = 0
         for _ in range(args.settle_steps):
-            state = env.step(previous_q_ref)
+            true_state = env.step(previous_q_ref)
+        state = env.get_observation()
         states_history.append(state.copy())
         q_ref_history.append(previous_q_ref.copy())
 
         reference, dq_reference, ddq_reference, execution_steps, task_reference = _reference_for_run(
             args=args,
-            state=state,
+            state=true_state,
             env=env,
             control_dt=bundle.control_dt if bundle is not None else None,
         )
@@ -709,7 +832,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             actuator_kp = actuator_kd = torque_scale = delta_torque_scale = None
             w_tau = w_delta_tau = 0.0
             if args.cost_profile == "actuator_aware":
-                actuator_kp, actuator_kd = env.position_actuator_gains
+                actuator_kp, actuator_kd = env.nominal_position_actuator_gains
                 torque_scale = np.maximum(actuator_kp * q_ref_velocity_limit * env.control_dt, 1.0).astype(np.float32)
                 delta_torque_scale = np.maximum(
                     actuator_kp * q_ref_acceleration_limit * (env.control_dt**2), 0.5
@@ -764,6 +887,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 residual_max=torch.as_tensor(residual_max, dtype=torch.float32, device=device),
                 joint_limit_margin=args.joint_limit_margin,
                 rollout_batch_size=args.rollout_batch_size,
+                project_residual_kinematics=args.planner_projection == "on" and args.planner_projection_strategy == "full",
+                projection_backend=args.planner_projection_backend,
+                projection_strategy=args.planner_projection_strategy,
+                residual_cost_semantics=args.residual_cost_semantics,
+                residual_feasibility_semantics=args.residual_feasibility_semantics,
             )
         controller: CEMMPCController | None = None
         # ``command_buffer`` is retained for the old absolute-command action
@@ -933,6 +1061,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                                 execute=args.cem_execute,
                                 seed=args.seed,
                                 device=str(device),
+                                selection_validation=(
+                                    "exact_final_pool"
+                                    if args.planner_projection_strategy == "two_stage"
+                                    else "none"
+                                ),
                             ),
                             planner=planner,
                             joint_low=env.joint_low,
@@ -1015,7 +1148,24 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                         command_buffer_plan_length = buffer_length
                         delta_q_ref = q_ref_command - previous_q_ref
             else:
-                q_ref_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
+                ik_target = np.asarray(
+                    reference[step_idx + 1 + int(args.ik_preview_steps)], dtype=np.float32
+                ).copy()
+                if args.ik_command_projection == "physical":
+                    q_ref_command, _, _ = project_executable_command_np(
+                        ik_target,
+                        np.zeros(args.n_joints, dtype=np.float32),
+                        previous_q_ref,
+                        previous_q_ref_velocity,
+                        env.joint_low,
+                        env.joint_high,
+                        args.joint_limit_margin,
+                        physical_velocity_limit,
+                        physical_acceleration_limit,
+                        env.control_dt,
+                    )
+                else:
+                    q_ref_command = ik_target
                 delta_q_ref = q_ref_command - previous_q_ref
                 planning_time = 0.0
                 replan_time = float("nan")
@@ -1037,7 +1187,9 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 sampling_std_end_mean = float("nan")
 
             torque = env.compute_torque_components(q_ref_command)
-            actual_states.append(state.copy())
+            actual_states.append(true_state.copy())
+            observed_states.append(state.copy())
+            observation_noise.append((state - true_state).astype(np.float32))
             q_des_records.append(reference[step_idx].copy())
             dq_des_records.append(dq_reference[step_idx].copy())
             if args.controller_mode == "mpc" and args.mpc_policy == "residual":
@@ -1090,20 +1242,28 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             failure_reasons.append(failure_reason)
             for name in COST_TERM_NAMES:
                 cost_term_records[name].append(float(selected_cost_terms.get(name, np.nan)))
-            for key, target_key in (("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"), ("total_tau", "tau_total")):
+            for key, target_key in (
+                ("actuator_tau", "tau_actuator"), ("gravity_tau", "tau_gravity"),
+                ("total_tau", "tau_total"), ("true_gravity_tau", "tau_gravity_true"),
+                ("gravity_mismatch_tau", "tau_gravity_mismatch"),
+            ):
                 torque_records[target_key].append(torque[key].astype(np.float32))
 
             # Commit the command to the current state before advancing the
             # simulator, matching training tokens [x_t, u_t].
             q_ref_history[-1] = q_ref_command.copy()
+            external_force = _force_for_step(robustness, step_idx, execution_steps)
             try:
-                state = env.step(q_ref_command)
+                true_state = env.step(q_ref_command, external_force_world=external_force)
+                state = env.get_observation()
                 joint_limit_violations.append(0)
             except RuntimeError:
                 joint_limit_violations.append(1)
                 if args.fail_on_limit_violation:
                     raise
                 break
+            external_force_world_records.append(env.last_external_force_world.astype(np.float32).copy())
+            external_generalized_force_records.append(env.last_external_generalized_force.astype(np.float32).copy())
             control_step_wall_times.append(time.perf_counter() - control_step_started)
 
             if (
@@ -1125,11 +1285,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                         time.sleep(remaining)
                     viewer_deadline += env.control_dt
 
-            next_states.append(state.copy())
+            next_states.append(true_state.copy())
             if args.controller_mode == "mpc" and np.all(np.isfinite(predicted_next_state)):
-                predicted_next_q_errors.append(float(np.linalg.norm(predicted_next_state[: args.n_joints] - state[: args.n_joints])))
+                predicted_next_q_errors.append(float(np.linalg.norm(predicted_next_state[: args.n_joints] - true_state[: args.n_joints])))
                 predicted_next_dq_errors.append(
-                    float(np.linalg.norm(predicted_next_state[args.n_joints :] - state[args.n_joints :]))
+                    float(np.linalg.norm(predicted_next_state[args.n_joints :] - true_state[args.n_joints :]))
                 )
             else:
                 predicted_next_q_errors.append(float("nan"))
@@ -1139,7 +1299,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             previous_q_ref_velocity = (q_ref_command - previous_q_ref) / env.control_dt
             previous_q_ref = q_ref_command.copy()
             commit_command_and_append_placeholder(states_history, q_ref_history, q_ref_command, state)
-            realized_error = float(np.linalg.norm(state[: args.n_joints] - reference[step_idx + 1]))
+            realized_error = float(np.linalg.norm(true_state[: args.n_joints] - reference[step_idx + 1]))
             realized_tracking_errors.append(realized_error)
             if args.controller_mode == "mpc" and args.mpc_policy == "residual":
                 previous_residual_velocity = (executed_residual - previous_residual) / env.control_dt
@@ -1240,7 +1400,24 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
 
     arrays: dict[str, np.ndarray] = {
         "controller_mode": np.asarray(args.controller_mode),
+        "control_semantics_version": np.asarray(2, dtype=np.int64),
+        "projection_semantics_version": np.asarray(2, dtype=np.int64),
+        "projection_backend": np.asarray("shared_physical_v2"),
+        "planner_projection": np.asarray(args.planner_projection),
+        "planner_projection_backend": np.asarray(args.planner_projection_backend),
+        "planner_projection_strategy": np.asarray(args.planner_projection_strategy),
+        "residual_cost_semantics": np.asarray(args.residual_cost_semantics),
+        "packet_residual_semantics": np.asarray(args.packet_residual_semantics),
+        "residual_feasibility_semantics": np.asarray(args.residual_feasibility_semantics),
+        "nominal_command_semantics": np.asarray(args.nominal_command_semantics),
+        "projection_tolerance": np.asarray(1e-6, dtype=np.float32),
+        "ik_preview_steps": np.asarray(args.ik_preview_steps, dtype=np.int64),
+        "ik_command_projection": np.asarray(args.ik_command_projection),
+        "delay_protocol": np.asarray(args.delay_protocol),
+        "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
         "actual_states": _stack_records(actual_states),
+        "observed_states": _stack_records(observed_states),
+        "observation_noise": _stack_records(observation_noise),
         "next_states": _stack_records(next_states),
         "q_des": _stack_records(q_des_records),
         "dq_des": _stack_records(dq_des_records),
@@ -1279,6 +1456,8 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         "multirate_buffer_mode": np.asarray(multirate_buffer_modes),
         "recovery_active_flags": np.asarray(recovery_active_flags, dtype=np.int64),
         "recovery_trigger_reasons": np.asarray(recovery_trigger_reasons),
+        "external_force_world": _stack_records(external_force_world_records),
+        "external_generalized_force": _stack_records(external_generalized_force_records),
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step),
         "cem_init_std": np.asarray(args.init_std, dtype=np.float32),
         "cem_min_std": np.asarray(args.min_std, dtype=np.float32),
@@ -1325,7 +1504,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         **{f"cost_{name}": np.asarray(values, dtype=np.float32) for name, values in cost_term_records.items()},
         **replay_arrays,
         **{key: _stack_records(value) for key, value in torque_records.items()},
+        **config_arrays(robustness, env),
     }
+    pulse_start, pulse_stop = robustness.pulse_window(execution_steps)
+    arrays["force_pulse_start_step"] = np.asarray(pulse_start, dtype=np.int64)
+    arrays["force_pulse_stop_step"] = np.asarray(pulse_stop, dtype=np.int64)
     if task_reference is not None:
         arrays.update(
             {
@@ -1347,7 +1530,7 @@ def main() -> None:
     args = parse_args()
     result = run_closed_loop_mpc(args)
     save_dir = resolve_runtime_path(args.save_dir)
-    save_mpc_run(save_dir, result["arrays"], result["rows"])
+    save_mpc_run(save_dir, result["arrays"], result["rows"], result.get("planner_events"))
     print(f"Saved CEM-MPC rollout to {save_dir}")
 
 

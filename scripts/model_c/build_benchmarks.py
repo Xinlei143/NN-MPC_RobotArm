@@ -31,7 +31,7 @@ def _sha256(path: Path) -> str:
 def _runner_defaults() -> dict[str, Any]:
     module = load_runner("model_c_benchmark_runner")
     defaults = vars(module.build_arg_parser().parse_args([]))
-    excluded = {"checkpoint", "normalizer", "model_type", "history_len", "device", "seed", "save_dir", "reference_mode", "reference_file", "episode_len", "horizon", "anticipation_delay_steps", "multirate_mode"}
+    excluded = {"checkpoint", "normalizer", "model_type", "history_len", "device", "seed", "save_dir", "reference_mode", "reference_file", "episode_len", "horizon", "anticipation_delay_steps", "multirate_mode", "payload_level", "actuator_gain_level", "force_pulse_level", "observation_noise_level"}
     return {key: value for key, value in defaults.items() if key not in excluded}
 
 
@@ -51,7 +51,7 @@ def main() -> None:
     parser.add_argument("--task_reference_dir", required=True, help="Contains immutable <type>_<index>/reference.npz bundles for every benchmark type.")
     parser.add_argument("--completion_marker", default="C2_COMPLETE")
     parser.add_argument("--seed", type=int, default=20260720)
-    parser.add_argument("--horizon", type=int, default=25)
+    parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument("--delay", type=int, required=True)
     parser.add_argument("--disjoint_from", default=None, help="Required for final: development manifest whose reference files/hashes must not overlap.")
     args = parser.parse_args()

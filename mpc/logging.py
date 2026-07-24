@@ -9,11 +9,20 @@ import numpy as np
 from mpc.utils import write_csv_rows
 
 
-def save_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray], rows: list[dict[str, Any]]) -> dict[str, Any]:
+def save_mpc_run(
+    save_dir: Path,
+    arrays: dict[str, np.ndarray],
+    rows: list[dict[str, Any]],
+    planner_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(save_dir / "rollout.npz", **arrays)
     write_csv_rows(save_dir / "rollout.csv", rows)
+    if planner_events is not None:
+        with (save_dir / "planner_events.jsonl").open("w", encoding="utf-8") as handle:
+            for event in planner_events:
+                handle.write(json.dumps(event, sort_keys=True) + "\n")
     summary = _task_tracking_summary(arrays)
     if summary is not None:
         with (save_dir / "task_tracking_summary.json").open("w", encoding="utf-8") as handle:
@@ -150,6 +159,8 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "actual_update_rate_hz": planner_rate,
         "late_drop_count": planner_late_drop_count,
         "late_drop_rate": float(planner_late_drop_count / planner_solve_count) if planner_solve_count else float("nan"),
+        "failure_count": int(np.asarray(arrays.get("planner_failure_count", 0)).reshape(-1)[0]),
+        "packet_expiration_count": int(np.asarray(arrays.get("packet_expiration_count", 0)).reshape(-1)[0]),
         "dynamics_backend": str(np.asarray(arrays.get("dynamics_backend", "not_applicable")).reshape(-1)[0]),
         "oracle_fixed_logical_delay": bool(
             np.asarray(arrays.get("oracle_fixed_logical_delay", False)).reshape(-1)[0]
@@ -161,11 +172,31 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "packet_publish_deadline_s": float(np.asarray(arrays.get("packet_publish_deadline_s", np.nan)).reshape(-1)[0]),
     }
     return {
-        "schema_version": 3,
+        "schema_version": 4,
+        "control_semantics_version": int(np.asarray(arrays.get("control_semantics_version", 0)).reshape(-1)[0]),
+        "projection_semantics_version": int(np.asarray(arrays.get("projection_semantics_version", 0)).reshape(-1)[0]),
+        "projection_backend": str(np.asarray(arrays.get("projection_backend", "legacy")).reshape(-1)[0]),
+        "planner_projection": str(np.asarray(arrays.get("planner_projection", "not_applicable")).reshape(-1)[0]),
+        "residual_cost_semantics": str(np.asarray(arrays.get("residual_cost_semantics", "not_applicable")).reshape(-1)[0]),
+        "packet_residual_semantics": str(np.asarray(arrays.get("packet_residual_semantics", "not_applicable")).reshape(-1)[0]),
+        "residual_feasibility_semantics": str(np.asarray(arrays.get("residual_feasibility_semantics", "not_applicable")).reshape(-1)[0]),
+        "nominal_command_semantics": str(np.asarray(arrays.get("nominal_command_semantics", "not_applicable")).reshape(-1)[0]),
         "controller_mode": str(controller_mode[0]) if controller_mode.size else "unknown",
         "mpc_policy": str(np.asarray(arrays.get("mpc_policy", "not_applicable")).reshape(-1)[0]),
         "cost_profile": str(np.asarray(arrays.get("cost_profile", "not_applicable")).reshape(-1)[0]),
         "recorded_steps": int(actual_states.shape[0]) if actual_states.ndim else 0,
+        "robustness": {
+            "payload_level": int(np.asarray(arrays.get("payload_level", 0)).reshape(-1)[0]),
+            "actuator_gain_level": int(np.asarray(arrays.get("actuator_gain_level", 0)).reshape(-1)[0]),
+            "force_pulse_level": int(np.asarray(arrays.get("force_pulse_level", 0)).reshape(-1)[0]),
+            "observation_noise_level": int(np.asarray(arrays.get("observation_noise_level", 0)).reshape(-1)[0]),
+            "payload_mass_kg": float(np.asarray(arrays.get("payload_mass_kg", 0.0)).reshape(-1)[0]),
+            "actuator_kp_scale": float(np.asarray(arrays.get("actuator_kp_scale", 1.0)).reshape(-1)[0]),
+            "actuator_kd_scale": float(np.asarray(arrays.get("actuator_kd_scale", 1.0)).reshape(-1)[0]),
+            "force_pulse_n": float(np.asarray(arrays.get("force_pulse_n", 0.0)).reshape(-1)[0]),
+            "observation_q_std_rad": float(np.asarray(arrays.get("observation_q_std_rad", 0.0)).reshape(-1)[0]),
+            "observation_dq_std_rad_s": float(np.asarray(arrays.get("observation_dq_std_rad_s", 0.0)).reshape(-1)[0]),
+        },
         "timing": {
             "control_step_wall_time_s": _finite_stats(np.asarray(arrays.get("control_step_wall_time", np.empty(0)))),
             "planning_time_s": _finite_stats(replan_time),
@@ -192,6 +223,7 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "smoothness": {
             "command_velocity_p95_rad_s": _per_joint_percentile(np.asarray(arrays.get("command_velocity", np.empty((0,)))), 95.0),
             "command_acceleration_p95_rad_s2": _per_joint_percentile(np.asarray(arrays.get("command_acceleration", np.empty((0,)))), 95.0),
+            "command_acceleration_max_abs_rad_s2": _per_joint_percentile(np.asarray(arrays.get("command_acceleration", np.empty((0,)))), 100.0),
             "command_sign_flip_rate": _sign_flip_rate(np.asarray(arrays.get("command_velocity", np.empty((0,))))),
         },
         "actuator": {
@@ -200,7 +232,9 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "torque_slew_p95_nm_per_step": _per_joint_percentile(np.diff(np.asarray(arrays.get("tau_actuator", np.empty((0,)))), axis=0), 95.0),
         },
         "safety": {
-            "controller_failure_count": int(np.sum(np.asarray(arrays.get("failure_flags", np.empty(0))) != 0)),
+            "controller_failure_count": int(
+                np.asarray(arrays.get("planner_failure_count", np.sum(np.asarray(arrays.get("failure_flags", np.empty(0))) != 0))).reshape(-1)[0]
+            ),
             "joint_limit_violation_count": int(np.sum(np.asarray(arrays.get("joint_limit_violation_flags", np.empty(0))) != 0)),
             "command_velocity_violation_count": int(np.sum(np.asarray(arrays.get("command_velocity_violation_flags", np.empty(0))) != 0)),
             "command_acceleration_violation_count": int(np.sum(np.asarray(arrays.get("command_acceleration_violation_flags", np.empty(0))) != 0)),
@@ -224,6 +258,21 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "feedback_p95_abs_rad": _per_joint_percentile(
                 np.asarray(arrays.get("feedback_correction", np.empty((0,)))), 95.0
             ),
+            "projection_discrepancy_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("projection_discrepancy", np.empty((0,)))), 95.0
+            ),
+            "safety_projection_offset_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("safety_projection_offset", np.empty((0,)))), 95.0
+            ),
+            "planner_execution_qref_error_p95_abs_rad": _per_joint_percentile(
+                np.asarray(arrays.get("planner_execution_qref_error", np.empty((0,)))), 95.0
+            ),
+            "projection_activation_rate": float(np.mean(np.asarray(arrays.get("projection_active", np.empty(0))) != 0))
+            if np.asarray(arrays.get("projection_active", np.empty(0))).size else float("nan"),
+            "residual_saturation_rate": float(np.mean(np.asarray(arrays.get("residual_saturated", np.empty(0))) != 0))
+            if np.asarray(arrays.get("residual_saturated", np.empty(0))).size else float("nan"),
+            "feedback_saturation_rate": float(np.mean(np.asarray(arrays.get("feedback_saturated", np.empty(0))) != 0))
+            if np.asarray(arrays.get("feedback_saturated", np.empty(0))).size else float("nan"),
             "packet_events": _string_counts(np.asarray(arrays.get("packet_event", np.empty(0)))),
         },
         "model_replay": _replay_summary(arrays),
@@ -618,6 +667,12 @@ def _plot_task_space_run(plt: Any, save_dir: Path, arrays: dict[str, np.ndarray]
 
 
 def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
+    # Rollout logging is batch/headless work.  Do not let Matplotlib select a
+    # Tk backend: threaded_asap has a worker thread, and Tk objects destroyed
+    # during interpreter shutdown otherwise emit "main thread is not in main
+    # loop" errors even though the rollout itself completed successfully.
+    import matplotlib
+    matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
     actual_states = arrays["actual_states"]
