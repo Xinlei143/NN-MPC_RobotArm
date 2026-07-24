@@ -1,6 +1,6 @@
 # Threaded-ASAP Cost Function 消融实验操作手册
 
-本手册复现实验文档 [NN_MPC_Cost_Ablation.md](NN_MPC_Cost_Ablation.md) 的 cost function 消融矩阵，但将控制协议从 `virtual_asap` 改为真实墙钟 100 Hz 的 `threaded_asap`。
+本手册复现实验文档 [260723_NN_MPC_Cost_Ablation.md](260723_NN_MPC_Cost_Ablation.md) 的 cost function 消融矩阵，但将控制协议从 `virtual_asap` 改为真实墙钟 100 Hz 的 `threaded_asap`。
 
 它测试的是：在相同 Model A、相同 reference、相同 CEM 预算和相同逻辑延迟下，cost 项变化对**实际异步控制系统**的影响。
 
@@ -800,5 +800,4 @@ outputs/cost_ablation_threaded/
     best_rollout_checkpoint/seed_0/run_summary.json
 ```
 
-原始 virtual-asap 实验的背景、cost 定义和旧结果见 [NN_MPC_Cost_Ablation.md](NN_MPC_Cost_Ablation.md)。
-
+原始 virtual-asap 实验的背景、cost 定义和旧结果见 [260723_NN_MPC_Cost_Ablation.md](260723_NN_MPC_Cost_Ablation.md)。

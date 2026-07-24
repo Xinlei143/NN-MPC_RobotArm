@@ -1,6 +1,6 @@
 # 动力学建模子模块使用说明
 
-这个目录是整个 `NN-MPC_RobotArm` 仓库中的动力学建模子模块，用于在 MuJoCo 中采集机械臂运动数据，并用 PyTorch 训练神经网络动力学模型。顶层仓库还包含 CEM-MPC 闭环控制代码；完整目录说明见仓库根目录的 `docs/PROJECT_STRUCTURE.md`。
+这个目录是整个 `NN-MPC_RobotArm` 仓库中的动力学建模子模块，用于在 MuJoCo 中采集机械臂运动数据，并用 PyTorch 训练神经网络动力学模型。顶层仓库还包含 CEM-MPC 闭环控制代码；完整目录说明见仓库根目录的 `docs/260719_PROJECT_STRUCTURE.md`。
 
 默认机械臂模型是 `dynamics_modeling/ABB_IRB2400.xml`。如果你要换成别的 MuJoCo XML/MJCF 模型，可以在命令中传入绝对路径，或传入相对于 `dynamics_modeling/` 的路径。
 

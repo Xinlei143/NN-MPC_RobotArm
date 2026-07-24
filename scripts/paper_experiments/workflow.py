@@ -29,7 +29,7 @@ from scripts.robustness._runtime import ROOT, load_runner
 
 
 RUNNER = load_runner("paper_delay_aware_runner")
-DEFAULT_ROOT = ROOT / "outputs" / "paper_delay_aware"
+DEFAULT_ROOT = ROOT / "outputs" / "paper_delay_aware_two_stage_v1"
 CHECKPOINT = ROOT / "outputs" / "checkpoints" / "gru_20260720_202923" / "best_model.pt"
 NORMALIZER = ROOT / "outputs" / "checkpoints" / "gru_20260720_202923" / "normalizer.pt"
 MODEL_XML = ROOT / "dynamics_modeling" / "ABB_IRB2400.xml"
@@ -120,11 +120,12 @@ def _base_args() -> argparse.Namespace:
     args.replan_interval_steps = 5; args.mpc_warmup_plans = 1
     args.controller_mode = "mpc"; args.mpc_policy = "residual"
     args.delay_protocol = "full"; args.dynamics_backend = "learned"
-    # The 100 Hz execution layer always applies the shared physical projector.
-    # Keeping projection out of the CEM population rollout avoids serial GPU
-    # kernels that reduce the real worker update rate and is tracked explicitly
-    # through planner_execution_qref_error.
-    args.planner_projection = "off"
+    # The final paper method uses cheap population screening followed by exact
+    # compiled projection and re-evaluation of the selected candidates.  The
+    # 100 Hz execution layer independently applies the shared physical filter.
+    args.planner_projection = "on"
+    args.planner_projection_backend = "compiled"
+    args.planner_projection_strategy = "two_stage"
     args.residual_cost_semantics = "requested"
     args.packet_residual_semantics = "requested"
     args.residual_feasibility_semantics = "finite"
@@ -270,13 +271,25 @@ def build_manifest(output: Path, allow_dirty: bool, profile: str) -> Path:
     for key in ("save_dir", "seed", "reference_file", "reference_mode", "controller_mode", "multirate_mode"):
         base.pop(key, None)
     references = {name: file_identity(output / "references" / name / "reference.npz") for name in (*TRAJECTORIES, "preview_calibration")}
+    frozen_method = {
+        key: base[key]
+        for key in (
+            "model_type", "history_len", "horizon", "num_samples", "rollout_batch_size", "cem_iters",
+            "replan_interval_steps", "planner_projection", "planner_projection_backend",
+            "planner_projection_strategy", "residual_cost_semantics", "packet_residual_semantics",
+            "residual_feasibility_semantics", "nominal_command_semantics", "ik_command_projection",
+            "feedback_kq", "feedback_kdq", "feedback_max", "planner_guard_ms",
+        )
+    }
+    frozen_method["control_dt_s"] = 0.01
     payload = {
-        "schema_version": 3, "kind": "paper_delay_aware", "profile": profile,
+        "schema_version": 4, "kind": "paper_delay_aware", "profile": profile,
         "control_semantics_version": 2, "projection_semantics_version": 2,
         "projection_backend": "shared_physical_v2", "projection_tolerance": 1e-6,
         "environment": environment, "checkpoint": file_identity(CHECKPOINT), "normalizer": file_identity(NORMALIZER),
         "model_xml": file_identity(MODEL_XML), "delay_calibration": load_json(delay_file),
-        "preview_calibration": load_json(preview_file), "base_run_args": base, "references": references,
+        "preview_calibration": load_json(preview_file), "frozen_method": frozen_method,
+        "base_run_args": base, "references": references,
         "paired_cem_seeds": [0, 1, 2, 3, 4], "delay_sweep_seeds": [0, 1, 2],
         "delay_sweep_steps": [0, 2, 4, 6, 8], "bootstrap_seed": 20260722,
     }
@@ -360,6 +373,18 @@ def _run_case(output: Path, manifest: dict[str, Any], case: dict[str, Any], resu
 
 def run_suite(output: Path, manifest_path: Path, suite: str, resume: bool, case_limit: int | None) -> None:
     manifest = load_json(manifest_path)
+    if int(manifest.get("schema_version", 0)) < 4:
+        raise ValueError("Formal paper runs require a schema-v4 manifest with explicit frozen method semantics")
+    frozen = manifest.get("frozen_method")
+    required_frozen = {
+        "model_type": "gru", "history_len": 16, "horizon": 20, "num_samples": 128,
+        "cem_iters": 2, "planner_projection": "on", "planner_projection_backend": "compiled",
+        "planner_projection_strategy": "two_stage", "residual_cost_semantics": "requested",
+        "packet_residual_semantics": "requested", "residual_feasibility_semantics": "finite",
+        "nominal_command_semantics": "raw_ik", "control_dt_s": 0.01,
+    }
+    if not isinstance(frozen, dict) or any(frozen.get(key) != value for key, value in required_frozen.items()):
+        raise ValueError("Formal paper runs require the compiled two-stage frozen method")
     suites = ("main", "ablation", "delay_sweep", "preview", "oracle") if suite == "all" else (suite,)
     for name in suites:
         cases = suite_cases(manifest, name)

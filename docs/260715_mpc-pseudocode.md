@@ -103,7 +103,7 @@ J = sum_k lambda[k] * (
   + joint_limit_barrier + velocity_limit_barrier
 ```
 
-barrier 对时域采用 `weighted mean + max` 聚合；预测硬越界候选直接无效。默认 terminal weight 是零，避免短 horizon 的末端 learned-model 误差被过度放大。完整公式、默认权重和尺度见 [CostFunction.md](CostFunction.md)。
+barrier 对时域采用 `weighted mean + max` 聚合；预测硬越界候选直接无效。默认 terminal weight 是零，避免短 horizon 的末端 learned-model 误差被过度放大。完整公式、默认权重和尺度见 [260715_CostFunction.md](260715_CostFunction.md)。
 
 ## Recovery
 
