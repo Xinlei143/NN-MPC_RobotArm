@@ -521,4 +521,3 @@ learned residual MPC 都有影响，因为它们共享 CEM planner 和
 后续如果模型、GPU、candidate 数、CEM iterations 或 control period 改变，D 必须
 重新通过真实 threaded E2E 标定，不能直接沿用 6。若要改变 horizon，也应重新执行
 projection latency 标定、四结构配对和 Direct IK 对照，而不是只比较单次 solve time。
-

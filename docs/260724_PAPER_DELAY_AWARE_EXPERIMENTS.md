@@ -1,5 +1,8 @@
 # Delay-Aware MPC 论文实验操作手册
 
+投稿实验的统一优先级、完成状态和验收清单见
+[PAPER_TEST_PLAN.md](PAPER_TEST_PLAN.md)。本文档保留具体命令、控制语义和指标定义。
+
 本文档对应 ROBIO 论文的五控制器主比较、因果消融、delay sweep、Preview IK、GRU 验证和 oracle-dynamics upper bound。所有新产物均写入：
 
 ```text
