@@ -18,7 +18,7 @@ from mpc.delay_protocol import PROTOCOL_NAMES, resolve_delay_protocol
 from mpc.task_space_reference import generate_task_space_trajectory
 from scripts.experiment_utils.bootstrap import paired_bootstrap_rows
 from scripts.paper_experiments.evaluation import summarize_arrays
-from scripts.paper_experiments.workflow import suite_cases
+from scripts.paper_experiments.workflow import _base_args, suite_cases
 
 
 def load_runner():
@@ -130,6 +130,17 @@ class ExperimentStatisticsTests(unittest.TestCase):
 
 
 class PaperMatrixTests(unittest.TestCase):
+    def test_paper_base_args_pin_the_final_gru_two_stage_method(self) -> None:
+        args = _base_args()
+        self.assertEqual(args.model_type, "gru")
+        self.assertEqual(args.history_len, 16)
+        self.assertEqual(args.horizon, 20)
+        self.assertEqual(args.num_samples, 128)
+        self.assertEqual(args.cem_iters, 2)
+        self.assertEqual(args.planner_projection, "on")
+        self.assertEqual(args.planner_projection_backend, "compiled")
+        self.assertEqual(args.planner_projection_strategy, "two_stage")
+
     @staticmethod
     def _manifest() -> dict[str, object]:
         return {

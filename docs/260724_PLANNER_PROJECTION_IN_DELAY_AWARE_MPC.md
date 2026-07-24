@@ -20,7 +20,7 @@ execution safety projection = always on
 方案 B 在第一阶段对全部 CEM candidates 使用 cheap projection，在第二阶段只对
 final elites、mean、best 和 baseline 做 exact physical projection 并重新计算
 GRU rollout/cost。完整的历史、消融结果和默认值决策见
-[MPC 架构与默认配置演进记录](MPC_ARCHITECTURE_EVOLUTION.md)。
+[MPC 架构与默认配置演进记录](260724_260724_MPC_ARCHITECTURE_EVOLUTION.md)。
 
 无论 planner projection 选择 `off`、`full` 还是 `two_stage`，100 Hz 执行层都会
 对最终命令做物理投影。因此，“关闭 planner projection”不等于关闭安全约束。

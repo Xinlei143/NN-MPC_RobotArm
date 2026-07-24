@@ -32,6 +32,7 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
     def test_runner_defaults_to_threaded_asap(self) -> None:
         args = RUNNER.parse_args([])
         self.assertEqual(args.multirate_mode, "threaded_asap")
+        self.assertEqual(args.model_type, "gru")
         self.assertEqual(args.delay_protocol, "full")
         self.assertEqual(args.ik_preview_steps, 0)
         self.assertEqual(args.planner_projection, "on")

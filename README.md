@@ -13,7 +13,7 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py --help
 
 依赖与动力学数据采集、训练和开环评估说明见 [dynamics_modeling/README.md](dynamics_modeling/README.md)。
 
-冻结 Model A 在 payload、执行器失配、外力和观测噪声下的 threaded-asap 鲁棒性评测见 [docs/260723_MODEL_A_ROBUSTNESS.md](docs/260723_MODEL_A_ROBUSTNESS.md)。
+冻结 Model A 在 payload、执行器失配、外力和观测噪声下的 threaded-asap 鲁棒性评测见 [docs/260723_260723_MODEL_A_ROBUSTNESS.md](docs/260723_260723_MODEL_A_ROBUSTNESS.md)。
 
 ## 当前 MPC 方法
 
@@ -141,9 +141,9 @@ conda run -n pendulum-rl python -m unittest mpc/tests/test_residual_mpc.py -v
 
 ## 相关文档
 
-- [Cost function](docs/260715_CostFunction.md)
-- [MPC 伪代码](docs/260715_mpc-pseudocode.md)
-- [运行命令](docs/260723_run_command.md)
-- [Delay-Aware MPC 论文实验操作手册](docs/260724_PAPER_DELAY_AWARE_EXPERIMENTS.md)
-- [项目结构](docs/260719_PROJECT_STRUCTURE.md)
-- [完成状态（历史快照）](docs/260722_PROJECT_COMPLETION_STATUS.md)
+- [Cost function](docs/260715_260715_CostFunction.md)
+- [MPC 伪代码](docs/260715_260715_mpc-pseudocode.md)
+- [运行命令](docs/260723_260723_run_command.md)
+- [Delay-Aware MPC 论文实验操作手册](docs/260724_260724_PAPER_DELAY_AWARE_EXPERIMENTS.md)
+- [项目结构](docs/260719_260719_PROJECT_STRUCTURE.md)
+- [完成状态（历史快照）](docs/260722_260722_PROJECT_COMPLETION_STATUS.md)

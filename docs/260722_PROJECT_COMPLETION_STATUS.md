@@ -1,6 +1,6 @@
 # NN-MPC_RobotArm 已完成内容整理
 
-> **历史实现快照（部分控制细节已过时）**：本文大部分内容记录的是 residual MPC 引入前的 `delta_q_ref` / command-acceleration 实现，不是当前控制器规范。当前默认实现为 `q_ref=q_nom+r`：先投影 IK nominal `q_nom`，CEM 优化有界 residual `r`，并默认以 `lowest_cost` 比较 baseline、best 和 mean。当前规范请见 [README](../README.md)、[CostFunction](CostFunction.md) 和 [MPC 伪代码](mpc-pseudocode.md)。本文保留旧描述以便追溯已完成模块和历史实验。
+> **历史实现快照（部分控制细节已过时）**：本文大部分内容记录的是 residual MPC 引入前的 `delta_q_ref` / command-acceleration 实现，不是当前控制器规范。当前默认实现为 `q_ref=q_nom+r`：先投影 IK nominal `q_nom`，CEM 优化有界 residual `r`，并默认以 `lowest_cost` 比较 baseline、best 和 mean。当前规范请见 [README](../README.md)、[CostFunction](260715_CostFunction.md) 和 [MPC 伪代码](260715_mpc-pseudocode.md)。本文保留旧描述以便追溯已完成模块和历史实验。
 
 本文档基于当时工作区代码和已有文档整理，目标是说明项目在该阶段完成了哪些模块、每个模块做到什么程度，以及这些模块之间如何串成研究/实验流程。
 
@@ -594,10 +594,10 @@ label,mpc_rollout_npz,training_dataset_npz
 
 当前 `docs/` 下已经有几份文档：
 
-- `docs/PROJECT_STRUCTURE.md`：说明仓库结构、路径约定、dynamics 与 MPC 的职责划分。
-- `docs/mpc-pseudocode.md`：把当前 MPC 主线翻译成伪代码，解释 closed-loop receding horizon、planner、CEM、cost 和脚本关系。
+- `docs/260719_PROJECT_STRUCTURE.md`：说明仓库结构、路径约定、dynamics 与 MPC 的职责划分。
+- `docs/260715_mpc-pseudocode.md`：把当前 MPC 主线翻译成伪代码，解释 closed-loop receding horizon、planner、CEM、cost 和脚本关系。
 - `docs/Note.md`：记录 2026-07-03 的历史问题和 cost function 理解笔记；其中的 cost 表述不作为当前实现规范。
-- `docs/PROJECT_COMPLETION_STATUS.md`：本文档，整理当前项目已经完成的内容。
+- `docs/260722_PROJECT_COMPLETION_STATUS.md`：本文档，整理当前项目已经完成的内容。
 
 `dynamics_modeling/README.md` 也已经比较详细地记录了：
 

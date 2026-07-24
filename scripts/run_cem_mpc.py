@@ -115,7 +115,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--observation_noise_level", choices=range(7), default=0, type=int)
     parser.add_argument("--checkpoint", default=None, type=str, help="Dynamics checkpoint. Required for --controller_mode mpc.")
     parser.add_argument("--normalizer", default=None, type=str, help="Dynamics normalizer. Required for --controller_mode mpc.")
-    parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer")
+    parser.add_argument(
+        "--model_type",
+        choices=["mlp", "gru", "transformer"],
+        default="gru",
+        help="Learned dynamics architecture. GRU is the repository and paper default; select another model explicitly.",
+    )
     parser.add_argument(
         "--dynamics_backend",
         choices=["learned", "mujoco_oracle"],

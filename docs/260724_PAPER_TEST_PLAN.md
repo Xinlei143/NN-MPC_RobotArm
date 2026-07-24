@@ -2,7 +2,7 @@
 
 > 更新日期：2026-07-24  
 > 用途：统一记录论文投稿前需要完成的实验、冻结配置、运行命令、产物和验收条件。  
-> 详细操作与指标定义见 [PAPER_DELAY_AWARE_EXPERIMENTS.md](PAPER_DELAY_AWARE_EXPERIMENTS.md)。
+> 详细操作与指标定义见 [260724_PAPER_DELAY_AWARE_EXPERIMENTS.md](260724_PAPER_DELAY_AWARE_EXPERIMENTS.md)。
 
 ## 1. 论文要验证的核心命题
 
@@ -43,13 +43,12 @@ projection 语义或控制代码版本。
 `planner_projection`、backend、strategy 和部分 residual semantics 字段。因此旧
 paper suite 不能作为“当前方案 B”的正式证据，也不能与新的方案 B rollout 混合。
 
-### 2.2 必须二选一
+### 2.2 已锁定的论文方法
 
-- **推荐：以当前方案 B 为论文方法。** 新建输出根目录，例如
-  `outputs/paper_delay_aware_two_stage_v1`，重新标定 D、重建 manifest，并重跑全部
-  P0 主实验与消融。
-- 或者冻结旧 projection-off 方法，保留现有 paper suite，但论文不得声称方案 B 是
-  最终方法；方案 B 只能作为后续工程优化。
+论文最终方法固定为 compiled two-stage projection：新输出根目录为
+`outputs/paper_delay_aware_two_stage_v1`，必须重新标定 D、构建 schema-v4 manifest，
+并重跑全部 P0 控制实验。旧 `outputs/paper_delay_aware` 的 projection-off suite 仅保留
+为先导/历史证据，禁止与新结果合并或用于主表。
 
 ### 2.3 冻结表
 
@@ -63,10 +62,10 @@ paper suite 不能作为“当前方案 B”的正式证据，也不能与新的
 | history / horizon | 16 / 20 |
 | samples / batch / iterations | 128 / 128 / 2 |
 | virtual replan interval | 5 ticks，20 Hz |
-| planner projection | 必须显式写入 |
-| projection backend / strategy | 必须显式写入 |
-| residual / packet semantics | 必须显式写入 |
-| nominal semantics | `raw_ik` 或其他唯一冻结值 |
+| planner projection | `on` |
+| projection backend / strategy | `compiled` / `two_stage` |
+| residual / packet semantics | `requested` / `requested`；feasibility=`finite` |
+| nominal semantics | `raw_ik` |
 | feedback gains | `Kq=0.3`、`Kdq=0.015`，若不修改 |
 | planner guard | 5 ms |
 | control / model dt | 10 ms / 10 ms |
@@ -334,7 +333,7 @@ circle / fast ellipse
 - 与 E1 相同 checkpoint、projection 语义和 D 标定。
 
 现有旧 GRU 结果记录在
-[FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md](FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md)，
+[260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md](260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md)，
 可作开发复核，但 checkpoint 为 `gru_20260717_152930`，不能替代 final paper
 checkpoint 的正式结果。
 
@@ -352,7 +351,7 @@ checkpoint 的正式结果。
 
 必须报告 failure、恢复时间、force peak/integrated error、fallback、late packet、
 安全违例和 tracking degradation。现有 H20 方案 B 鲁棒性结果见
-[DELAY_AWARE_MPC_ROBUSTNESS.md](DELAY_AWARE_MPC_ROBUSTNESS.md)，但使用 checkpoint
+[260724_DELAY_AWARE_MPC_ROBUSTNESS.md](260724_DELAY_AWARE_MPC_ROBUSTNESS.md)，但使用 checkpoint
 `gru_20260717_182930`。若将其放入主论文，必须明确为独立 robustness study；若要
 与 E1 数值直接合并，则必须用 final paper checkpoint 和完全相同配置重跑。
 
@@ -388,9 +387,10 @@ checkpoint 的正式结果。
 若审稿目标强调参数最优性，应在 final paper checkpoint 下补一个小型 matched
 sensitivity test。
 
-### E10：Planner projection 选择（P1，仅当方案 B 是论文贡献）
+### E10：Planner projection 选择（P0）
 
-若论文最终使用 two-stage projection，至少比较：
+由于论文最终使用 two-stage projection，必须在 final checkpoint、references 和新 delay
+calibration 下至少比较：
 
 - projection off；
 - full exact projection；

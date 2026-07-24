@@ -100,7 +100,7 @@ outputs/references/circle_3laps/reference.npz
 
 Dynamics datasets, checkpoints, figures, and diagnostics are written explicitly under `dynamics_modeling/outputs/...`; this keeps them separate from top-level MPC outputs.
 
-This project map is maintained at `docs/PROJECT_STRUCTURE.md`.
+This project map is maintained at `docs/260719_PROJECT_STRUCTURE.md`.
 
 ## Path Rules
 

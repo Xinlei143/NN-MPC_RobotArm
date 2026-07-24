@@ -1,8 +1,10 @@
 """Building blocks for latency-aware multi-rate residual MPC.
 
 The helpers deliberately separate the Direct-IK nominal from the slower MPC
-correction.  This makes ``correction == 0`` an exact Direct-IK command, which
-is important when a delayed plan expires or the planner fails.
+correction.  A zero correction requests the IK nominal, but both zero and
+nonzero corrections pass through the shared braking-aware command projection.
+This preserves one physical command semantics when a delayed plan expires or
+the planner fails.
 """
 
 from __future__ import annotations
