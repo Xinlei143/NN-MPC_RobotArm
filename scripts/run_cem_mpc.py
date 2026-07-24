@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -124,15 +125,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--history_len", default=None, type=int)
     parser.add_argument(
         "--uncertainty_mode",
-        choices=["off", "ensemble_gate"],
+        choices=["off", "ensemble_monitor", "ensemble_soft_gate", "ensemble_gate"],
         default="off",
-        help="Post-CEM uncertainty mode. ensemble_gate checks only selected CEM branches with a dynamics ensemble.",
+        help=(
+            "Post-CEM ensemble mode. monitor records disagreement only; soft_gate attenuates residual "
+            "and uses hard nominal fallback only for high disagreement plus a concrete risk. "
+            "ensemble_gate is a deprecated alias for ensemble_soft_gate."
+        ),
     )
     parser.add_argument(
         "--uncertainty_checkpoints",
         nargs="*",
         default=[],
-        help="Four independently trained replica checkpoints. The primary --checkpoint is ensemble member zero.",
+        help="Replica checkpoints, supplied later after training. The primary --checkpoint is ensemble member zero; provide at least two replicas.",
     )
     parser.add_argument(
         "--uncertainty_normalizers",
@@ -144,7 +149,66 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--uncertainty_threshold",
         default=0.10,
         type=float,
-        help="Gate threshold for normalized RMS inter-model state disagreement.",
+        help="Deprecated compatibility lower threshold; prefer --uncertainty_low_threshold and --uncertainty_high_threshold.",
+    )
+    parser.add_argument(
+        "--uncertainty_low_threshold",
+        default=None,
+        type=float,
+        help="Score at which residual authority begins to decrease; calibrated after replica training.",
+    )
+    parser.add_argument(
+        "--uncertainty_high_threshold",
+        default=None,
+        type=float,
+        help="Score at which unconstrained soft authority reaches zero; no-risk plans retain --uncertainty_min_residual_scale.",
+    )
+    parser.add_argument(
+        "--uncertainty_min_residual_scale",
+        default=0.20,
+        type=float,
+        help="Minimum residual authority under disagreement without a concrete hard-risk signal.",
+    )
+    parser.add_argument(
+        "--uncertainty_horizon",
+        default=5,
+        type=int,
+        help="Short post-CEM replica rollout horizon; Model-A CEM horizon is unchanged.",
+    )
+    parser.add_argument(
+        "--uncertainty_budget_ms",
+        default=15.0,
+        type=float,
+        help="Cooperative stage-2 wall-clock budget; an overrun safely falls back to nominal IK.",
+    )
+    parser.add_argument(
+        "--uncertainty_residual_saturation_fraction",
+        default=0.98,
+        type=float,
+        help="Residual magnitude fraction treated as a hard-risk signal when disagreement is high.",
+    )
+    parser.add_argument(
+        "--uncertainty_tracking_error_growth_ratio",
+        default=1.25,
+        type=float,
+        help="Predicted/current tracking-error ratio treated as a hard-risk signal when disagreement is high.",
+    )
+    parser.add_argument(
+        "--uncertainty_min_tracking_error",
+        default=0.02,
+        type=float,
+        help="Minimum current joint-space tracking error (rad L2) before growth is a hard-risk signal.",
+    )
+    parser.add_argument(
+        "--uncertainty_calibration_file",
+        default=None,
+        help="JSON produced by calibrate_uncertainty_threshold.py; overrides the manual threshold.",
+    )
+    parser.add_argument(
+        "--uncertainty_threshold_quantile",
+        choices=["p95", "p99"],
+        default="p99",
+        help="Percentile read from --uncertainty_calibration_file.",
     )
     parser.add_argument("--n_joints", default=6, type=int)
     parser.add_argument("--device", default="cuda", type=str)
@@ -677,6 +741,47 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("two_stage planner projection requires --planner_projection on")
     if using_two_stage_mpc and args.mpc_policy != "residual":
         raise ValueError("two_stage planner projection requires residual MPC")
+    if args.uncertainty_mode == "ensemble_gate":
+        args.uncertainty_mode = "ensemble_soft_gate"
+    ensemble_enabled = args.uncertainty_mode != "off"
+    if args.uncertainty_calibration_file:
+        if not ensemble_enabled:
+            raise ValueError("uncertainty_calibration_file requires an ensemble uncertainty mode")
+        calibration_path = resolve_runtime_path(args.uncertainty_calibration_file)
+        try:
+            calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+            args.uncertainty_low_threshold = float(calibration["distribution"][args.uncertainty_threshold_quantile])
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid uncertainty calibration file: {calibration_path}") from exc
+        args.uncertainty_threshold_source = f"{calibration_path}:{args.uncertainty_threshold_quantile}"
+    else:
+        args.uncertainty_threshold_source = "manual"
+    if args.uncertainty_low_threshold is None:
+        args.uncertainty_low_threshold = args.uncertainty_threshold
+    if args.uncertainty_high_threshold is None:
+        args.uncertainty_high_threshold = 2.0 * args.uncertainty_low_threshold
+    if (
+        args.uncertainty_low_threshold <= 0.0
+        or args.uncertainty_high_threshold <= args.uncertainty_low_threshold
+        or args.uncertainty_horizon <= 0
+        or args.uncertainty_budget_ms <= 0.0
+    ):
+        raise ValueError("uncertainty thresholds must satisfy 0 < low < high; horizon and budget must be positive")
+    if not 0.0 < args.uncertainty_residual_saturation_fraction <= 1.0:
+        raise ValueError("uncertainty_residual_saturation_fraction must be in (0, 1]")
+    if not 0.0 <= args.uncertainty_min_residual_scale <= 1.0:
+        raise ValueError("uncertainty_min_residual_scale must be in [0, 1]")
+    if args.uncertainty_tracking_error_growth_ratio <= 1.0 or args.uncertainty_min_tracking_error < 0.0:
+        raise ValueError("uncertainty tracking-error risk parameters are invalid")
+    if ensemble_enabled:
+        if args.controller_mode != "mpc" or getattr(args, "dynamics_backend", "learned") == "mujoco_oracle":
+            raise ValueError("ensemble uncertainty requires learned --controller_mode mpc")
+        if args.multirate_mode != "threaded_asap":
+            raise ValueError("ensemble uncertainty is implemented for --multirate_mode threaded_asap")
+        if len(args.uncertainty_checkpoints) < 2 or len(args.uncertainty_checkpoints) != len(args.uncertainty_normalizers):
+            raise ValueError("ensemble uncertainty requires at least two replica checkpoints and paired normalizers")
+    elif args.uncertainty_checkpoints or args.uncertainty_normalizers:
+        raise ValueError("uncertainty replica paths require a non-off --uncertainty_mode")
     dynamics_backend = getattr(args, "dynamics_backend", "learned")
     if using_two_stage_mpc and dynamics_backend != "learned":
         raise ValueError("two_stage planner projection currently supports only learned dynamics")

@@ -1,7 +1,7 @@
-"""Train the four replica GRUs used by the uncertainty-aware MPC ensemble.
+"""Train same-protocol GRU replicas used by the uncertainty-aware MPC ensemble.
 
 The primary checkpoint remains untouched.  Each replica uses exactly the same
-Model-A/C2 data and GRU hyperparameters, differing only in its random seed.
+Model-A training data and GRU hyperparameters, differing only in its random seed.
 The baseline normalizer is frozen for every member so disagreement is measured
 in a common state coordinate system.
 """
@@ -29,21 +29,23 @@ def _sha256(path: Path) -> str:
 
 def _parse_seeds(value: str) -> list[int]:
     seeds = [int(item.strip()) for item in value.split(",") if item.strip()]
-    if len(seeds) != 4 or len(set(seeds)) != 4:
-        raise argparse.ArgumentTypeError("--replica_seeds must contain exactly four distinct integers")
+    if len(seeds) < 2 or len(set(seeds)) != len(seeds):
+        raise argparse.ArgumentTypeError("--replica_seeds must contain at least two distinct integers")
     return seeds
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train four fixed-seed GRU replicas for uncertainty-aware MPC.")
-    parser.add_argument("--data_path", default="outputs/model_c/C2_train.npz")
-    parser.add_argument("--baseline_checkpoint", default="outputs/checkpoints/gru_20260720_202923/best_model.pt")
-    parser.add_argument("--baseline_normalizer", default="outputs/checkpoints/gru_20260720_202923/normalizer.pt")
-    parser.add_argument("--output_root", default="outputs/uncertainty_ensemble")
-    parser.add_argument("--replica_seeds", default="101,211,307,401", type=_parse_seeds)
+    parser = argparse.ArgumentParser(description="Train same-protocol fixed-seed GRU replicas for uncertainty-aware MPC.")
+    parser.add_argument("--data_path", default="dynamics_modeling/outputs/datasets/irb2400_parallel_data copy.npz")
+    parser.add_argument("--baseline_checkpoint", default="dynamics_modeling/outputs/checkpoints/gru_20260717_182930/best_model.pt")
+    parser.add_argument("--baseline_normalizer", default="dynamics_modeling/outputs/checkpoints/gru_20260717_182930/normalizer.pt")
+    parser.add_argument("--output_root", default="dynamics_modeling/outputs/uncertainty_ensemble_gru_20260717_182930")
+    parser.add_argument("--replica_seeds", default="101,211,307", type=_parse_seeds)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--batch_size", type=int, default=16384)
+    parser.add_argument("--lr", type=float, default=9e-5)
+    parser.add_argument("--rollout_loss_steps", type=int, default=20)
+    parser.add_argument("--rollout_loss_weight", type=float, default=0.025)
     parser.add_argument("--device", default=None, help="Reserved for launch documentation; train_dynamics selects its device.")
     parser.add_argument(
         "--reuse_existing",
@@ -65,6 +67,7 @@ def main(argv: list[str] | None = None) -> None:
             raise FileNotFoundError(f"{label} does not exist: {path}")
     output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = output_root / "ensemble_manifest.json"
+    log_path = output_root / "training.log"
     manifest = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "primary_baseline": {
@@ -75,6 +78,10 @@ def main(argv: list[str] | None = None) -> None:
         },
         "training_data": {"path": str(data_path), "sha256": _sha256(data_path)},
         "architecture": {"model_type": "gru", "history_len": 16, "target_mode": "delta_dq", "control_dt": 0.01},
+        "training_protocol": {
+            "epochs": args.epochs, "batch_size": args.batch_size, "lr": args.lr,
+            "rollout_loss_steps": args.rollout_loss_steps, "rollout_loss_weight": args.rollout_loss_weight,
+        },
         "replica_seeds": args.replica_seeds,
         "replicas": [],
     }
@@ -118,18 +125,22 @@ def main(argv: list[str] | None = None) -> None:
             "--epochs", str(args.epochs),
             "--batch_size", str(args.batch_size),
             "--lr", str(args.lr),
-            "--rollout_loss_steps", "1",
-            "--rollout_loss_weight", "0.0",
+            "--rollout_loss_steps", str(args.rollout_loss_steps),
+            "--rollout_loss_weight", str(args.rollout_loss_weight),
             "--normalizer_path", str(baseline_normalizer),
             "--freeze_normalizer",
             "--seed", str(seed),
             "--save_dir", str(save_dir),
         ]
-        print(" ".join(command))
+        launch_line = " ".join(command)
+        print(launch_line, flush=True)
         if args.dry_run:
             continue
         before = {path.resolve() for path in save_dir.glob("gru_*") if path.is_dir()}
-        subprocess.run(command, check=True, cwd=ROOT)
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"\n=== seed {seed}: {datetime.now(timezone.utc).isoformat()} ===\n{launch_line}\n")
+            log.flush()
+            subprocess.run(command, check=True, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
         created = sorted({path.resolve() for path in save_dir.glob("gru_*") if path.is_dir()} - before)
         if len(created) != 1:
             raise RuntimeError(f"seed {seed}: expected one new checkpoint directory, found {created}")

@@ -23,6 +23,12 @@ class ASAPPlanPacket:
     q_ref_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     requested_residual_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     planned_projection_offset_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
+    uncertainty_gate: bool = False
+    uncertainty_score: float = float("nan")
+    uncertainty_max_score: float = float("nan")
+    uncertainty_evaluation_time_s: float = 0.0
+    uncertainty_residual_scale: float = 1.0
+    uncertainty_high_risk: bool = False
 
     @property
     def horizon(self) -> int:

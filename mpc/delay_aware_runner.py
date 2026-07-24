@@ -21,7 +21,6 @@ from mpc.delay_protocol import resolve_delay_protocol
 from mpc.history import commit_command_and_append_placeholder, future_history_tokens
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
-from mpc.uncertainty import DynamicsEnsemble, selected_branch_sequences
 
 
 def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
@@ -352,10 +351,6 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             ) = execution_for_step(step)
             planning_time = float("nan"); replanned = 0; failure = 0
             best = mean = baseline = selected = elite = float("nan")
-            uncertainty_score = active_uncertainty_score
-            uncertainty_max_score = active_uncertainty_max_score
-            uncertainty_evaluation_time = active_uncertainty_evaluation_time
-            uncertainty_gate = int(active_uncertainty_gate)
             selection = "direct_ik_nominal" if age < 0 else "delayed_packet_feedback"
             if step % args.replan_interval_steps == 0 and step + delay + args.horizon < reference.shape[0]:
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_residual, anchor_residual_velocity, anchor_snapshot = prediction_context(step)
@@ -418,28 +413,6 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 result = controller.plan(anchor_state, anchor_command)
                 planning_time, replanned, failure = float(result.planning_time), 1, int(result.failure)
                 best, mean, baseline, selected, elite, selection = result.best_cost, result.mean_cost, result.baseline_cost, result.selected_cost, result.elite_mean_cost, result.selection_mode
-                planned_residual_sequence = result.selected_residual_sequence.copy()
-                planned_prediction_sequence = result.selected_predicted_state_sequence.copy()
-                plan_uncertainty_gate = False
-                plan_uncertainty_score = float("nan")
-                plan_uncertainty_max_score = float("nan")
-                plan_uncertainty_time = 0.0
-                if ensemble is not None and not result.failure:
-                    report = ensemble.evaluate(future_history, selected_branch_sequences(result))
-                    plan_uncertainty_score = report.selected_score
-                    plan_uncertainty_max_score = report.max_candidate_score
-                    plan_uncertainty_time = report.evaluation_time_s
-                    planning_time += plan_uncertainty_time
-                    plan_uncertainty_gate = bool(plan_uncertainty_score > args.uncertainty_threshold)
-                    if plan_uncertainty_gate:
-                        planned_residual_sequence = np.zeros_like(planned_residual_sequence)
-                        planned_prediction_sequence = report.selected_mean_prediction
-                        selection = "uncertainty_nominal_fallback"
-                        controller.reset()
-                uncertainty_score = plan_uncertainty_score
-                uncertainty_max_score = plan_uncertainty_max_score
-                uncertainty_evaluation_time = plan_uncertainty_time
-                uncertainty_gate = int(plan_uncertainty_gate)
                 if result.failure:
                     event = "planner_failure"
                 else:
@@ -551,7 +524,6 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step), "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32), "cem_uniform_sample_count": np.asarray(int(round((args.num_samples - 2) * args.uniform_sample_ratio)), dtype=np.int64),
         "cem_num_samples": np.asarray(args.num_samples, dtype=np.int64), "cem_iters": np.asarray(args.cem_iters, dtype=np.int64),
         "cem_horizon": np.asarray(args.horizon, dtype=np.int64), "cem_seed": np.asarray(args.seed, dtype=np.int64),
-        "uncertainty_mode": np.asarray(args.uncertainty_mode), "uncertainty_threshold": np.asarray(args.uncertainty_threshold, dtype=np.float32), "uncertainty_ensemble_size": np.asarray(0 if ensemble is None else ensemble.size, dtype=np.int64),
         "ddq_des": stack([ddq_reference[i] for i in range(len(rec["q_des"]))]),
         **api["config_arrays"](robustness, env),
     })
