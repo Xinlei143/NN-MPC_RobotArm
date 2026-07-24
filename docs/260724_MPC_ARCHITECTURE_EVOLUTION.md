@@ -431,7 +431,47 @@ Threaded E2E P95 为 44.19 ms。
 和
 [`mpc_vs_direct_ik_paired.json`](../outputs/mpc_structures_h20_two_stage_test/mpc_vs_direct_ik_paired.json)。
 
-### 3.7 为什么最终固定 H20，而不是 H25
+### 3.7 Exact final pool task-space cost：让优化目标对齐 TCP 评价指标
+
+旧版主 cost 主要由 joint position/velocity tracking、residual、servo、smoothness
+和 joint/dq barrier 组成，而论文首要指标是 TCP RMSE。为缩小这一目标不一致，新版
+在 two-stage 的 exact final pool 中增加了 MuJoCo FK 的 TCP position/orientation
+cost；stage-one 的完整 population 仍不执行 FK，因此不会把 FK 开销乘到 128 条候选
+上。
+
+新增接口为：
+
+```text
+exact_task_space_cost = on          # 当前默认值
+w_task_position = 1.0
+w_task_orientation = 0.25
+task_position_scale_m = 0.05
+task_orientation_scale_rad = 0.0872664626  # 5 degrees
+```
+
+任务空间项只参与 exact pool 的最终排序，且继续保留 zero-residual baseline、hard
+constraint mask 和原 joint-space cost。该设计使最终执行候选直接使用论文评价空间的
+信号，同时保持 stage-one 的实时预算。
+
+在 H20、128×2、旧 GRU、Circle/Figure-8 和 seed 0 的预扫中，冻结配置把 pooled
+TCP RMSE 从 task cost off 的 33.76 mm 降到 26.42 mm，orientation RMSE 从 1.730°
+降到 1.292°；solve P95 为 37.47 ms，较 off 增加 6.11 ms，且没有 planner 或安全
+违例。正式 500-plan threaded 标定得到 E2E P95 52.40 ms，因此本次实验的标定结果为
+`ceil((52.40 + 5) / 10) = D6`。D6 仅适用于本次冻结配置和本次硬件，不是架构级固定
+值；每次正式实验都必须重新采集 E2E latency 并重新计算 D。
+
+使用四条轨迹、三个 seed 和严格配对的 2101-step 公共区间，task-space 默认配置的
+pooled TCP RMSE 为：IdealZeroDelay 25.56 mm、NaiveDelayed 64.30 mm、VirtualDelayAware
+26.47 mm、ThreadedAsync 26.41 mm。相对旧 task-cost-off 版本，Ideal、Virtual 和
+Threaded 分别改善 2.96、2.21 和 3.49 mm；Naive 仍然失败，说明 task-space cost
+不能修复重放过期 absolute command 的时序语义。
+
+完整复测表、按轨迹统计、bootstrap 区间和 Direct IK 配对结果见
+[`260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md`](260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md)
+的“2026-07-24 新版本复测”章节。旧实验内容仍保留，task-space cost 仍可通过
+`--exact_task_space_cost off` 显式复现。
+
+### 3.8 为什么最终固定 H20，而不是 H25
 
 远端基础 CEM-MPC 最初就是 H20；anchored residual 阶段曾短暂使用 H10，delay-aware
 ASAP 又恢复为 H20。本地 robustness 和 Model-C 辅助脚本此前残留 H25 默认值，容易
@@ -469,11 +509,16 @@ horizon。
 | CEM | `cem_iters` | 2 | 当前实时预算 |
 | CEM | `rollout_batch_size` | 128 | 与 population 对齐 |
 | virtual replanning | `replan_interval_steps` | 5 | virtual/synchronous 使用；threaded 完成即重规划 |
-| delay | `anticipation_delay_steps` | **6** | two-stage 真实 E2E P95 45.81 ms + 5 ms guard |
+| delay | `anticipation_delay_steps` | **由每次实验标定注入**（本次为 6） | task-space exact-pool two-stage 真实 E2E P95 52.40 ms + 5 ms guard |
 | delay semantics | `delay_protocol` | `full` | future alignment + re-anchor + feedback |
 | projection | `planner_projection` | **`on`** | planner 与 execution 更一致 |
 | projection backend | `planner_projection_backend` | **`compiled`** | 避免 eager 小 kernel 开销 |
 | projection strategy | `planner_projection_strategy` | **`two_stage`** | 当前精度、延迟和 planner rate 最佳 |
+| exact task cost | `exact_task_space_cost` | **`on`** | exact final pool 对齐 TCP 评价指标 |
+| task position weight | `w_task_position` | **1.0** | H20 task-space 权重预扫冻结值 |
+| task orientation weight | `w_task_orientation` | **0.25** | H20 task-space 权重预扫冻结值 |
+| task position scale | `task_position_scale_m` | **0.05** | 归一化位置尺度 |
+| task orientation scale | `task_orientation_scale_rad` | **0.0872664626** | 5° 归一化姿态尺度 |
 | nominal | `nominal_command_semantics` | `raw_ik` | 保持 zero residual 的基准语义 |
 | residual cost | `residual_cost_semantics` | `requested` | cost 与请求的 MPC correction 对应 |
 | delayed packet | `packet_residual_semantics` | `requested` | 激活时重新锚定 |
@@ -512,10 +557,10 @@ learned residual MPC 都有影响，因为它们共享 CEM planner 和
 6. 方案 A 用 compile 把 full projection 从 D8 优化到 D6；
 7. 方案 B 只对 final pool 做 exact validation，同时取得更低 E2E latency 和更好
    tracking；
-8. 真实 E2E 标定固定 D6；
+8. 每次实验都通过真实 E2E 标定计算 D；本次 task-space 配置在当前硬件上得到 D6；
 9. 四结构和 Direct IK 配对实验确认 H20 + two-stage/compiled 下的 Virtual 与
    Threaded 接近 Ideal，且明显优于 Direct IK；
-10. 因而把 **H20、D6、threaded ASAP、planner projection on、
+10. 因而把 **H20、标定得到的 D、threaded ASAP、planner projection on、
     two-stage/compiled** 固定为当前默认组合。
 
 后续如果模型、GPU、candidate 数、CEM iterations 或 control period 改变，D 必须

@@ -21,6 +21,7 @@ from mpc.delay_protocol import resolve_delay_protocol
 from mpc.history import commit_command_and_append_placeholder, future_history_tokens
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 
 
 def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
@@ -75,6 +76,22 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         execution_steps = min(execution_steps, reference.shape[0] - args.horizon - delay - 1)
         if execution_steps <= 0:
             raise ValueError("reference is too short for horizon plus anticipation delay")
+        exact_task_cost = None
+        if args.exact_task_space_cost == "on":
+            if task_reference is None:
+                raise ValueError("exact task-space cost requires a task-space reference")
+            exact_task_cost = ExactTaskSpaceCost(
+                env.model,
+                ee_site_name=args.ee_site_name,
+                n_joints=args.n_joints,
+                config=TaskSpaceCostConfig(
+                    w_position=args.w_task_position,
+                    w_orientation=args.w_task_orientation,
+                    position_scale_m=args.task_position_scale_m,
+                    orientation_scale_rad=args.task_orientation_scale_rad,
+                    temporal_discount=args.temporal_discount,
+                ),
+            )
         parse = api["_parse_joint_vector"]
         physical_v = parse(args.command_velocity_physical_limit, args.n_joints, "command_velocity_physical_limit")
         physical_a = parse(args.command_acceleration_physical_limit, args.n_joints, "command_acceleration_physical_limit")
@@ -378,7 +395,25 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                     planner = LearnedDynamicsPlanner(
                         model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type,
                         state_dim=bundle.state_dim, target_mode=bundle.target_mode, control_dt=control_dt,
-                        initial_history=future_history, **common_planner_args,
+                        initial_history=future_history,
+                        exact_task_space_cost=exact_task_cost,
+                        task_positions_des=None
+                        if task_reference is None
+                        else np.asarray(
+                            task_reference.task_positions_des[
+                                reference_anchor + 1 : reference_anchor + 1 + args.horizon
+                            ],
+                            dtype=np.float64,
+                        ),
+                        task_rotations_des=None
+                        if task_reference is None
+                        else np.asarray(
+                            task_reference.task_rotations_des[
+                                reference_anchor + 1 : reference_anchor + 1 + args.horizon
+                            ],
+                            dtype=np.float64,
+                        ),
+                        **common_planner_args,
                     )
                 else:
                     if oracle_env is None or anchor_snapshot is None:

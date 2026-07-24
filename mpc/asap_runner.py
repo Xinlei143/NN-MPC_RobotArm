@@ -103,7 +103,22 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             request_id += 1
 
         publish_snapshot(0, time.perf_counter_ns())
-        worker = ASAPPlannerWorker(args, api, snapshots, packets, planner_results, stop, env.joint_low, env.joint_high, reference, dq_reference, ddq_reference)
+        worker = ASAPPlannerWorker(
+            args,
+            api,
+            snapshots,
+            packets,
+            planner_results,
+            stop,
+            env.joint_low,
+            env.joint_high,
+            reference,
+            dq_reference,
+            ddq_reference,
+            kinematics_model=env.model,
+            task_positions_des=None if task_reference is None else task_reference.task_positions_des,
+            task_rotations_des=None if task_reference is None else task_reference.task_rotations_des,
+        )
         worker.start()
         if not worker.ready.wait(timeout=60.0):
             raise RuntimeError("ASAP planner worker did not become ready within 60 seconds")

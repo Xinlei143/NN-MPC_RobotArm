@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 
 from neural_dynamics.rollout import rollout_dynamics_batch
@@ -12,6 +13,7 @@ from mpc.constraints import (
     project_position_command_sequence,
 )
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
+from mpc.task_space_cost import ExactTaskSpaceCost
 
 
 def construct_actuator_q_ref_sequence(
@@ -211,6 +213,9 @@ class LearnedDynamicsPlanner:
     joint_high: torch.Tensor
     cost_config: JointSpaceCostConfig
     rollout_config: PlannerRolloutConfig
+    exact_task_space_cost: ExactTaskSpaceCost | None = None
+    task_positions_des: np.ndarray | None = None
+    task_rotations_des: np.ndarray | None = None
 
     def nominal_sequence(self) -> torch.Tensor:
         if self.nominal_q_ref is not None:
@@ -336,5 +341,32 @@ class LearnedDynamicsPlanner:
         }
 
     def evaluate_exact(self, candidate_action: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Evaluate candidates with exact physical projection regardless of stage-one mode."""
-        return self.evaluate(candidate_action, project_kinematics_override=True)
+        """Evaluate physical candidates and optionally align final selection with TCP metrics."""
+        evaluation = self.evaluate(candidate_action, project_kinematics_override=True)
+        if self.exact_task_space_cost is None:
+            return evaluation
+        if self.task_positions_des is None or self.task_rotations_des is None:
+            raise ValueError("exact task-space cost requires position and rotation targets")
+        pred_states = evaluation["pred_states"]
+        n_joints = pred_states.shape[-1] // 2
+        task_terms = self.exact_task_space_cost.evaluate(
+            pred_states[:, 1:, :n_joints],
+            self.task_positions_des,
+            self.task_rotations_des,
+        )
+        evaluation["cost_terms"].update(task_terms)
+        config = self.exact_task_space_cost.config
+        total = (
+            evaluation["costs"]
+            + float(config.w_position) * task_terms["task_position"]
+            + float(config.w_orientation) * task_terms["task_orientation"]
+        )
+        total = torch.where(
+            torch.isfinite(evaluation["costs"]),
+            total,
+            torch.full_like(total, float("inf")),
+        )
+        evaluation["costs"] = total
+        evaluation["cost_terms"]["total"] = total
+        evaluation["cost_valid"] = torch.isfinite(total)
+        return evaluation
