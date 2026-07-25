@@ -285,7 +285,7 @@ ceil((40.98 ms + 5 ms guard) / 10 ms) = 5 steps
 这产生了 D5，但它只测 virtual/synchronous planning time，没有覆盖真实 worker
 snapshot、排队和 publication 的 E2E latency，因此后来没有作为 threaded 最终值。
 证据见
-[`outputs/robustness/timing/gru_20260717_182930.json`](../outputs/robustness/timing/gru_20260717_182930.json)。
+[`outputs/robustness/timing/gru_20260717_182930.json`](../../outputs/robustness/timing/gru_20260717_182930.json)。
 
 ### 3.2 Planner projection v1：完整 projection 的延迟问题
 
@@ -307,7 +307,7 @@ D6 的 publication deadline 为 55 ms，而 E2E P95 达到 74.19 ms，所有 pac
 
 因此问题不是 projection 的数学价值，而是 H20 递归中的大量小 GPU kernel 和同步
 开销。完整结果见
-[`outputs/planner_projection_v1_test/README.md`](../outputs/planner_projection_v1_test/README.md)。
+[`outputs/planner_projection_v1_test/README.md`](../../outputs/planner_projection_v1_test/README.md)。
 
 ### 3.3 方案 A：编译完整递归 projection
 
@@ -371,9 +371,9 @@ H20 实验中每个 plan 实际精确验证约 11–13 条唯一候选；exact r
 P95 44.46 ms，说明优势不只是来自选择了更小的 D。
 
 完整证据见
-[`outputs/planner_projection_h20_optimization/README.md`](../outputs/planner_projection_h20_optimization/README.md)
+[`outputs/planner_projection_h20_optimization/README.md`](../../outputs/planner_projection_h20_optimization/README.md)
 和
-[`evaluation manifest`](../outputs/planner_projection_h20_optimization/evaluation/experiment_manifest.json)。
+[`evaluation manifest`](../../outputs/planner_projection_h20_optimization/evaluation/experiment_manifest.json)。
 
 ### 3.5 H20、方案 B、D6 下的四种 MPC
 
@@ -408,7 +408,7 @@ Naive 明显更差，因为它重放过期 absolute commands，没有 future ali
 residual re-anchor 或 fast feedback。
 
 证据见
-[`outputs/mpc_structures_h20_two_stage_test/README.md`](../outputs/mpc_structures_h20_two_stage_test/README.md)。
+[`outputs/mpc_structures_h20_two_stage_test/README.md`](../../outputs/mpc_structures_h20_two_stage_test/README.md)。
 
 ### 3.6 与 Direct IK 对比
 
@@ -427,9 +427,9 @@ Ideal、Virtual 和 Threaded 在所有配对实验中均优于 Direct IK。Direc
 Threaded E2E P95 为 44.19 ms。
 
 配对数据见
-[`mpc_vs_direct_ik_summary.csv`](../outputs/mpc_structures_h20_two_stage_test/mpc_vs_direct_ik_summary.csv)
+[`mpc_vs_direct_ik_summary.csv`](../../outputs/mpc_structures_h20_two_stage_test/mpc_vs_direct_ik_summary.csv)
 和
-[`mpc_vs_direct_ik_paired.json`](../outputs/mpc_structures_h20_two_stage_test/mpc_vs_direct_ik_paired.json)。
+[`mpc_vs_direct_ik_paired.json`](../../outputs/mpc_structures_h20_two_stage_test/mpc_vs_direct_ik_paired.json)。
 
 ### 3.7 Exact final pool task-space cost：让优化目标对齐 TCP 评价指标
 
@@ -467,7 +467,7 @@ Threaded 分别改善 2.96、2.21 和 3.49 mm；Naive 仍然失败，说明 task
 不能修复重放过期 absolute command 的时序语义。
 
 完整复测表、按轨迹统计、bootstrap 区间和 Direct IK 配对结果见
-[`260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md`](260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md)
+[`four-architectures-legacy-gru.md`](../experiments/four-architectures-legacy-gru.md)
 的“2026-07-24 新版本复测”章节。旧实验内容仍保留，task-space cost 仍可通过
 `--exact_task_space_cost off` 显式复现。
 

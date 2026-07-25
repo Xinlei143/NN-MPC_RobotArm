@@ -45,7 +45,7 @@ conda run -n pendulum-rl python \
 
 本轮标定无 late packet。由
 `ceil((44.72 + 5) / 10) = 5` 得到 **D=5**。标定文件为
-[`outputs/robustness/calibration/h20_two_stage_compiled_20260724.json`](../outputs/robustness/calibration/h20_two_stage_compiled_20260724.json)。
+[`outputs/robustness/calibration/h20_two_stage_compiled_20260724.json`](../../outputs/robustness/calibration/h20_two_stage_compiled_20260724.json)。
 这也说明 D 是运行时平台和当次冻结配置的测量结果，不能直接沿用此前得到的 D6。
 
 ### 正式实验
@@ -75,7 +75,7 @@ conda run -n pendulum-rl python \
 - planner failure、joint/velocity/acceleration violation 均为 0。
 
 原始数据、bootstrap 和图片位于
-[`outputs/robustness/delay_aware_mpc_h20_two_stage_d5_20260724`](../outputs/robustness/delay_aware_mpc_h20_two_stage_d5_20260724)。
+[`outputs/robustness/delay_aware_mpc_h20_two_stage_d5_20260724`](../../outputs/robustness/delay_aware_mpc_h20_two_stage_d5_20260724)。
 
 ### 总体结果
 

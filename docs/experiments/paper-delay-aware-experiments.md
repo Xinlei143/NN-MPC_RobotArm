@@ -1,7 +1,7 @@
 # Delay-Aware MPC 论文实验操作手册
 
 投稿实验的统一优先级、完成状态和验收清单见
-[260724_PAPER_TEST_PLAN.md](260724_PAPER_TEST_PLAN.md)。本文档保留具体命令、控制语义和指标定义。
+[paper-test-plan.md](paper-test-plan.md)。本文档保留具体命令、控制语义和指标定义。
 
 本文档对应 ROBIO 论文的五控制器主比较、因果消融、delay sweep、Preview IK、GRU 验证和 oracle-dynamics upper bound。所有新产物均写入：
 
@@ -9,7 +9,7 @@
 outputs/paper_delay_aware_two_stage_v1/
 ```
 
-Model C 不进入本文主线。Payload、观测噪声、执行器失配和外力实验继续使用 [`260723_MODEL_A_ROBUSTNESS.md`](260723_MODEL_A_ROBUSTNESS.md)，不复制进本工作流。
+Model C 不进入本文主线。Payload、观测噪声、执行器失配和外力实验继续使用 [`model-a-robustness.md`](../guides/model-a-robustness.md)，不复制进本工作流。
 
 ## 1. 环境和冻结模型检查
 
@@ -377,7 +377,7 @@ virtual 的固定逻辑 D 与 threaded 的真实 snapshot-to-publication E2E 必
 
 planner/execution projection 的问题演化、zero-correction bug、seed 方差和当前尚未
 冻结的设计选择详见
-[`260723_ASAP_MPC_PROJECTION_AND_SEED_VARIANCE_ISSUES.md`](260723_ASAP_MPC_PROJECTION_AND_SEED_VARIANCE_ISSUES.md)。
+[`asap-projection-and-seed-issues.md`](../archive/asap-projection-and-seed-issues.md)。
 
 下面的命令用同一旧 GRU、同一正式 circle reference、D=7 和 seeds 0--4
 比较 fixed-delay virtual 与真实 threaded。结果必须写入新的 v2 目录，不得覆盖或

@@ -25,7 +25,7 @@ conda run -n pendulum-rl python scripts/robustness/evaluate_direct_ik.py \
 ## 2026-07-24：正式结果与分析
 
 结果目录为
-[`outputs/robustness/direct_ik_medium`](../outputs/robustness/direct_ik_medium)。
+[`outputs/robustness/direct_ik_medium`](../../outputs/robustness/direct_ik_medium)。
 完整性检查确认：
 
 - 216/216 个 rollout，raw/physical 各 108；
@@ -85,7 +85,7 @@ raw 和 physical 相同，所以下表只列一份结果：
 paired bootstrap 进一步支持强扰动结论：payload L6 − nominal 的 TCP mean delta
 为 +49.15 mm，actuator gain L6 − nominal 为 +29.51 mm，force L6 − nominal 为
 +7.39 mm；对应 raw/physical 的 paired delta 均为 0。详细区间见
-[`paired_bootstrap.json`](../outputs/robustness/direct_ik_medium/paired_bootstrap.json)。
+[`paired_bootstrap.json`](../../outputs/robustness/direct_ik_medium/paired_bootstrap.json)。
 
 ### 轨迹差异与计算开销
 

@@ -2,7 +2,7 @@
 
 > 更新日期：2026-07-24  
 > 用途：统一记录论文投稿前需要完成的实验、冻结配置、运行命令、产物和验收条件。  
-> 详细操作与指标定义见 [260724_PAPER_DELAY_AWARE_EXPERIMENTS.md](260724_PAPER_DELAY_AWARE_EXPERIMENTS.md)。
+> 详细操作与指标定义见 [paper-delay-aware-experiments.md](paper-delay-aware-experiments.md)。
 
 ## 1. 论文要验证的核心命题
 
@@ -340,7 +340,7 @@ circle / fast ellipse
 - 与 E1 相同 checkpoint、projection 语义和 D 标定。
 
 现有旧 GRU 结果记录在
-[260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md](260724_FOUR_MPC_ARCHITECTURES_H20_LEGACY_GRU.md)，
+[four-architectures-legacy-gru.md](four-architectures-legacy-gru.md)，
 可作开发复核，但 checkpoint 为 `gru_20260717_152930`，不能替代 final paper
 checkpoint 的正式结果。
 
@@ -358,7 +358,7 @@ checkpoint 的正式结果。
 
 必须报告 failure、恢复时间、force peak/integrated error、fallback、late packet、
 安全违例和 tracking degradation。现有 H20 方案 B 鲁棒性结果见
-[260724_DELAY_AWARE_MPC_ROBUSTNESS.md](260724_DELAY_AWARE_MPC_ROBUSTNESS.md)，但使用 checkpoint
+[delay-aware-robustness.md](delay-aware-robustness.md)，但使用 checkpoint
 `gru_20260717_182930`。若将其放入主论文，必须明确为独立 robustness study；若要
 与 E1 数值直接合并，则必须用 final paper checkpoint 和完全相同配置重跑。
 
