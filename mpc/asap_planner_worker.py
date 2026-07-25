@@ -504,6 +504,7 @@ class ASAPPlannerWorker(threading.Thread):
                     end_to_end_latency_s=(publish_ns - snapshot.launch_time_ns) / 1e9,
                     candidate_count=int(result.candidate_count),
                     valid_candidate_count=int(result.valid_candidate_count),
+                    selection_mode=str(result.selection_mode),
                     candidate_diagnostics=dict(result.candidate_diagnostics),
                 ))
                 if result.failure or late_dropped:

@@ -18,7 +18,6 @@ import numpy as np
 import torch
 
 from mpc.logging import save_mpc_run
-from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceConfig, build_reference, save_reference_bundle
 from scripts.experiment_utils import (
     environment_snapshot, file_identity, load_completed_rollout, load_json,
@@ -54,6 +53,7 @@ def parser() -> argparse.ArgumentParser:
     delay.add_argument("--samples", type=int, default=500)
     delay.add_argument("--provisional-delay", type=int, default=10)
     delay.add_argument("--guard-ms", type=float, default=5.0)
+    delay.add_argument("--exact-task-space-cost", choices=["on", "off"], default="on")
     delay.add_argument("--smoke", action="store_true")
 
     references = sub.add_parser("generate-references")
@@ -73,12 +73,12 @@ def parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run")
     run.add_argument("--manifest", default=None)
-    run.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "preview", "oracle", "all"], default="main")
+    run.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "preview", "oracle", "task_cost", "all"], default="main")
     run.add_argument("--resume", action="store_true")
     run.add_argument("--case-limit", type=int, default=None)
 
     summary = sub.add_parser("summarize")
-    summary.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "preview", "oracle", "smoke", "all"], default="all")
+    summary.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "preview", "oracle", "task_cost", "smoke", "all"], default="all")
     summary.add_argument("--bootstrap-samples", type=int, default=10000)
 
     sub.add_parser("smoke")
@@ -94,22 +94,25 @@ def _require_models() -> None:
 def generate_calibration_reference(output: Path, steps: int, overwrite: bool) -> Path:
     if steps < 100:
         raise ValueError("--steps must be at least 100")
-    destination = output / "calibration" / "joint_chirp.npz"
+    destination = output / "calibration" / "task_space_delay_calibration" / "reference.npz"
     if destination.exists() and not overwrite:
         raise FileExistsError(f"Refusing to overwrite {destination}")
     model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
-    q = generate_joint_reference(
-        "chirp", np.zeros(model.nu, dtype=np.float32), model.jnt_range[: model.nu, 0],
-        model.jnt_range[: model.nu, 1], steps, 0.01, seed=20260722,
+    # This is intentionally distinct from every reported trajectory.  It must
+    # nevertheless exercise the exact task-space final-pool scoring path.
+    config = ReferenceConfig(
+        shape_name="ellipse", repeat_count=1, lap_duration=max((steps - 300) * 0.01, 4.0),
+        ellipse_axis_a=0.022, ellipse_axis_b=0.014,
+        plane_axis_u=(1.0, 0.0, 0.0), plane_axis_v=(0.0, 0.0, 1.0),
+        start_hold_duration=0.5, joint_departure_duration=1.0, approach_duration=1.0,
+        return_duration=1.0, joint_return_duration=1.0, final_hold_duration=0.5,
+        safe_departure_mode="auto",
     )
-    padding = 64
-    q = np.concatenate([q, np.repeat(q[-1:], padding, axis=0)])
-    dq = finite_difference_dq(q, 0.01); ddq = finite_difference_dq(dq, 0.01)
-    dq[steps - 1 :] = 0.0; ddq[steps - 1 :] = 0.0
+    bundle = build_reference(config, model, np.zeros(model.nu), 0.01, 20, 16)
+    if bundle.execution_steps < steps:
+        raise RuntimeError("Task-space calibration reference is shorter than requested")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(destination, q_des=q, dq_des=dq, ddq_des=ddq,
-                        execution_steps=np.asarray(steps), control_dt=np.asarray(0.01, dtype=np.float32))
-    return destination
+    return save_reference_bundle(bundle, destination.parent)
 
 
 def _base_args() -> argparse.Namespace:
@@ -132,21 +135,31 @@ def _base_args() -> argparse.Namespace:
     args.nominal_command_semantics = "raw_ik"
     args.visualize = False; args.settle_steps = 50
     args.ik_command_projection = "physical"
+    args.exact_task_space_cost = "on"
+    args.w_task_position = 1.0; args.w_task_orientation = 0.25
+    args.task_position_scale_m = 0.05; args.task_orientation_scale_rad = float(np.deg2rad(5.0))
+    args.uncertainty_mode = "off"; args.cost_profile = "blackbox"
+    args.payload_level = 0; args.actuator_gain_level = 0
+    args.force_pulse_level = 0; args.observation_noise_level = 0
     return args
 
 
-def calibrate_delay(output: Path, samples: int, provisional: int, guard_ms: float, smoke: bool) -> Path:
+def calibrate_delay(output: Path, samples: int, provisional: int, guard_ms: float, smoke: bool, exact_task_space_cost: str = "on") -> Path:
     if samples <= 0 or provisional <= 0 or guard_ms < 0:
         raise ValueError("samples/provisional delay must be positive and guard non-negative")
-    path = output / "calibration" / ("delay_smoke.json" if smoke else "delay.json")
+    suffix = "delay_smoke.json" if smoke else "delay.json"
+    if exact_task_space_cost == "off":
+        suffix = "delay_joint_only_smoke.json" if smoke else "delay_joint_only.json"
+    path = output / "calibration" / suffix
     if path.exists():
         raise FileExistsError(f"Refusing to overwrite immutable calibration: {path}")
-    reference = output / "calibration" / "joint_chirp.npz"
+    reference = output / "calibration" / "task_space_delay_calibration" / "reference.npz"
     if not reference.is_file():
         raise FileNotFoundError("Run generate-calibration-reference first")
     args = _base_args()
+    args.exact_task_space_cost = exact_task_space_cost
     args.multirate_mode = "threaded_asap"; args.anticipation_delay_steps = provisional
-    args.planner_guard_ms = 0.0; args.reference_mode = "joint_file"; args.reference_file = str(reference)
+    args.planner_guard_ms = 0.0; args.reference_mode = "task"; args.reference_file = str(reference)
     args.max_execution_steps = 40 if smoke else None
     args.horizon = 3 if smoke else args.horizon; args.num_samples = 8 if smoke else args.num_samples
     args.cem_iters = 1 if smoke else args.cem_iters
@@ -169,6 +182,11 @@ def calibrate_delay(output: Path, samples: int, provisional: int, guard_ms: floa
         "samples": values.tolist(), "p50_s": float(np.percentile(values, 50)), "p95_s": p95,
         "guard_ms": guard_ms, "control_dt_s": 0.01, "anticipation_delay_steps": delay,
         "provisional_delay_steps": provisional, "source": "planner_end_to_end_latency_s",
+        "calibration_reference": file_identity(reference),
+        "method": {key: getattr(args, key) for key in (
+            "exact_task_space_cost", "planner_projection", "planner_projection_backend",
+            "planner_projection_strategy", "horizon", "num_samples", "cem_iters",
+        )},
     })
     return path
 
@@ -261,7 +279,8 @@ def build_manifest(output: Path, allow_dirty: bool, profile: str) -> Path:
     _require_models()
     delay_file = output / "calibration" / ("delay_smoke.json" if profile == "smoke" else "delay.json")
     preview_file = output / "calibration" / ("preview_smoke.json" if profile == "smoke" else "preview.json")
-    for path in (delay_file, preview_file, output / "references" / "manifest.json"):
+    joint_only_delay_file = output / "calibration" / ("delay_joint_only_smoke.json" if profile == "smoke" else "delay_joint_only.json")
+    for path in (delay_file, joint_only_delay_file, preview_file, output / "references" / "manifest.json"):
         if not path.is_file():
             raise FileNotFoundError(path)
     environment = environment_snapshot(ROOT)
@@ -279,15 +298,20 @@ def build_manifest(output: Path, allow_dirty: bool, profile: str) -> Path:
             "planner_projection_strategy", "residual_cost_semantics", "packet_residual_semantics",
             "residual_feasibility_semantics", "nominal_command_semantics", "ik_command_projection",
             "feedback_kq", "feedback_kdq", "feedback_max", "planner_guard_ms",
+            "exact_task_space_cost", "w_task_position", "w_task_orientation",
+            "task_position_scale_m", "task_orientation_scale_rad", "uncertainty_mode",
+            "cost_profile", "payload_level", "actuator_gain_level", "force_pulse_level",
+            "observation_noise_level",
         )
     }
     frozen_method["control_dt_s"] = 0.01
     payload = {
-        "schema_version": 4, "kind": "paper_delay_aware", "profile": profile,
+        "schema_version": 5, "kind": "paper_delay_aware", "profile": profile,
         "control_semantics_version": 2, "projection_semantics_version": 2,
         "projection_backend": "shared_physical_v2", "projection_tolerance": 1e-6,
         "environment": environment, "checkpoint": file_identity(CHECKPOINT), "normalizer": file_identity(NORMALIZER),
         "model_xml": file_identity(MODEL_XML), "delay_calibration": load_json(delay_file),
+        "joint_only_delay_calibration": load_json(joint_only_delay_file),
         "preview_calibration": load_json(preview_file), "frozen_method": frozen_method,
         "base_run_args": base, "references": references,
         "paired_cem_seeds": [0, 1, 2, 3, 4], "delay_sweep_seeds": [0, 1, 2],
@@ -305,6 +329,7 @@ def _case(label: str, trajectory: str, seed: int, mode: str, protocol: str, dela
 
 def suite_cases(manifest: dict[str, Any], suite: str) -> list[dict[str, Any]]:
     delay = int(manifest["delay_calibration"]["anticipation_delay_steps"])
+    joint_only_delay = int(manifest.get("joint_only_delay_calibration", manifest["delay_calibration"])["anticipation_delay_steps"])
     seeds = [int(value) for value in manifest["paired_cem_seeds"]]
     cases: list[dict[str, Any]] = []
     if suite == "main":
@@ -338,6 +363,17 @@ def suite_cases(manifest: dict[str, Any], suite: str) -> list[dict[str, Any]]:
             for seed in (0, 1, 2):
                 cases.append(_case("LearnedFull", trajectory, seed, "virtual_asap", "full", delay))
                 cases.append(_case("OracleUpperBound", trajectory, seed, "virtual_asap", "full", delay, dynamics_backend="mujoco_oracle"))
+    elif suite == "task_cost":
+        # Fixed-D rows isolate scoring; threaded rows include each method's
+        # deployment latency cost.  Use matched seeds, never 100 Hz ticks.
+        for trajectory in ("circle", "figure8"):
+            for seed in (0, 1, 2):
+                cases.extend([
+                    _case("JointOnlyFixedD6", trajectory, seed, "virtual_asap", "full", 6, exact_task_space_cost="off"),
+                    _case("TaskSpaceFixedD6", trajectory, seed, "virtual_asap", "full", 6, exact_task_space_cost="on"),
+                    _case("JointOnlyDeployed", trajectory, seed, "threaded_asap", "full", joint_only_delay, exact_task_space_cost="off"),
+                    _case("TaskSpaceDeployed", trajectory, seed, "threaded_asap", "full", delay, exact_task_space_cost="on"),
+                ])
     else:
         raise ValueError(suite)
     return cases
@@ -352,6 +388,8 @@ def _run_case(output: Path, manifest: dict[str, Any], case: dict[str, Any], resu
     args.multirate_mode = case["multirate_mode"]; args.delay_protocol = case["delay_protocol"]
     args.anticipation_delay_steps = int(case["delay_steps"]); args.controller_mode = case.get("controller", "mpc")
     args.ik_preview_steps = int(case.get("preview_steps", 0)); args.dynamics_backend = case.get("dynamics_backend", "learned")
+    if "exact_task_space_cost" in case:
+        args.exact_task_space_cost = str(case["exact_task_space_cost"])
     if args.controller_mode == "ik_direct": args.checkpoint = args.normalizer = None
     fingerprint_case = {key: value for key, value in case.items() if key != "label"}
     payload = {"manifest_commit": manifest["environment"]["git_commit"], "case": fingerprint_case,
@@ -373,8 +411,8 @@ def _run_case(output: Path, manifest: dict[str, Any], case: dict[str, Any], resu
 
 def run_suite(output: Path, manifest_path: Path, suite: str, resume: bool, case_limit: int | None) -> None:
     manifest = load_json(manifest_path)
-    if int(manifest.get("schema_version", 0)) < 4:
-        raise ValueError("Formal paper runs require a schema-v4 manifest with explicit frozen method semantics")
+    if int(manifest.get("schema_version", 0)) < 5:
+        raise ValueError("Formal paper runs require a schema-v5 manifest with frozen task-space scoring semantics")
     frozen = manifest.get("frozen_method")
     required_frozen = {
         "model_type": "gru", "history_len": 16, "horizon": 20, "num_samples": 128,
@@ -382,10 +420,14 @@ def run_suite(output: Path, manifest_path: Path, suite: str, resume: bool, case_
         "planner_projection_strategy": "two_stage", "residual_cost_semantics": "requested",
         "packet_residual_semantics": "requested", "residual_feasibility_semantics": "finite",
         "nominal_command_semantics": "raw_ik", "control_dt_s": 0.01,
+        "exact_task_space_cost": "on", "w_task_position": 1.0, "w_task_orientation": 0.25,
+        "task_position_scale_m": 0.05, "task_orientation_scale_rad": float(np.deg2rad(5.0)),
+        "uncertainty_mode": "off", "cost_profile": "blackbox", "payload_level": 0,
+        "actuator_gain_level": 0, "force_pulse_level": 0, "observation_noise_level": 0,
     }
     if not isinstance(frozen, dict) or any(frozen.get(key) != value for key, value in required_frozen.items()):
         raise ValueError("Formal paper runs require the compiled two-stage frozen method")
-    suites = ("main", "ablation", "delay_sweep", "preview", "oracle") if suite == "all" else (suite,)
+    suites = ("main", "ablation", "delay_sweep", "preview", "oracle", "task_cost") if suite == "all" else (suite,)
     for name in suites:
         cases = suite_cases(manifest, name)
         if case_limit is not None: cases = cases[:case_limit]
@@ -395,7 +437,7 @@ def run_suite(output: Path, manifest_path: Path, suite: str, resume: bool, case_
 
 
 def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
-    suites = ("main", "ablation", "delay_sweep", "preview", "oracle", "smoke") if suite == "all" else (suite,)
+    suites = ("main", "ablation", "delay_sweep", "preview", "oracle", "task_cost", "smoke") if suite == "all" else (suite,)
     for name in suites:
         index_path = output / "runs" / "indexes" / f"{name}.json"
         if not index_path.is_file():
@@ -405,7 +447,9 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
         for entry in entries:
             with np.load(Path(entry["run_dir"]) / "rollout.npz", allow_pickle=False) as archive:
                 arrays = {key: np.asarray(archive[key]) for key in archive.files}
-            row = summarize_arrays(str(entry["label"]), arrays)
+            event_path = Path(entry["run_dir"]) / "planner_events.jsonl"
+            events = [json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()] if event_path.is_file() else []
+            row = summarize_arrays(str(entry["label"]), arrays, events)
             row.update({key: entry[key] for key in ("trajectory", "seed", "label")})
             row["case_id"] = f"{entry['trajectory']}:{entry['seed']}"
             rows.append(row)
@@ -448,6 +492,15 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
                     samples=bootstrap_samples, seed=20260722 + index,
                 )
             write_json(output / "summaries" / "ablation_paired_bootstrap.json", comparisons)
+        elif name == "task_cost":
+            comparisons = {}
+            for index, (left, right) in enumerate((("JointOnlyFixedD6", "TaskSpaceFixedD6"), ("JointOnlyDeployed", "TaskSpaceDeployed"))):
+                comparisons[f"{right}_minus_{left}"] = paired_bootstrap_rows(
+                    rows, left=left, right=right,
+                    metrics=("tcp_rmse_m", "orientation_rmse_rad", "solve_p95_s", "e2e_p95_s"),
+                    samples=bootstrap_samples, seed=20260740 + index,
+                )
+            write_json(output / "summaries" / "task_cost_paired_bootstrap.json", comparisons)
 
 
 def smoke(output: Path) -> None:
@@ -496,7 +549,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "generate-calibration-reference":
         print(generate_calibration_reference(output, args.steps, args.overwrite))
     elif args.command == "calibrate-delay":
-        print(calibrate_delay(output, args.samples, args.provisional_delay, args.guard_ms, args.smoke))
+        print(calibrate_delay(output, args.samples, args.provisional_delay, args.guard_ms, args.smoke, args.exact_task_space_cost))
     elif args.command == "generate-references": generate_references(output, args.overwrite)
     elif args.command == "calibrate-preview":
         values = [int(value) for value in args.preview_values.split(",") if value.strip()]

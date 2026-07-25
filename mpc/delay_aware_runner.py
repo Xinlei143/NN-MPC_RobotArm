@@ -134,6 +134,9 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             "actual_states observed_states observation_noise next_states q_des dq_des actuator_q_ref delta_q_ref command_velocity command_acceleration planning_time replan_time mpc_replanned replan_deadline_miss control_step_wall_time buffer_index buffer_length best_cost mean_cost baseline_cost selected_cost elite_mean_cost selection_mode failure_flags joint_limit_violation_flags command_velocity_violation_flags command_acceleration_violation_flags realized_tracking_error nominal_q_ref execution_nominal_q_ref planner_requested_residual buffered_residual requested_mpc_residual feedback_raw feedback_correction requested_feedback_correction requested_correction requested_total_correction requested_absolute_command executed_residual command_nominal_offset safety_projection_offset projection_discrepancy residual_saturated feedback_saturated projection_active predicted_feedback_state planned_q_ref planner_execution_qref_error packet_age packet_event tau_actuator tau_gravity tau_total tau_gravity_true tau_gravity_mismatch external_force_world external_generalized_force desired_ee_positions desired_ee_rotations actual_ee_positions actual_ee_rotations ee_position_errors ee_orientation_errors segment_ids lap_ids".split()
         )}
         rows: list[dict[str, Any]] = []
+        # Immutable plan records are deliberately separate from 100 Hz tick
+        # arrays, so candidate-selection diagnostics are not pseudo-replicated.
+        planner_events: list[dict[str, Any]] = []
 
         def active_payload_residual(absolute_step: int) -> np.ndarray:
             if active is None:
@@ -448,6 +451,13 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 result = controller.plan(anchor_state, anchor_command)
                 planning_time, replanned, failure = float(result.planning_time), 1, int(result.failure)
                 best, mean, baseline, selected, elite, selection = result.best_cost, result.mean_cost, result.baseline_cost, result.selected_cost, result.elite_mean_cost, result.selection_mode
+                planner_events.append({
+                    "launch_step": int(step), "activation_step": int(anchor),
+                    "planning_time_s": float(result.planning_time), "candidate_count": int(result.candidate_count),
+                    "valid_candidate_count": int(result.valid_candidate_count),
+                    "selection_mode": str(result.selection_mode), "failure": int(result.failure),
+                    "candidate_diagnostics": dict(result.candidate_diagnostics),
+                })
                 if result.failure:
                     event = "planner_failure"
                 else:
@@ -575,4 +585,4 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
     )
     if task_reference is not None:
         arrays["execution_steps"] = np.asarray(execution_steps, dtype=np.int64)
-    return {"arrays": arrays, "rows": rows, "failure_reasons": []}
+    return {"arrays": arrays, "rows": rows, "planner_events": planner_events, "failure_reasons": []}

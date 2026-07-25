@@ -69,4 +69,5 @@ class PlannerResultEvent:
     end_to_end_latency_s: float
     candidate_count: int
     valid_candidate_count: int
-    candidate_diagnostics: dict[str, int] = field(default_factory=dict)
+    selection_mode: str = ""
+    candidate_diagnostics: dict[str, int | float] = field(default_factory=dict)

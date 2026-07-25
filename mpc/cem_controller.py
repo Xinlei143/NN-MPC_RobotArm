@@ -74,7 +74,7 @@ class CEMMPCResult:
     sampling_std_end_mean: float
     candidate_count: int = 0
     valid_candidate_count: int = 0
-    candidate_diagnostics: dict[str, int] = field(default_factory=dict)
+    candidate_diagnostics: dict[str, int | float] = field(default_factory=dict)
     branch_candidates: tuple[CEMCandidate, ...] = ()
 
 
@@ -201,7 +201,7 @@ class CEMMPCController:
         reason: str,
         candidate_count: int = 0,
         valid_candidate_count: int = 0,
-        candidate_diagnostics: dict[str, int] | None = None,
+        candidate_diagnostics: dict[str, int | float] | None = None,
     ) -> CEMMPCResult:
         previous = np.asarray(previous_q_ref, dtype=np.float32)
         return CEMMPCResult(
@@ -353,7 +353,7 @@ class CEMMPCController:
         final_elite_indices: torch.Tensor | None = None
         candidate_count = 0
         valid_candidate_count = 0
-        candidate_diagnostics: dict[str, int] = {}
+        candidate_diagnostics: dict[str, int | float] = {}
         exact_role_evaluations: dict[
             str,
             tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor],
@@ -415,9 +415,11 @@ class CEMMPCController:
                 return self._fallback(previous_q_ref, start_time, "missing_exact_final_pool", candidate_count, valid_candidate_count, candidate_diagnostics)
             approximate_best = best_sequence.detach().clone()
             try:
+                exact_final_pool_start = perf_counter()
                 pool, exact, roles, entry_to_unique = self._exact_final_pool(
                     final_samples, final_elite_indices, approximate_best, mean
                 )
+                candidate_diagnostics["exact_final_pool_time_s"] = perf_counter() - exact_final_pool_start
             except RuntimeError as exc:
                 return self._fallback(previous_q_ref, start_time, f"exact_validation_error:{exc}", candidate_count, valid_candidate_count, candidate_diagnostics)
             exact_costs = exact["costs"].to(self.device)
