@@ -31,6 +31,7 @@ from mpc.asap_runner import run as run_threaded_asap
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig, reanchor_residual_command
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
+from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
 from mpc.robustness import RobustnessConfig, config_arrays, resolve_robustness_config
@@ -61,6 +62,8 @@ COST_TERM_NAMES = (
     "dq_limit",
     "torque",
     "delta_torque",
+    "task_position",
+    "task_orientation",
     "total",
 )
 
@@ -282,7 +285,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--anticipation_delay_steps",
         default=6,
         type=int,
-        help="Expected planner-to-activation delay in 100 Hz steps. The default 6-step delay matches the measured GRU planning latency.",
+        help="Planner-to-activation delay in 100 Hz steps. Formal experiments must override this fallback with their calibration result; 6 is only a local fallback.",
     )
     parser.add_argument(
         "--delay_protocol",
@@ -310,6 +313,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="two_stage",
         help="Full projects every population; two_stage searches cheaply then exactly validates final elites/mean/best/baseline.",
     )
+    parser.add_argument(
+        "--exact_task_space_cost",
+        choices=["off", "on"],
+        default="on",
+        help="Add TCP pose costs when selecting the two-stage exact final pool (default: on).",
+    )
+    parser.add_argument("--w_task_position", default=1.0, type=float)
+    parser.add_argument("--w_task_orientation", default=0.25, type=float)
+    parser.add_argument("--task_position_scale_m", default=0.05, type=float)
+    parser.add_argument("--task_orientation_scale_rad", default=float(np.deg2rad(5.0)), type=float)
     parser.add_argument(
         "--residual_cost_semantics",
         choices=["requested", "projected_offset"],
@@ -746,6 +759,18 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("two_stage planner projection requires --planner_projection on")
     if using_two_stage_mpc and args.mpc_policy != "residual":
         raise ValueError("two_stage planner projection requires residual MPC")
+    if args.exact_task_space_cost == "on":
+        if not using_two_stage_mpc:
+            raise ValueError("exact task-space cost requires two-stage MPC")
+        if args.reference_mode != "task":
+            raise ValueError("exact task-space cost requires --reference_mode task")
+        TaskSpaceCostConfig(
+            w_position=args.w_task_position,
+            w_orientation=args.w_task_orientation,
+            position_scale_m=args.task_position_scale_m,
+            orientation_scale_rad=args.task_orientation_scale_rad,
+            temporal_discount=args.temporal_discount,
+        ).validate()
     if args.uncertainty_mode == "ensemble_gate":
         args.uncertainty_mode = "ensemble_soft_gate"
     ensemble_enabled = args.uncertainty_mode != "off"
@@ -906,6 +931,22 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         )
         if args.max_execution_steps is not None:
             execution_steps = min(execution_steps, args.max_execution_steps)
+        exact_task_cost = None
+        if args.exact_task_space_cost == "on":
+            if task_reference is None:
+                raise ValueError("exact task-space cost requires a task-space reference")
+            exact_task_cost = ExactTaskSpaceCost(
+                env.model,
+                ee_site_name=args.ee_site_name,
+                n_joints=args.n_joints,
+                config=TaskSpaceCostConfig(
+                    w_position=args.w_task_position,
+                    w_orientation=args.w_task_orientation,
+                    position_scale_m=args.task_position_scale_m,
+                    orientation_scale_rad=args.task_orientation_scale_rad,
+                    temporal_discount=args.temporal_discount,
+                ),
+            )
         cost_config = None
         rollout_config = None
         physical_velocity_limit = _parse_joint_vector(
@@ -1151,6 +1192,23 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                         joint_high=torch.as_tensor(env.joint_high, dtype=torch.float32, device=device),
                         cost_config=cost_config,
                         rollout_config=rollout_config,
+                        exact_task_space_cost=exact_task_cost,
+                        task_positions_des=None
+                        if task_reference is None
+                        else np.asarray(
+                            task_reference.task_positions_des[
+                                step_idx + 1 : step_idx + 1 + args.horizon
+                            ],
+                            dtype=np.float64,
+                        ),
+                        task_rotations_des=None
+                        if task_reference is None
+                        else np.asarray(
+                            task_reference.task_rotations_des[
+                                step_idx + 1 : step_idx + 1 + args.horizon
+                            ],
+                            dtype=np.float64,
+                        ),
                     )
                     if controller is None:
                         controller = CEMMPCController(
@@ -1600,6 +1658,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         "cost_w_terminal": np.asarray(args.w_terminal, dtype=np.float32),
         "cost_w_joint_limit": np.asarray(args.w_joint_limit, dtype=np.float32),
         "cost_w_dq_limit": np.asarray(args.w_dq_limit, dtype=np.float32),
+        "exact_task_space_cost": np.asarray(args.exact_task_space_cost),
+        "cost_w_task_position": np.asarray(args.w_task_position, dtype=np.float32),
+        "cost_w_task_orientation": np.asarray(args.w_task_orientation, dtype=np.float32),
+        "cost_task_position_scale_m": np.asarray(args.task_position_scale_m, dtype=np.float32),
+        "cost_task_orientation_scale_rad": np.asarray(args.task_orientation_scale_rad, dtype=np.float32),
         "recovery_error_ratio": np.asarray(args.recovery_error_ratio, dtype=np.float32),
         "recovery_min_tracking_error": np.asarray(args.recovery_min_tracking_error, dtype=np.float32),
         "recovery_residual_fraction": np.asarray(args.recovery_residual_fraction, dtype=np.float32),

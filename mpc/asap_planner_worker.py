@@ -18,6 +18,7 @@ from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import project_executable_command_np
 from mpc.history import future_history_tokens, history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 from mpc.budgeted_uncertainty import (
     DynamicsEnsemble,
     evaluate_replicas_with_primary_predictions,
@@ -85,13 +86,37 @@ class PlannerWorkerStatus:
 
 class ASAPPlannerWorker(threading.Thread):
     """Runs all model and CUDA work; the control thread never touches torch."""
-    def __init__(self, args: Any, api: dict[str, Any], snapshots: LatestSnapshotStore, packets: PlanPacketStore, results: PlannerResultStore, stop_event: threading.Event, joint_low: np.ndarray, joint_high: np.ndarray, reference: np.ndarray, dq_reference: np.ndarray, ddq_reference: np.ndarray) -> None:
+    def __init__(
+        self,
+        args: Any,
+        api: dict[str, Any],
+        snapshots: LatestSnapshotStore,
+        packets: PlanPacketStore,
+        results: PlannerResultStore,
+        stop_event: threading.Event,
+        joint_low: np.ndarray,
+        joint_high: np.ndarray,
+        reference: np.ndarray,
+        dq_reference: np.ndarray,
+        ddq_reference: np.ndarray,
+        *,
+        kinematics_model: Any | None = None,
+        task_positions_des: np.ndarray | None = None,
+        task_rotations_des: np.ndarray | None = None,
+    ) -> None:
         super().__init__(name="asap-mpc-planner", daemon=True)
         self.args, self.api, self.snapshots, self.packets, self.results, self.stop_event = args, api, snapshots, packets, results, stop_event
         self.joint_low, self.joint_high = joint_low.astype(np.float32).copy(), joint_high.astype(np.float32).copy()
         self.reference = reference.astype(np.float32).copy()
         self.dq_reference = dq_reference.astype(np.float32).copy()
         self.ddq_reference = ddq_reference.astype(np.float32).copy()
+        self.kinematics_model = kinematics_model
+        self.task_positions_des = (
+            None if task_positions_des is None else np.asarray(task_positions_des, dtype=np.float64).copy()
+        )
+        self.task_rotations_des = (
+            None if task_rotations_des is None else np.asarray(task_rotations_des, dtype=np.float64).copy()
+        )
         self.ready = threading.Event()
         self._status_lock = threading.Lock()
         self.failure_reason = ""
@@ -253,6 +278,26 @@ class ASAPPlannerWorker(threading.Thread):
             t = lambda value: torch.as_tensor(value, dtype=torch.float32, device=device)
             cost = JointSpaceCostConfig(cost_mode="residual", w_q=self.args.w_q, w_dq=self.args.w_dq, w_residual=self.args.w_residual, w_servo=self.args.w_servo, w_residual_velocity=self.args.w_residual_velocity, w_residual_acceleration=self.args.w_residual_acceleration, w_first=self.args.w_first, w_qref_velocity=self.args.w_qref_velocity, w_qref_acceleration=self.args.w_qref_acceleration, w_terminal=self.args.w_terminal, w_joint_limit=self.args.w_joint_limit, w_dq_limit=self.args.w_dq_limit, q_tracking_scale=t(calibration["q_tracking_scale"]), dq_tracking_scale=t(calibration["dq_tracking_scale"]), residual_scale=t(0.5 * residual_max), servo_scale=t(parse(self.args.servo_scale, self.args.n_joints, "servo_scale")), residual_velocity_scale=t(residual_max / bundle.control_dt), residual_acceleration_scale=t(residual_max / bundle.control_dt**2), qref_velocity_scale=t(velocity_limit), qref_acceleration_scale=t(acceleration_limit), temporal_discount=self.args.temporal_discount, barrier_max_weight=self.args.barrier_max_weight, state_velocity_limit=t(parse(self.args.state_velocity_limit, self.args.n_joints, "state_velocity_limit")), joint_limit_safe_margin=self.args.joint_limit_safe_margin, joint_limit_temp=self.args.joint_limit_temp, dq_limit_temp=self.args.dq_limit_temp, control_dt=bundle.control_dt, velocity_cost_mode=self.args.velocity_cost_mode)
             rollout = PlannerRolloutConfig(mpc_policy="residual", q_ref_velocity_limit=t(velocity_limit), q_ref_acceleration_limit=t(acceleration_limit), residual_max=t(residual_max), joint_limit_margin=self.args.joint_limit_margin, rollout_batch_size=self.args.rollout_batch_size, project_residual_kinematics=self.args.planner_projection == "on" and self.args.planner_projection_strategy == "full", projection_backend=self.args.planner_projection_backend, projection_strategy=self.args.planner_projection_strategy, residual_cost_semantics=self.args.residual_cost_semantics, residual_feasibility_semantics=self.args.residual_feasibility_semantics)
+            exact_task_cost = None
+            if self.args.exact_task_space_cost == "on":
+                if (
+                    self.kinematics_model is None
+                    or self.task_positions_des is None
+                    or self.task_rotations_des is None
+                ):
+                    raise ValueError("exact task-space cost requires model and task-space targets")
+                exact_task_cost = ExactTaskSpaceCost(
+                    self.kinematics_model,
+                    ee_site_name=self.args.ee_site_name,
+                    n_joints=self.args.n_joints,
+                    config=TaskSpaceCostConfig(
+                        w_position=self.args.w_task_position,
+                        w_orientation=self.args.w_task_orientation,
+                        position_scale_m=self.args.task_position_scale_m,
+                        orientation_scale_rad=self.args.task_orientation_scale_rad,
+                        temporal_discount=self.args.temporal_discount,
+                    ),
+                )
             controller: CEMMPCController | None = None
             last_request = -1
             mean_anchor_step: int | None = None
@@ -286,7 +331,37 @@ class ASAPPlannerWorker(threading.Thread):
                     )
                 previous_cost_residual = anchor_requested_residual if self.args.residual_cost_semantics == "requested" else anchor_command_nominal_offset
                 previous_cost_residual_velocity = anchor_requested_residual_velocity if self.args.residual_cost_semantics == "requested" else anchor_command_nominal_offset_velocity
-                planner = LearnedDynamicsPlanner(model=bundle.model, normalizer=bundle.normalizer, model_type=bundle.model_type, state_dim=bundle.state_dim, target_mode=bundle.target_mode, control_dt=bundle.control_dt, initial_history=future_history, q_des=future_q, dq_des=t(self.dq_reference[anchor + 1:anchor + 1 + self.args.horizon]), nominal_q_ref=planner_nominal, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity), previous_residual=t(previous_cost_residual), previous_residual_velocity=t(previous_cost_residual_velocity), joint_low=t(self.joint_low), joint_high=t(self.joint_high), cost_config=cost, rollout_config=rollout)
+                planner = LearnedDynamicsPlanner(
+                    model=bundle.model,
+                    normalizer=bundle.normalizer,
+                    model_type=bundle.model_type,
+                    state_dim=bundle.state_dim,
+                    target_mode=bundle.target_mode,
+                    control_dt=bundle.control_dt,
+                    initial_history=future_history,
+                    q_des=future_q,
+                    dq_des=t(self.dq_reference[anchor + 1:anchor + 1 + self.args.horizon]),
+                    nominal_q_ref=planner_nominal,
+                    previous_q_ref=t(anchor_command),
+                    previous_q_ref_velocity=t(anchor_velocity),
+                    previous_residual=t(previous_cost_residual),
+                    previous_residual_velocity=t(previous_cost_residual_velocity),
+                    joint_low=t(self.joint_low),
+                    joint_high=t(self.joint_high),
+                    cost_config=cost,
+                    rollout_config=rollout,
+                    exact_task_space_cost=exact_task_cost,
+                    task_positions_des=None
+                    if self.task_positions_des is None
+                    else self.task_positions_des[
+                        anchor + 1 : anchor + 1 + self.args.horizon
+                    ],
+                    task_rotations_des=None
+                    if self.task_rotations_des is None
+                    else self.task_rotations_des[
+                        anchor + 1 : anchor + 1 + self.args.horizon
+                    ],
+                )
                 if controller is None:
                     controller = CEMMPCController(CEMMPCConfig(horizon=self.args.horizon, action_dim=self.args.n_joints, num_samples=self.args.num_samples, num_elites=self.args.num_elites, elite_ratio=self.args.elite_ratio, cem_iters=self.args.cem_iters, init_std=self.args.init_std, min_std=self.args.min_std, smoothing_alpha=self.args.smoothing_alpha, temporal_noise_alpha=self.args.temporal_noise_alpha, reset_std_each_step=self.args.reset_std_each_step, uniform_sample_ratio=self.args.uniform_sample_ratio, force_baseline_candidate=True, execute=self.args.cem_execute, seed=self.args.seed, device=str(device), selection_validation="exact_final_pool" if self.args.planner_projection_strategy == "two_stage" else "none"), planner, self.joint_low, self.joint_high)
                     generator_state = controller.generator.get_state()

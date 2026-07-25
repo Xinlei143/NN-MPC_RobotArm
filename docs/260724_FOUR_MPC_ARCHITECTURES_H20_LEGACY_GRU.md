@@ -198,3 +198,172 @@ checkpoint、GPU planner、delay 标定或 packet 管理；其 command accelerat
 - 当前 Ideal 比旧同步 Ideal 差约 3.7 mm，主要比较的是 20 Hz 与 100 Hz logical
   replanning 以及新旧 projection 路径的组合差异，不能归因于 checkpoint、轨迹、
   seed、H 或 CEM budget。
+
+---
+
+## 2026-07-24 新版本复测：exact final pool 加入 task-space cost
+
+本节是在上述旧实验之后追加的新版本结果。旧实验配置、数据、分析和结论全部保留，
+没有用新结果覆盖。新版本仍使用相同的旧 GRU checkpoint、四条 task reference、
+H20、128 samples、2 次 CEM iteration 和 seeds 0/1/2；唯一的优化目标变化是：
+
+- 128 条 stage-one population 继续只使用原 joint-space/residual/constraint cost；
+- two-stage exact final pool 的 elites、mean、best 和 zero-residual baseline 使用
+  MuJoCo FK 计算 TCP 位置和姿态误差；
+- exact pool 最终总 cost 增加
+  `w_p C_p + w_R C_R`，其中姿态误差使用
+  `log(R_des^T R_pred)`；
+- 该功能由 `--exact_task_space_cost on` 显式启用，默认 `off`，因此旧命令的行为
+  没有改变。
+
+新结果位于：
+
+- `outputs/mpc/four_architectures_h20_old_gru_task_cost_v2/tuning/`
+- `outputs/mpc/four_architectures_h20_old_gru_task_cost_v2/delay_calibration.json`
+- `outputs/mpc/four_architectures_h20_old_gru_task_cost_v2/results_common_2101/`
+- `outputs/mpc/four_architectures_h20_old_gru_task_cost_v2/direct_ik_common_2101/`
+
+### 权重预扫
+
+预扫使用 Circle、Figure-8，IdealZeroDelay 与 VirtualDelayAware，seed 0，各执行
+500 steps。位置尺度固定为 0.05 m，姿态尺度固定为 5°。下表为四个 rollout 的
+pooled 均值：
+
+| `w_p, w_R` | TCP RMSE | Orientation RMSE | Joint RMSE | Solve P95 | 安全违例 |
+|---|---:|---:|---:|---:|---:|
+| task cost off | 33.76 mm | 1.730° | 0.01124 rad | 31.36 ms | 0 |
+| 0.25, 0.25 | 30.66 mm | 1.468° | 0.01100 rad | 38.47 ms | 0 |
+| 0.50, 0.25 | 28.45 mm | 1.347° | 0.01087 rad | 38.62 ms | 0 |
+| **1.00, 0.25** | **26.42 mm** | **1.292°** | **0.01098 rad** | **37.47 ms** | **0** |
+| 1.00, 0.50 | 27.55 mm | 1.339° | 0.01122 rad | 37.63 ms | 0 |
+
+按预先冻结的“TCP 优先，同时姿态恶化不超过 10%、solve P95 增量不超过 10 ms、
+零安全违例”规则，正式实验选择：
+
+```text
+w_task_position = 1.0
+w_task_orientation = 0.25
+task_position_scale_m = 0.05
+task_orientation_scale_rad = 0.0872664626
+```
+
+相对 task cost off，该配置在预扫中将 TCP RMSE 降低 7.34 mm，姿态 RMSE 也降低
+0.438°；solve P95 增加 6.11 ms，仍满足延迟护栏。
+
+### 新版本延迟标定与公共区间
+
+使用 Circle 和 Figure-8、真实 `threaded_asap`、冻结后的 task-space cost 收集
+500 个 planner update：
+
+| 指标 | 数值 |
+|---|---:|
+| Solve P50 / P95 | 37.68 / 40.31 ms |
+| Threaded E2E P50 / P95 | 47.17 / 52.40 ms |
+| planner guard | 5 ms |
+| control tick | 10 ms |
+| 新标定结果 | `ceil((52.40 + 5) / 10) = D6` |
+
+exact-pool FK 使 D 从旧版本的 D5 增加到 D6。历史 reference 共 2128 points，D6
+方法需要 `execution_steps + H + D + 1` 个点，因此新版四种架构统一执行前
+**2101 steps**。曾尝试沿用 2102 steps，但长度校验在任何 D6 rollout 执行前即拒绝
+该配置；正式结果全部来自新的 `results_common_2101/`，四种方法之间仍为严格配对。
+
+### 四种架构新结果
+
+下表为每种方法四条轨迹 × 三个 seed，共 12 个 rollout 的均值：
+
+| 方法 | TCP RMSE | Joint RMSE | Orientation RMSE | Solve P95 | E2E P95 | Planner rate | Late packet |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `IdealZeroDelay` | **25.56 mm** | **0.01068 rad** | **1.255°** | **37.64 ms** | n/a | 固定 20 Hz 逻辑调度 | 0% |
+| `NaiveDelayed` | 64.30 mm | 0.08612 rad | 10.715° | 37.88 ms | n/a | 固定 20 Hz 逻辑调度 | 0% |
+| `VirtualDelayAware` | 26.47 mm | 0.01102 rad | 1.355° | 37.98 ms | n/a | 固定 20 Hz 逻辑调度 | 0% |
+| `ThreadedAsync` | 26.41 mm | 0.01080 rad | 1.307° | 39.88 ms | 50.86 ms | 24.61 Hz | 0.290% |
+
+所有 48 个 rollout 均无 planner failure、joint-limit violation、command velocity
+violation、command acceleration violation或控制 deadline miss。Naive 和 Virtual
+的平均 fallback step rate 为 0.286%，Threaded 为 0.313%，均主要来自启动阶段；
+Ideal 为 0。Threaded 控制线程 compute P99 为 1.10 ms，control-period P99 为
+10.18 ms。
+
+#### 分轨迹 TCP RMSE
+
+均值 ± seed 标准差：
+
+| 轨迹 | Ideal | Naive | Virtual | Threaded |
+|---|---:|---:|---:|---:|
+| Circle | 39.77 ± 3.49 mm | 100.84 ± 3.43 mm | 39.22 ± 3.19 mm | 38.73 ± 3.34 mm |
+| Ellipse | 20.70 ± 0.54 mm | 53.80 ± 5.55 mm | 23.12 ± 1.03 mm | 23.12 ± 0.25 mm |
+| Figure-8 | 20.72 ± 0.59 mm | 50.93 ± 7.77 mm | 21.72 ± 1.15 mm | 22.07 ± 0.40 mm |
+| Square | 21.06 ± 0.67 mm | 51.65 ± 4.88 mm | 21.81 ± 0.97 mm | 21.71 ± 0.88 mm |
+
+#### 新版本架构间配对差值
+
+使用相同 trajectory × seed 的 12 个差值和 5000 次 bootstrap：
+
+| 对比 | TCP RMSE 平均差值 | 95% CI |
+|---|---:|---:|
+| Naive − Ideal | +38.74 mm | [+31.33, +47.12] mm |
+| Virtual − Ideal | +0.90 mm | [−0.52, +2.19] mm |
+| Threaded − Ideal | +0.84 mm | [−0.63, +2.08] mm |
+| Threaded − Virtual | −0.06 mm | [−0.63, +0.54] mm |
+
+Virtual、Threaded 与 Ideal 的区间均跨 0，Threaded 与 Virtual 也没有可分辨的
+tracking 差异。相比旧版本 Threaded 比 Virtual 差 1.22 mm，新 D6 和 task-space
+selection 下二者几乎相同，但不能据此声称真实异步一定优于 virtual 方法。
+
+### 与 task cost off 的旧版本比较
+
+下面比较本节 2101-step 新结果和上文 2102-step 旧结果。两者相差最后一个 10 ms
+tick，同时 D 从 5 变为 6，因此该表反映的是“task-space exact selection + 新延迟
+标定”的整体版本差异，不是严格的单变量消融：
+
+| 方法 | 旧 TCP RMSE | 新 TCP RMSE | 新 − 旧 | 95% CI |
+|---|---:|---:|---:|---:|
+| `IdealZeroDelay` | 28.52 mm | 25.56 mm | **−2.96 mm** | [−4.44, −1.00] mm |
+| `NaiveDelayed` | 63.47 mm | 64.30 mm | +0.84 mm | [−4.33, +5.52] mm |
+| `VirtualDelayAware` | 28.67 mm | 26.47 mm | **−2.21 mm** | [−3.46, −0.66] mm |
+| `ThreadedAsync` | 29.90 mm | 26.41 mm | **−3.49 mm** | [−4.43, −2.24] mm |
+
+对 Ideal、Virtual 和 Threaded，优化目标与 TCP 评价指标对齐后均得到有统计区分度的
+改善。Naive 没有改善，且 orientation RMSE 从旧版本 6.951° 增至 10.715°；
+task-space cost 只能在 exact pool 中选择更合适的未来序列，不能修复延迟下重放
+过期 absolute command 的错误时序语义。
+
+### 新版与 Direct IK 比较
+
+为保持完全相同的 2101-step 区间，raw Direct IK 也重新汇总了四条轨迹 × 三个
+seed。Direct IK 的数值与上文 2102-step 结果只有末位差异：
+
+| 方法 | TCP RMSE | Joint RMSE | Orientation RMSE | Control compute P99 |
+|---|---:|---:|---:|---:|
+| `DirectIK` | 37.12 mm | 0.01399 rad | 1.900° | **0.25 ms** |
+| `IdealZeroDelay` | **25.56 mm** | **0.01068 rad** | **1.255°** | 41.28 ms |
+| `NaiveDelayed` | 64.30 mm | 0.08612 rad | 10.715° | 40.61 ms |
+| `VirtualDelayAware` | 26.47 mm | 0.01102 rad | 1.355° | 45.42 ms |
+| `ThreadedAsync` | 26.41 mm | 0.01080 rad | 1.307° | 1.10 ms |
+
+| 对比 | TCP RMSE 平均差值 | 95% CI | 优于 Direct 的配对数 |
+|---|---:|---:|---:|
+| Ideal − Direct | −11.56 mm | [−12.73, −10.55] mm | 12/12 |
+| Naive − Direct | +27.19 mm | [+20.47, +34.57] mm | 0/12 |
+| Virtual − Direct | −10.65 mm | [−12.23, −9.44] mm | 12/12 |
+| Threaded − Direct | −10.71 mm | [−12.37, −9.48] mm | 12/12 |
+
+新版 Threaded pooled TCP RMSE 相对 Direct IK 降低约 **28.9%**，比旧版本记录的
+19.4% 更大；代价是 planner E2E P95 增至约 50.9 ms、planner rate 降至约
+24.6 Hz，并继续需要 checkpoint、GPU、D 标定和异步 packet 管理。
+
+### 新版本结论
+
+- 原瓶颈判断得到支持：仅在小规模 exact final pool 中加入 task-space cost，就能在
+  不增加全 population FK 的情况下改善主要论文指标。
+- Ideal、Virtual 和 Threaded 相对旧版本分别改善 2.96、2.21 和 3.49 mm；三者的
+  orientation RMSE 也低于旧版本。
+- exact FK 不是免费的：solve/E2E 延迟增加使正式补偿从 D5 变为 D6，Threaded
+  planner rate 从旧版本约 29.8 Hz 降至约 24.6 Hz。
+- D6 下 Virtual 与 Ideal、Threaded 与 Virtual 的配对区间均跨 0；delay-aware
+  alignment、re-anchor 和 fast feedback 仍能基本消除固定延迟及实际异步调度代价。
+- NaiveDelayed 仍明显失败，而且 task-space selection 不能补救其错误的 cached
+  absolute-command 语义；这与旧实验的核心时序结论一致。
+- 新版 Threaded 在全部 12 个配对中优于 Direct IK，TCP RMSE 平均低 10.71 mm，
+  但 Direct IK 仍具有最低计算量、最低控制线程延迟和更简单的部署路径。

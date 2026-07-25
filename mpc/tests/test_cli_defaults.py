@@ -38,6 +38,11 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         self.assertEqual(args.planner_projection, "on")
         self.assertEqual(args.planner_projection_backend, "compiled")
         self.assertEqual(args.planner_projection_strategy, "two_stage")
+        self.assertEqual(args.exact_task_space_cost, "on")
+        self.assertEqual(args.w_task_position, 1.0)
+        self.assertEqual(args.w_task_orientation, 0.25)
+        self.assertAlmostEqual(args.task_position_scale_m, 0.05)
+        self.assertAlmostEqual(args.task_orientation_scale_rad, np.deg2rad(5.0))
         self.assertEqual(args.horizon, 20)
         self.assertEqual(args.residual_cost_semantics, "requested")
         self.assertEqual(args.packet_residual_semantics, "requested")
@@ -48,6 +53,36 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
     def test_budget_sweep_defaults_to_and_accepts_threaded_asap(self) -> None:
         with mock.patch.object(sys, "argv", ["run_cem_budget_sweep.py"]):
             self.assertEqual(SWEEP.parse_args().multirate_mode, "threaded_asap")
+
+    def test_exact_task_space_cost_rejects_non_task_reference(self) -> None:
+        args = RUNNER.parse_args(
+            [
+                "--exact_task_space_cost",
+                "on",
+                "--w_task_position",
+                "1.0",
+                "--reference_mode",
+                "joint_sine",
+            ]
+        )
+        with self.assertRaisesRegex(ValueError, "reference_mode task"):
+            RUNNER.run_closed_loop_mpc(args)
+
+    def test_exact_task_space_cost_rejects_non_two_stage_strategy(self) -> None:
+        args = RUNNER.parse_args(
+            [
+                "--exact_task_space_cost",
+                "on",
+                "--w_task_position",
+                "1.0",
+                "--reference_mode",
+                "task",
+                "--planner_projection_strategy",
+                "full",
+            ]
+        )
+        with self.assertRaisesRegex(ValueError, "two-stage MPC"):
+            RUNNER.run_closed_loop_mpc(args)
 
     def test_task_reference_validation_honors_execution_cap(self) -> None:
         bundle = SimpleNamespace(
