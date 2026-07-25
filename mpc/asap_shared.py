@@ -96,6 +96,8 @@ def _copy_packet(packet: ASAPPlanPacket) -> ASAPPlanPacket:
         uncertainty_evaluation_time_s=packet.uncertainty_evaluation_time_s,
         uncertainty_residual_scale=packet.uncertainty_residual_scale,
         uncertainty_high_risk=packet.uncertainty_high_risk,
+        uncertainty_state=packet.uncertainty_state,
+        uncertainty_reference_feedback=packet.uncertainty_reference_feedback,
     )
 
 
@@ -109,6 +111,7 @@ def copy_snapshot(snapshot: PlanningSnapshot) -> PlanningSnapshot:
         previous_command_nominal_offset=snapshot.previous_command_nominal_offset.copy(),
         previous_command_nominal_offset_velocity=snapshot.previous_command_nominal_offset_velocity.copy(),
         packet_schedule=tuple(_copy_packet(packet) for packet in snapshot.packet_schedule),
+        packet_prediction_q_innovation=float(snapshot.packet_prediction_q_innovation),
     )
 
 

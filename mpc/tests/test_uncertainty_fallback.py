@@ -62,3 +62,21 @@ def test_ungated_packet_retains_feedback() -> None:
     )
     assert np.allclose(feedback, [0.015, -0.015])
     assert np.allclose(requested, feedback)
+
+
+def test_drift_limited_packet_uses_reference_feedback() -> None:
+    _, feedback, requested = compose_requested_correction(
+        np.zeros(2, dtype=np.float32),
+        np.array([4.0, -4.0, 3.0, -3.0], dtype=np.float32),
+        np.zeros(4, dtype=np.float32),
+        packet_age=0,
+        uncertainty_gate=False,
+        reference_feedback=True,
+        feedback_reference=np.array([0.02, -0.03], dtype=np.float32),
+        feedback_kq=0.30,
+        feedback_kdq=0.015,
+        feedback_max=np.full(2, 0.015, dtype=np.float32),
+        residual_max=np.full(2, 0.12, dtype=np.float32),
+    )
+    assert np.allclose(feedback, [0.006, -0.009])
+    assert np.allclose(requested, feedback)

@@ -87,6 +87,153 @@ class BudgetedUncertainty:
     timed_out: bool
 
 
+@dataclass(frozen=True)
+class UncertaintyDecision:
+    """One stateful supervisor decision made after a CEM plan is selected."""
+
+    state: str
+    residual_scale: float
+    hard_fallback: bool
+    reference_feedback: bool
+    high_score_streak: int
+    low_score_streak: int
+
+
+class HystereticUncertaintySupervisor:
+    """Avoid persistent attenuation from isolated or merely moderate disagreement.
+
+    The supervisor deliberately keeps the CEM residual unchanged in the
+    ``SUSPECTED`` band.  A plan is first *limited* only after repeated high
+    disagreement. Innovation-confirmed drift uses a conservative residual
+    limit and reference tracking feedback; it is not, by itself, evidence of
+    an imminent physical violation. Strict nominal fallback is reserved for a
+    timeout or an independently predicted physical risk. Recovery also
+    requires repeated low scores, preventing packet-to-packet chatter.
+    """
+
+    NORMAL = "normal"
+    SUSPECTED = "suspected"
+    LIMITED = "limited"
+    FALLBACK = "fallback"
+
+    def __init__(
+        self,
+        *,
+        low_threshold: float,
+        high_threshold: float,
+        confirm_steps: int,
+        fallback_confirm_steps: int,
+        recovery_steps: int,
+        limited_residual_scale: float,
+        innovation_threshold: float | None = None,
+        innovation_recovery_threshold: float | None = None,
+    ) -> None:
+        if not 0.0 < low_threshold < high_threshold:
+            raise ValueError("uncertainty thresholds must satisfy 0 < low < high")
+        if confirm_steps <= 0 or fallback_confirm_steps < confirm_steps or recovery_steps <= 0:
+            raise ValueError("uncertainty confirmation/recovery steps are invalid")
+        if not 0.0 < limited_residual_scale <= 1.0:
+            raise ValueError("limited_residual_scale must be in (0, 1]")
+        if innovation_threshold is not None and innovation_threshold <= 0.0:
+            raise ValueError("innovation_threshold must be positive when enabled")
+        if innovation_recovery_threshold is not None and innovation_recovery_threshold <= 0.0:
+            raise ValueError("innovation_recovery_threshold must be positive when enabled")
+        if innovation_threshold is None and innovation_recovery_threshold is not None:
+            raise ValueError("innovation_recovery_threshold requires innovation_threshold")
+        if (
+            innovation_threshold is not None
+            and innovation_recovery_threshold is not None
+            and innovation_recovery_threshold >= innovation_threshold
+        ):
+            raise ValueError("innovation_recovery_threshold must be below innovation_threshold")
+        self.low_threshold = float(low_threshold)
+        self.high_threshold = float(high_threshold)
+        self.confirm_steps = int(confirm_steps)
+        self.fallback_confirm_steps = int(fallback_confirm_steps)
+        self.recovery_steps = int(recovery_steps)
+        self.limited_residual_scale = float(limited_residual_scale)
+        self.innovation_threshold = None if innovation_threshold is None else float(innovation_threshold)
+        self.innovation_recovery_threshold = (
+            None if innovation_recovery_threshold is None else float(innovation_recovery_threshold)
+        )
+        self.state = self.NORMAL
+        self.high_score_streak = 0
+        self.low_score_streak = 0
+
+    def update(
+        self,
+        score: float,
+        *,
+        physical_risk: bool,
+        innovation: float = float("nan"),
+        timed_out: bool = False,
+    ) -> UncertaintyDecision:
+        """Update using the selected-trajectory disagreement and a physical guard.
+
+        A timeout remains an immediate conservative fallback.  Otherwise a
+        High disagreement alone limits residual authority, but strict fallback
+        additionally requires either a physical risk or a calibrated active
+        packet prediction innovation. This avoids treating persistent but
+        benign static disagreement as a repeated emergency.
+        """
+        if timed_out or not np.isfinite(score):
+            self.state = self.FALLBACK
+            self.high_score_streak = max(self.high_score_streak, self.fallback_confirm_steps)
+            self.low_score_streak = 0
+        elif score >= self.high_threshold:
+            self.high_score_streak += 1
+            self.low_score_streak = 0
+            innovation_confirmed = bool(
+                self.innovation_threshold is not None
+                and np.isfinite(innovation)
+                and innovation >= self.innovation_threshold
+            )
+            if physical_risk:
+                self.state = self.FALLBACK
+            elif innovation_confirmed and self.high_score_streak >= self.fallback_confirm_steps:
+                self.state = self.LIMITED
+            elif self.high_score_streak >= self.confirm_steps:
+                self.state = self.LIMITED
+            else:
+                self.state = self.SUSPECTED
+        elif score >= self.low_threshold:
+            self.high_score_streak = 0
+            innovation_recovered = bool(
+                self.innovation_recovery_threshold is None
+                or (np.isfinite(innovation) and innovation < self.innovation_recovery_threshold)
+            )
+            self.low_score_streak = self.low_score_streak + 1 if innovation_recovered else 0
+            if self.state == self.FALLBACK and self.low_score_streak >= self.recovery_steps:
+                self.state = self.LIMITED
+                self.low_score_streak = 0
+            elif self.state == self.LIMITED and self.low_score_streak >= self.recovery_steps:
+                self.state = self.SUSPECTED
+                self.low_score_streak = 0
+            elif self.state == self.NORMAL:
+                self.state = self.SUSPECTED
+        else:
+            self.high_score_streak = 0
+            self.low_score_streak += 1
+            if self.state == self.FALLBACK and self.low_score_streak >= self.recovery_steps:
+                self.state = self.LIMITED
+                self.low_score_streak = 0
+            elif self.state == self.LIMITED and self.low_score_streak >= self.recovery_steps:
+                self.state = self.NORMAL
+            elif self.state == self.SUSPECTED:
+                self.state = self.NORMAL
+
+        hard_fallback = self.state == self.FALLBACK
+        scale = 0.0 if hard_fallback else self.limited_residual_scale if self.state == self.LIMITED else 1.0
+        return UncertaintyDecision(
+            state=self.state,
+            residual_scale=scale,
+            hard_fallback=hard_fallback,
+            reference_feedback=(self.state == self.LIMITED),
+            high_score_streak=self.high_score_streak,
+            low_score_streak=self.low_score_streak,
+        )
+
+
 def selected_cem_candidates(result: object, *, horizon: int) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Return only the selected executable command and cached Model-A rollout.
 

@@ -19,24 +19,38 @@ normalized RMS disagreement score
                          |
        +-----------------+--------------------+
        |                 |                    |
-   score <= low     low < score < high      score >= high
+   score < low      low <= score < high     score >= high
        |                 |                    |
- residual = 1x    smooth residual scale    inspect concrete risk
+ residual = 1x      record suspected       require temporal confirmation
                                             |
                          +------------------+------------------+
                          |                                     |
-                     no concrete risk                  limit/error/saturation risk
+                 repeated high score             repeated high score + physical risk
                          |                                     |
-          retain at least min_residual_scale       residual = 0; nominal/IK fallback
+                 fixed residual limit          residual = 0; nominal/IK fallback
 ```
 
-Concrete risk means any of the following on the Model-A selected trajectory:
+The supervisor uses a hysteretic state machine: default two consecutive high
+scores enter `limited`. Persistent high scores plus a calibrated active-packet
+prediction innovation confirm model drift: the residual is conservatively
+limited and feedback tracks the planned reference rather than the model
+prediction. Strict zero-residual `fallback` is reserved for an immediate
+concrete physical risk or a monitoring timeout. It leaves limited/fallback
+after repeated lower scores (and, when enabled, below an innovation recovery
+threshold); it does not require a static payload mismatch to fall below `low`.
+Thus a moderate score does not continuously attenuate a nominally accurate
+controller.
+
+Concrete physical risk means any of the following on the Model-A selected trajectory:
 
 - predicted joint limit violation inside the configured margin;
 - selected residual is near its configured saturation limit;
 - predicted next-step tracking error grows beyond the configured ratio of the current error.
 
 An ensemble wall-clock budget timeout remains conservative: it triggers nominal fallback because no complete uncertainty estimate is available.
+The rollout additionally records `packet_prediction_q_innovation`, the active
+packet's predicted-versus-observed joint-position discrepancy.  It is logged
+for ID calibration before it is promoted to a hard online threshold.
 
 ## Modes
 
@@ -44,7 +58,7 @@ An ensemble wall-clock budget timeout remains conservative: it triggers nominal 
 |---|---|---|
 | `off` | none | normal Model-A residual MPC |
 | `ensemble_monitor` | selected-only disagreement | records score and risk, does not modify residual |
-| `ensemble_soft_gate` | selected-only disagreement | smoothly attenuates residual; hard fallback only for high disagreement plus risk |
+| `ensemble_soft_gate` | selected-only disagreement | hysteretic supervisor: suspected → limited → nominal fallback |
 
 `ensemble_gate` is accepted as a deprecated alias for `ensemble_soft_gate`.
 
@@ -88,7 +102,16 @@ After calibrating on an ID development set and validating OOD detection, enable 
 --uncertainty_mode ensemble_soft_gate `
 --uncertainty_low_threshold <CALIBRATED_LOW> `
 --uncertainty_high_threshold <CALIBRATED_HIGH> `
---uncertainty_min_residual_scale 0.20
+--uncertainty_confirm_steps 2 `
+--uncertainty_fallback_confirm_steps 3 `
+--uncertainty_recovery_steps 3 `
+--uncertainty_limited_residual_scale 0.75 `
+--uncertainty_innovation_threshold <CALIBRATED_Q_INNOVATION_HIGH> `
+--uncertainty_innovation_recovery_threshold <CALIBRATED_Q_INNOVATION_LOW>
 ```
 
-The run logs `uncertainty_score`, `uncertainty_residual_scale`, `uncertainty_high_risk_flags`, `uncertainty_gate_flags`, and stage-2 evaluation time. Recalibrate both thresholds after changing replica count, training protocol, normalization, or uncertainty horizon.
+The run logs `uncertainty_score`, `uncertainty_state`,
+`uncertainty_residual_scale`, `uncertainty_high_risk_flags`,
+`uncertainty_gate_flags`, `packet_prediction_q_innovation`, and stage-2
+evaluation time. Recalibrate both thresholds after changing replica count,
+training protocol, normalization, or uncertainty horizon.

@@ -155,7 +155,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--uncertainty_threshold",
-        default=0.10,
+        default=0.0010,
         type=float,
         help="Deprecated compatibility lower threshold; prefer --uncertainty_low_threshold and --uncertainty_high_threshold.",
     )
@@ -175,7 +175,43 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--uncertainty_min_residual_scale",
         default=0.20,
         type=float,
-        help="Minimum residual authority under disagreement without a concrete hard-risk signal.",
+        help="Deprecated compatibility option for the former continuous soft gate; use --uncertainty_limited_residual_scale.",
+    )
+    parser.add_argument(
+        "--uncertainty_confirm_steps",
+        default=2,
+        type=int,
+        help="Consecutive high-disagreement plans required before residual authority is limited.",
+    )
+    parser.add_argument(
+        "--uncertainty_fallback_confirm_steps",
+        default=3,
+        type=int,
+        help="Consecutive high-disagreement plans required to confirm innovation-based drift before conservative limiting (legacy name).",
+    )
+    parser.add_argument(
+        "--uncertainty_recovery_steps",
+        default=3,
+        type=int,
+        help="Consecutive low-disagreement plans required to recover from a limited/fallback state.",
+    )
+    parser.add_argument(
+        "--uncertainty_limited_residual_scale",
+        default=0.75,
+        type=float,
+        help="Conservative residual scale used after confirmed, persistent model disagreement.",
+    )
+    parser.add_argument(
+        "--uncertainty_innovation_threshold",
+        default=None,
+        type=float,
+        help="Optional calibrated active-packet q-prediction innovation that confirms model drift and enables conservative reference-feedback limiting.",
+    )
+    parser.add_argument(
+        "--uncertainty_innovation_recovery_threshold",
+        default=None,
+        type=float,
+        help="Optional lower innovation threshold required to recover from conservative limiting; must be below --uncertainty_innovation_threshold.",
     )
     parser.add_argument(
         "--uncertainty_horizon",
@@ -801,6 +837,26 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("uncertainty_residual_saturation_fraction must be in (0, 1]")
     if not 0.0 <= args.uncertainty_min_residual_scale <= 1.0:
         raise ValueError("uncertainty_min_residual_scale must be in [0, 1]")
+    if (
+        args.uncertainty_confirm_steps <= 0
+        or args.uncertainty_fallback_confirm_steps < args.uncertainty_confirm_steps
+        or args.uncertainty_recovery_steps <= 0
+    ):
+        raise ValueError("uncertainty confirmation/recovery steps are invalid")
+    if not 0.0 < args.uncertainty_limited_residual_scale <= 1.0:
+        raise ValueError("uncertainty_limited_residual_scale must be in (0, 1]")
+    if args.uncertainty_innovation_threshold is not None and args.uncertainty_innovation_threshold <= 0.0:
+        raise ValueError("uncertainty_innovation_threshold must be positive when enabled")
+    if args.uncertainty_innovation_recovery_threshold is not None and args.uncertainty_innovation_recovery_threshold <= 0.0:
+        raise ValueError("uncertainty_innovation_recovery_threshold must be positive when enabled")
+    if args.uncertainty_innovation_threshold is None and args.uncertainty_innovation_recovery_threshold is not None:
+        raise ValueError("uncertainty_innovation_recovery_threshold requires uncertainty_innovation_threshold")
+    if (
+        args.uncertainty_innovation_threshold is not None
+        and args.uncertainty_innovation_recovery_threshold is not None
+        and args.uncertainty_innovation_recovery_threshold >= args.uncertainty_innovation_threshold
+    ):
+        raise ValueError("uncertainty_innovation_recovery_threshold must be below uncertainty_innovation_threshold")
     if args.uncertainty_tracking_error_growth_ratio <= 1.0 or args.uncertainty_min_tracking_error < 0.0:
         raise ValueError("uncertainty tracking-error risk parameters are invalid")
     if ensemble_enabled:

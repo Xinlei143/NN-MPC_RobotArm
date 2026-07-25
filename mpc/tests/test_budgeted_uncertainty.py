@@ -10,7 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "dynamics_modeling") not in sys.path:
     sys.path.insert(0, str(ROOT / "dynamics_modeling"))
 
-from mpc.budgeted_uncertainty import high_risk_prediction, selected_cem_candidates, soft_residual_scale
+from mpc.budgeted_uncertainty import (
+    HystereticUncertaintySupervisor,
+    high_risk_prediction,
+    selected_cem_candidates,
+    soft_residual_scale,
+)
 
 
 def test_selected_cem_candidates_uses_only_executable_selected_branch() -> None:
@@ -48,3 +53,58 @@ def test_high_risk_prediction_requires_a_concrete_risk_signal() -> None:
         predicted, reference, np.ones((3, 2), dtype=np.float32), np.ones(2, dtype=np.float32),
         -np.ones(2, dtype=np.float32), np.ones(2, dtype=np.float32), **common,
     )
+
+
+def test_hysteretic_supervisor_does_not_attenuate_moderate_disagreement() -> None:
+    supervisor = HystereticUncertaintySupervisor(
+        low_threshold=0.001,
+        high_threshold=0.002,
+        confirm_steps=2,
+        fallback_confirm_steps=3,
+        recovery_steps=2,
+        limited_residual_scale=0.5,
+    )
+    decision = supervisor.update(0.0015, physical_risk=False)
+    assert decision.state == "suspected"
+    assert decision.residual_scale == 1.0
+    assert not decision.hard_fallback
+
+
+def test_hysteretic_supervisor_limits_on_high_score_and_does_not_treat_drift_as_physical_risk() -> None:
+    supervisor = HystereticUncertaintySupervisor(
+        low_threshold=0.001,
+        high_threshold=0.002,
+        confirm_steps=2,
+        fallback_confirm_steps=3,
+        recovery_steps=2,
+        limited_residual_scale=0.5,
+        innovation_threshold=0.02,
+        innovation_recovery_threshold=0.01,
+    )
+    assert supervisor.update(0.0021, physical_risk=False).state == "suspected"
+    limited = supervisor.update(0.0021, physical_risk=False)
+    assert limited.state == "limited"
+    assert limited.residual_scale == 0.5
+    assert supervisor.update(0.0021, physical_risk=False).state == "limited"
+    drift_limited = supervisor.update(0.0021, physical_risk=False, innovation=0.03)
+    assert drift_limited.state == "limited"
+    assert not drift_limited.hard_fallback
+    assert drift_limited.reference_feedback
+
+
+def test_hysteretic_supervisor_recovers_only_after_low_score_hysteresis() -> None:
+    supervisor = HystereticUncertaintySupervisor(
+        low_threshold=0.001,
+        high_threshold=0.002,
+        confirm_steps=1,
+        fallback_confirm_steps=1,
+        recovery_steps=2,
+        limited_residual_scale=0.5,
+        innovation_threshold=0.02,
+        innovation_recovery_threshold=0.01,
+    )
+    assert supervisor.update(0.0021, physical_risk=False, innovation=0.03).state == "limited"
+    assert supervisor.update(0.0005, physical_risk=False, innovation=0.005).state == "limited"
+    recovered = supervisor.update(0.0005, physical_risk=False)
+    assert recovered.state == "normal"
+    assert recovered.residual_scale == 1.0

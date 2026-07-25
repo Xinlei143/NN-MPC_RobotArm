@@ -21,10 +21,10 @@ from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 from mpc.budgeted_uncertainty import (
     DynamicsEnsemble,
+    HystereticUncertaintySupervisor,
     evaluate_replicas_with_primary_predictions,
     high_risk_prediction,
     selected_cem_candidates,
-    soft_residual_scale,
 )
 
 
@@ -82,6 +82,7 @@ class PlannerWorkerStatus:
     uncertainty_gate: bool
     uncertainty_residual_scale: float
     uncertainty_high_risk: bool
+    uncertainty_reference_feedback: bool
 
 
 class ASAPPlannerWorker(threading.Thread):
@@ -151,6 +152,7 @@ class ASAPPlannerWorker(threading.Thread):
         self._uncertainty_gate = False
         self._uncertainty_residual_scale = 1.0
         self._uncertainty_high_risk = False
+        self._uncertainty_reference_feedback = False
 
     def status(self) -> PlannerWorkerStatus:
         with self._status_lock:
@@ -166,7 +168,7 @@ class ASAPPlannerWorker(threading.Thread):
                 self._planner_failure_count, self._consecutive_planner_failure_count,
                 self._last_successful_plan_id,
                 self._uncertainty_score, self._uncertainty_max_score, self._uncertainty_evaluation_time_s,
-                self._uncertainty_gate, self._uncertainty_residual_scale, self._uncertainty_high_risk,
+                self._uncertainty_gate, self._uncertainty_residual_scale, self._uncertainty_high_risk, self._uncertainty_reference_feedback,
             )
 
     def _fail(self, reason: str) -> None:
@@ -261,6 +263,7 @@ class ASAPPlannerWorker(threading.Thread):
             self.api["set_seed"](self.args.seed)
             bundle = self.api["load_dynamics_bundle"](checkpoint_path=self.api["resolve_runtime_path"](self.args.checkpoint), normalizer_path=self.api["resolve_runtime_path"](self.args.normalizer), model_type=self.args.model_type, n_joints=self.args.n_joints, device=device, history_len=self.args.history_len)
             ensemble = None
+            supervisor = None
             if self.args.uncertainty_mode != "off":
                 ensemble = DynamicsEnsemble.from_replica_paths(
                     bundle,
@@ -268,6 +271,17 @@ class ASAPPlannerWorker(threading.Thread):
                     [self.api["resolve_runtime_path"](path) for path in self.args.uncertainty_normalizers],
                     device,
                 )
+                if self.args.uncertainty_mode == "ensemble_soft_gate":
+                    supervisor = HystereticUncertaintySupervisor(
+                        low_threshold=self.args.uncertainty_low_threshold,
+                        high_threshold=self.args.uncertainty_high_threshold,
+                        confirm_steps=self.args.uncertainty_confirm_steps,
+                        fallback_confirm_steps=self.args.uncertainty_fallback_confirm_steps,
+                        recovery_steps=self.args.uncertainty_recovery_steps,
+                        limited_residual_scale=self.args.uncertainty_limited_residual_scale,
+                        innovation_threshold=self.args.uncertainty_innovation_threshold,
+                        innovation_recovery_threshold=self.args.uncertainty_innovation_recovery_threshold,
+                    )
             self.control_dt = float(bundle.control_dt)
             self.history_len = int(bundle.history_len)
             parse = self.api["_parse_joint_vector"]
@@ -389,6 +403,8 @@ class ASAPPlannerWorker(threading.Thread):
                 uncertainty_gate = False
                 uncertainty_residual_scale = 1.0
                 uncertainty_high_risk = False
+                uncertainty_state = "normal"
+                uncertainty_reference_feedback = False
                 residual_sequence = result.selected_residual_sequence.copy()
                 predicted_sequence = result.selected_predicted_state_sequence.copy()
                 selection_mode = result.selection_mode
@@ -411,14 +427,17 @@ class ASAPPlannerWorker(threading.Thread):
                         # Monitoring is observational by definition.  The soft
                         # supervisor alone treats an incomplete estimate as a
                         # conservative nominal fallback.
-                        uncertainty_gate = self.args.uncertainty_mode == "ensemble_soft_gate"
-                        uncertainty_residual_scale = 0.0 if uncertainty_gate else 1.0
+                        if supervisor is not None:
+                            decision = supervisor.update(float("nan"), physical_risk=False, timed_out=True)
+                            uncertainty_gate = decision.hard_fallback
+                            uncertainty_residual_scale = decision.residual_scale
+                            uncertainty_state = decision.state
+                            uncertainty_reference_feedback = decision.reference_feedback
+                        else:
+                            uncertainty_gate = False
+                            uncertainty_residual_scale = 1.0
+                            uncertainty_state = "monitor_timeout"
                     else:
-                        uncertainty_residual_scale = soft_residual_scale(
-                            uncertainty_score,
-                            self.args.uncertainty_low_threshold,
-                            self.args.uncertainty_high_threshold,
-                        )
                         current_error = float(np.linalg.norm(anchor_state[: self.args.n_joints] - self.reference[anchor]))
                         reference_window = self.reference[anchor + 1 : anchor + predicted_sequence.shape[0]]
                         uncertainty_high_risk = high_risk_prediction(
@@ -434,16 +453,19 @@ class ASAPPlannerWorker(threading.Thread):
                             tracking_error_growth_ratio=self.args.uncertainty_tracking_error_growth_ratio,
                             min_tracking_error=self.args.uncertainty_min_tracking_error,
                         )
-                        if not uncertainty_high_risk:
-                            uncertainty_residual_scale = max(
-                                uncertainty_residual_scale,
-                                self.args.uncertainty_min_residual_scale,
+                        if supervisor is not None:
+                            decision = supervisor.update(
+                                uncertainty_score,
+                                physical_risk=uncertainty_high_risk,
+                                innovation=snapshot.packet_prediction_q_innovation,
                             )
-                        uncertainty_gate = bool(
-                            self.args.uncertainty_mode == "ensemble_soft_gate"
-                            and uncertainty_score >= self.args.uncertainty_high_threshold
-                            and uncertainty_high_risk
-                        )
+                            uncertainty_state = decision.state
+                            uncertainty_residual_scale = decision.residual_scale
+                            uncertainty_gate = decision.hard_fallback
+                            uncertainty_reference_feedback = decision.reference_feedback
+                        else:
+                            # Monitor mode is strictly observational.
+                            uncertainty_state = "monitor"
                     if uncertainty_gate:
                         residual_sequence = np.zeros_like(residual_sequence)
                         selection_mode = "uncertainty_budget_fallback" if report.timed_out else "uncertainty_nominal_fallback"
@@ -452,7 +474,7 @@ class ASAPPlannerWorker(threading.Thread):
                     elif self.args.uncertainty_mode == "ensemble_soft_gate":
                         residual_sequence *= uncertainty_residual_scale
                         if uncertainty_residual_scale < 1.0:
-                            selection_mode = "uncertainty_soft_gate"
+                            selection_mode = "uncertainty_limited"
                 publish_ns = time.perf_counter_ns()
                 activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
                 late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))
@@ -484,6 +506,7 @@ class ASAPPlannerWorker(threading.Thread):
                     self._uncertainty_gate = uncertainty_gate
                     self._uncertainty_residual_scale = uncertainty_residual_scale
                     self._uncertainty_high_risk = uncertainty_high_risk
+                    self._uncertainty_reference_feedback = uncertainty_reference_feedback
                     self.late_drop_count += int(late_dropped)
                     self._planner_result_id = result_id
                     self._planner_failure_reason = result.failure_reason
@@ -540,6 +563,8 @@ class ASAPPlannerWorker(threading.Thread):
                     uncertainty_evaluation_time_s=uncertainty_evaluation_time,
                     uncertainty_residual_scale=uncertainty_residual_scale,
                     uncertainty_high_risk=uncertainty_high_risk,
+                    uncertainty_state=uncertainty_state,
+                    uncertainty_reference_feedback=uncertainty_reference_feedback,
                 )
                 with self._status_lock:
                     self._last_successful_plan_id = plan_id
