@@ -45,6 +45,7 @@ class DelayProtocolTests(unittest.TestCase):
         args = RUNNER.parse_args([
             "--dynamics_backend", "mujoco_oracle", "--device", "cpu",
             "--planner_projection", "off", "--planner_projection_strategy", "full",
+            "--exact_task_space_cost", "off",
             "--multirate_mode", "virtual_asap", "--delay_protocol", "full",
             "--anticipation_delay_steps", "0", "--reference_mode", "multi_joint_sine",
             "--episode_len", "12", "--max_execution_steps", "2", "--settle_steps", "1",
@@ -60,6 +61,7 @@ class DelayProtocolTests(unittest.TestCase):
         args = RUNNER.parse_args([
             "--dynamics_backend", "mujoco_oracle", "--device", "cpu",
             "--planner_projection", "off", "--planner_projection_strategy", "full",
+            "--exact_task_space_cost", "off",
             "--multirate_mode", "virtual_asap", "--delay_protocol", "naive_delayed",
             "--anticipation_delay_steps", "1", "--reference_mode", "multi_joint_sine",
             "--episode_len", "12", "--max_execution_steps", "2", "--settle_steps", "1",
@@ -128,6 +130,19 @@ class ExperimentStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["planner_failure_count"], 1)
         self.assertEqual(summary["planner_failure_step_rate"], 0.2)
 
+    def test_final_pool_diagnostics_are_aggregated_by_plan_event(self) -> None:
+        summary = summarize_arrays(
+            "full", {"actuator_q_ref": np.zeros((4, 1), dtype=np.float32)},
+            [
+                {"selection_mode": "baseline", "candidate_diagnostics": {"exact_validation_count": 6, "exact_valid_count": 5, "exact_selection_changed": 1, "exact_final_pool_time_s": 0.002}},
+                {"selection_mode": "best", "candidate_diagnostics": {"exact_validation_count": 6, "exact_valid_count": 6, "exact_selection_changed": 0, "exact_final_pool_time_s": 0.004}},
+            ],
+        )
+        self.assertEqual(summary["planner_event_count"], 2)
+        self.assertEqual(summary["exact_pool_candidate_count_mean"], 6.0)
+        self.assertEqual(summary["exact_selection_changed_rate"], 0.5)
+        self.assertEqual(summary["baseline_selection_rate"], 0.5)
+
 
 class PaperMatrixTests(unittest.TestCase):
     def test_paper_base_args_pin_the_final_gru_two_stage_method(self) -> None:
@@ -140,6 +155,12 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(args.planner_projection, "on")
         self.assertEqual(args.planner_projection_backend, "compiled")
         self.assertEqual(args.planner_projection_strategy, "two_stage")
+        self.assertEqual(args.exact_task_space_cost, "on")
+        self.assertEqual(args.w_task_position, 1.0)
+        self.assertEqual(args.w_task_orientation, 0.25)
+        self.assertEqual(args.uncertainty_mode, "off")
+        self.assertEqual(args.cost_profile, "blackbox")
+        self.assertEqual((args.payload_level, args.actuator_gain_level, args.force_pulse_level, args.observation_noise_level), (0, 0, 0, 0))
 
     @staticmethod
     def _manifest() -> dict[str, object]:
@@ -158,6 +179,14 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(len(suite_cases(manifest, "delay_sweep")), 60)
         self.assertEqual(len(suite_cases(manifest, "preview")), 4)
         self.assertEqual(len(suite_cases(manifest, "oracle")), 12)
+        self.assertEqual(len(suite_cases(manifest, "task_cost")), 24)
+
+    def test_task_cost_suite_has_fixed_and_deployed_paired_variants(self) -> None:
+        cases = suite_cases(self._manifest(), "task_cost")
+        fixed = [case for case in cases if case["label"].endswith("FixedD6")]
+        self.assertTrue(fixed)
+        self.assertTrue(all(case["delay_steps"] == 6 for case in fixed))
+        self.assertEqual({case["exact_task_space_cost"] for case in cases}, {"on", "off"})
 
     def test_ablation_full_cases_are_exact_main_cache_reuses(self) -> None:
         manifest = self._manifest()

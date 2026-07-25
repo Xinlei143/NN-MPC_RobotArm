@@ -23,7 +23,11 @@ def _rms(values: Any) -> float:
     return float(np.sqrt(np.mean(np.square(finite)))) if finite.size else float("nan")
 
 
-def summarize_arrays(label: str, arrays: dict[str, np.ndarray]) -> dict[str, Any]:
+def _event_metric(events: list[dict[str, Any]], key: str) -> np.ndarray:
+    return _finite([event.get("candidate_diagnostics", {}).get(key, np.nan) for event in events])
+
+
+def summarize_arrays(label: str, arrays: dict[str, np.ndarray], planner_events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     actual = np.asarray(arrays.get("actual_states", np.empty((0, 0))), dtype=np.float64)
     desired = np.asarray(arrays.get("q_des", np.empty((0, 0))), dtype=np.float64)
     n = min(len(actual), len(desired)) if actual.ndim == desired.ndim == 2 else 0
@@ -43,6 +47,12 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray]) -> dict[str, Any
     planner_failure_events = np.asarray(arrays.get("planner_failure_event", np.empty(0))) != 0
     planner_failure_count = int(scalar("planner_failure_count", np.sum(planner_failure_events)))
     any_planner_failure = planner_failure_count > 0 or bool(np.any(failure_flags))
+    events = planner_events or []
+    exact_pool_time = _event_metric(events, "exact_final_pool_time_s")
+    exact_count = _event_metric(events, "exact_validation_count")
+    exact_valid = _event_metric(events, "exact_valid_count")
+    exact_changed = _event_metric(events, "exact_selection_changed")
+    baseline_selected = np.asarray([str(event.get("selection_mode", "")) == "baseline" for event in events], dtype=bool)
     return {
         "label": label,
         "delay_protocol": str(scalar("delay_protocol", "not_applicable")),
@@ -87,6 +97,15 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray]) -> dict[str, Any
         "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
         "planner_failure_count": planner_failure_count,
         "packet_expiration_count": int(scalar("packet_expiration_count", 0)),
+        # Plan-level quantities: one record per CEM solve, never per execution
+        # tick.  They expose what the final-pool reranking actually changed.
+        "planner_event_count": len(events),
+        "exact_final_pool_time_p50_s": _percentile(exact_pool_time, 50),
+        "exact_final_pool_time_p95_s": _percentile(exact_pool_time, 95),
+        "exact_pool_candidate_count_mean": float(np.mean(exact_count)) if exact_count.size else float("nan"),
+        "exact_pool_valid_count_mean": float(np.mean(exact_valid)) if exact_valid.size else float("nan"),
+        "exact_selection_changed_rate": float(np.mean(exact_changed != 0)) if exact_changed.size else float("nan"),
+        "baseline_selection_rate": float(np.mean(baseline_selected)) if baseline_selected.size else float("nan"),
         "control_semantics_version": int(scalar("control_semantics_version", 0)),
         "projection_semantics_version": int(scalar("projection_semantics_version", 0)),
         "residual_cost_semantics": str(scalar("residual_cost_semantics", "not_applicable")),
@@ -118,6 +137,8 @@ def aggregate_rows(rows: list[dict[str, Any]], group_fields: tuple[str, ...]) ->
         "residual_saturation_rate", "feedback_saturation_rate", "e2e_p95_s",
         "planner_hz", "late_packet_rate", "control_deadline_miss_count",
         "planner_failure_count", "packet_expiration_count",
+        "exact_final_pool_time_p95_s", "exact_pool_candidate_count_mean", "exact_pool_valid_count_mean",
+        "exact_selection_changed_rate", "baseline_selection_rate",
     )
     output: list[dict[str, Any]] = []
     for key, members in sorted(groups.items(), key=lambda item: tuple(map(str, item[0]))):

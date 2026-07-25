@@ -46,7 +46,7 @@ paper suite 不能作为“当前方案 B”的正式证据，也不能与新的
 ### 2.2 已锁定的论文方法
 
 论文最终方法固定为 compiled two-stage projection：新输出根目录为
-`outputs/paper_delay_aware_two_stage_v1`，必须重新标定 D、构建 schema-v4 manifest，
+`outputs/paper_delay_aware_two_stage_v1`，必须重新标定 D、构建 schema-v5 manifest，
 并重跑全部 P0 控制实验。旧 `outputs/paper_delay_aware` 的 projection-off suite 仅保留
 为先导/历史证据，禁止与新结果合并或用于主表。
 
@@ -158,6 +158,11 @@ python -m scripts.paper_experiments.workflow \
 python -m scripts.paper_experiments.workflow \
   --output-root "$PAPER_OUT" calibrate-delay \
   --samples 500 --provisional-delay 10 --guard-ms 5
+
+# Task-cost deployed ablation also needs its own timing calibration.
+python -m scripts.paper_experiments.workflow \
+  --output-root "$PAPER_OUT" calibrate-delay \
+  --exact-task-space-cost off --samples 500 --provisional-delay 10 --guard-ms 5
 ```
 
 冻结：
@@ -171,6 +176,8 @@ D_cal = ceil((P95(snapshot-to-publication E2E) + 5 ms) / 10 ms)
 - 至少 500 个有限 E2E 样本；
 - 记录 P50/P95/P99/max、late count 和标定平台；
 - checkpoint、H、CEM budget、projection 策略变化后必须重新标定；
+- 标定 reference 为独立的慢速 task-space ellipse，保持 exact task-space cost、two-stage projection 和正式 H20/128×2 路径；
+- `delay.json` 对应 task-space final-pool cost，`delay_joint_only.json` 仅用于 task-cost deployed ablation；
 - Ideal 使用 D0，其余正式 delay-aware 方法共同使用同一个 `D_cal`。
 
 ### T4：Preview IK 独立标定（P1）
