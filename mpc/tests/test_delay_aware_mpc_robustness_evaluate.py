@@ -56,6 +56,7 @@ class DelayAwareMPCRobustnessEvaluatorTests(unittest.TestCase):
                 "normalizer": "wrong-normalizer.pt",
                 "multirate_mode": "threaded_asap",
                 "anticipation_delay_steps": 99,
+                "mpc_preview_nominal_steps": 99,
                 "max_execution_steps": None,
             },
         }
@@ -65,6 +66,7 @@ class DelayAwareMPCRobustnessEvaluatorTests(unittest.TestCase):
         base.planner_projection = "on"
         base.planner_projection_backend = "compiled"
         base.planner_projection_strategy = "two_stage"
+        base.mpc_preview_nominal_steps = 7
 
         ideal_args = MODULE._run_args(base, ideal, Path("/tmp/ideal"), 5)
         threaded_args = MODULE._run_args(base, threaded, Path("/tmp/threaded"), 5)
@@ -81,6 +83,10 @@ class DelayAwareMPCRobustnessEvaluatorTests(unittest.TestCase):
         self.assertEqual(threaded_args.planner_projection, "on")
         self.assertEqual(threaded_args.planner_projection_backend, "compiled")
         self.assertEqual(threaded_args.planner_projection_strategy, "two_stage")
+        # Benchmark case fields must not silently replace the separately
+        # calibrated actuator-preview setting frozen at evaluator launch.
+        self.assertEqual(ideal_args.mpc_preview_nominal_steps, 7)
+        self.assertEqual(threaded_args.mpc_preview_nominal_steps, 7)
 
     def test_summary_reports_fallback_safety_and_robustness(self) -> None:
         condition = MODULE.direct.build_conditions((0, 3), ("force_pulse",))[1]

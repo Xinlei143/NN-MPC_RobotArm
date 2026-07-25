@@ -7,6 +7,38 @@
 - `physical`：发送经过共享速度/加速度投影的 IK 命令；
 - 两者均固定 `ik_preview_steps=0`。
 
+## 论文四轨迹、三种 IK、五 seed
+
+对冻结的 paper references，可生成一个独立 benchmark，并比较：
+
+- `raw`：raw command，preview=0；
+- `physical`：physical command projection，preview=0；
+- `preview`：physical command projection，preview=`P_cal`。
+
+当前 `P_cal=7`。四条轨迹、四类单因素扰动、L0/L3/L6、五个 seed 共
+`4 × 9 × 3 × 5 = 540` 条 rollout：
+
+```bash
+OUT=outputs/robustness/paper_three_ik_l036_s5_v1
+
+python scripts/robustness/build_benchmark_manifest.py \
+  --paper_reference_manifest outputs/paper_delay_aware_two_stage_v1/references/manifest.json \
+  --output_path "$OUT/benchmark.json"
+
+python scripts/robustness/evaluate_direct_ik.py \
+  --manifest "$OUT/benchmark.json" \
+  --case_ids circle,figure8,fast_ellipse,rounded_square \
+  --ik_variants raw,physical,preview --preview_steps 7 \
+  --levels 0,3,6 \
+  --perturbations payload,actuator_gain,force_pulse,observation_noise \
+  --seeds 0,1,2,3,4 \
+  --bootstrap_samples 10000 \
+  --save_dir "$OUT"
+```
+
+中断恢复时在第二条命令追加 `--resume`。`experiment_manifest.json` 会冻结
+reference hash、三种 IK 的 projection/preview 参数、扰动矩阵和 seeds。
+
 ## 中等规模正式实验
 
 默认配置使用 circle、figure-8、ellipse、square 各 3 个 case，独立测试 payload、

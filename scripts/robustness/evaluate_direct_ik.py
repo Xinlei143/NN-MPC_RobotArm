@@ -1,4 +1,4 @@
-"""Evaluate raw and physically projected DirectIK under robustness perturbations."""
+"""Evaluate DirectIK variants under reproducible single-factor perturbations."""
 from __future__ import annotations
 
 import argparse
@@ -77,6 +77,8 @@ PAIR_METRICS = (
     "force_integrated_error_above_baseline",
     "force_recovery_time_s",
 )
+IK_VARIANTS = ("raw", "physical", "preview")
+VARIANT_COLORS = {"raw": "#d95f02", "physical": "#1b9e77", "preview": "#7570b3"}
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,20 @@ class ExperimentSpec:
     case_id: str
     reference_type: str
     case: dict[str, Any]
+    ik_preview_steps: int = 0
+
+
+def variant_settings(variant: str, preview_steps: int) -> tuple[str, int]:
+    """Return execution projection and look-ahead for a named DirectIK variant."""
+    if variant == "raw":
+        return "raw", 0
+    if variant == "physical":
+        return "physical", 0
+    if variant == "preview":
+        if preview_steps <= 0:
+            raise ValueError("PreviewIK requires --preview_steps > 0")
+        return "physical", preview_steps
+    raise ValueError(f"Unknown DirectIK variant: {variant}")
 
 
 def _csv_values(value: str, *, name: str) -> list[str]:
@@ -148,7 +164,7 @@ def _sha256(path: Path) -> str:
 
 def load_task_cases(manifest_path: Path, case_ids: Iterable[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("kind") != "model_a_robustness":
+    if manifest.get("kind") not in {"model_a_robustness", "paper_direct_ik_robustness"}:
         raise ValueError("--manifest must be produced by build_benchmark_manifest.py")
     cases = manifest.get("cases")
     if not isinstance(cases, list):
@@ -180,11 +196,11 @@ def build_specs(
     cases: Iterable[dict[str, Any]],
     conditions: Iterable[Condition],
     projections: Iterable[str],
+    preview_steps: int = 0,
 ) -> list[ExperimentSpec]:
     output: list[ExperimentSpec] = []
     for projection in projections:
-        if projection not in {"raw", "physical"}:
-            raise ValueError(f"Unknown DirectIK projection: {projection}")
+        variant_settings(projection, preview_steps)
         for condition in conditions:
             for case in cases:
                 output.append(
@@ -194,6 +210,7 @@ def build_specs(
                         case_id=str(case["id"]),
                         reference_type=str(case.get("reference_type", "unknown")),
                         case=case,
+                        ik_preview_steps=preview_steps,
                     )
                 )
     return output
@@ -201,12 +218,20 @@ def build_specs(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = RUNNER.build_arg_parser()
-    parser.description = "Evaluate DirectIK-only robustness with paired raw/physical command semantics."
+    parser.description = "Evaluate DirectIK variants under paired single-factor robustness perturbations."
     parser.add_argument("--manifest", default="outputs/robustness/benchmark.json")
     parser.add_argument("--case_ids", default=DEFAULT_CASE_IDS)
     parser.add_argument("--levels", default="0,3,6")
     parser.add_argument("--perturbations", default=",".join(PERTURBATIONS))
     parser.add_argument("--ik_command_projections", default="raw,physical")
+    parser.add_argument(
+        "--ik_variants", default="",
+        help="Optional named variants: raw,physical,preview. Overrides --ik_command_projections.",
+    )
+    parser.add_argument(
+        "--preview_steps", type=int, default=7,
+        help="Shared PreviewIK look-ahead in control steps (default: calibrated P_cal=7).",
+    )
     parser.add_argument(
         "--seeds",
         default="",
@@ -232,11 +257,15 @@ def _run_args(base: argparse.Namespace, spec: ExperimentSpec, run_dir: Path) -> 
     args.checkpoint = None
     args.normalizer = None
     args.device = "cpu"
+    # DirectIK never invokes CEM; exact task-space final-pool scoring is an
+    # MPC-only validation and must not be inherited from paper references.
+    args.exact_task_space_cost = "off"
     # Keep the explicit execution cap available for smoke tests. The frozen
     # benchmark normally stores None and must not erase this CLI override.
     args.max_execution_steps = base.max_execution_steps
-    args.ik_preview_steps = 0
-    args.ik_command_projection = spec.projection
+    args.ik_command_projection, args.ik_preview_steps = variant_settings(
+        spec.projection, spec.ik_preview_steps
+    )
     args.save_dir = str(run_dir)
     for argument, level in spec.condition.levels.items():
         setattr(args, argument, level)
@@ -249,6 +278,7 @@ def _fingerprint(spec: ExperimentSpec, args: argparse.Namespace) -> dict[str, An
         "bootstrap_seed",
         "case_ids",
         "ik_command_projections",
+        "ik_variants",
         "levels",
         "manifest",
         "perturbations",
@@ -291,6 +321,9 @@ def summarize_direct_ik(spec: ExperimentSpec, arrays: dict[str, np.ndarray]) -> 
             "case_id": spec.case_id,
             "reference_type": spec.reference_type,
             "projection": spec.projection,
+            "variant": spec.projection,
+            "ik_command_projection": variant_settings(spec.projection, spec.ik_preview_steps)[0],
+            "ik_preview_steps": variant_settings(spec.projection, spec.ik_preview_steps)[1],
             "condition": spec.condition.name,
             "perturbation": spec.condition.perturbation,
             "level": spec.condition.level,
@@ -435,8 +468,7 @@ def _metric_panels(
 ) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
     rng = np.random.default_rng(seed)
-    projections = ("raw", "physical")
-    colors = {"raw": "#d95f02", "physical": "#1b9e77"}
+    projections = [name for name in IK_VARIANTS if any(row["projection"] == name for row in rows)]
     present = [
         perturbation
         for perturbation in PERTURBATIONS
@@ -459,7 +491,7 @@ def _metric_panels(
             means = np.asarray([item[0] for item in stats])
             lower = means - np.asarray([item[1] for item in stats])
             upper = np.asarray([item[2] for item in stats]) - means
-            axis.errorbar(levels, means, yerr=np.vstack((lower, upper)), marker="o", capsize=3, label=projection, color=colors[projection])
+            axis.errorbar(levels, means, yerr=np.vstack((lower, upper)), marker="o", capsize=3, label=projection, color=VARIANT_COLORS[projection])
         axis.set_title(perturbation.replace("_", " "))
         axis.set_xlabel("robustness level")
         axis.set_ylabel(ylabel)
@@ -480,15 +512,17 @@ def _safety_plot(plt: Any, rows: list[dict[str, Any]], destination: Path, seed: 
     )
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     rng = np.random.default_rng(seed)
+    projections = [name for name in IK_VARIANTS if any(row["projection"] == name for row in rows)]
     present = [
         perturbation
         for perturbation in PERTURBATIONS
         if any(row["perturbation"] == perturbation for row in rows)
     ]
     x = np.arange(len(present))
-    width = 0.36
+    width = 0.8 / max(len(projections), 1)
     for axis, (metric, ylabel) in zip(axes.ravel(), metrics):
-        for offset, projection in ((-width / 2, "raw"), (width / 2, "physical")):
+        for index, projection in enumerate(projections):
+            offset = (index - (len(projections) - 1) / 2) * width
             values, errors = [], []
             for perturbation in present:
                 maximum_level = max(int(row["level"]) for row in rows if row["perturbation"] == perturbation)
@@ -498,7 +532,7 @@ def _safety_plot(plt: Any, rows: list[dict[str, Any]], destination: Path, seed: 
                 )
                 values.append(mean)
                 errors.append((mean - low, high - mean))
-            axis.bar(x + offset, values, width, label=projection)
+            axis.bar(x + offset, values, width, label=projection, color=VARIANT_COLORS[projection])
             axis.errorbar(
                 x + offset,
                 values,
@@ -510,7 +544,7 @@ def _safety_plot(plt: Any, rows: list[dict[str, Any]], destination: Path, seed: 
             )
         axis.set_xticks(x, [item.replace("_", "\n") for item in present])
         axis.set_ylabel(ylabel)
-        axis.set_title("level 6")
+        axis.set_title("highest requested level")
         axis.grid(axis="y", alpha=0.25)
         axis.legend()
     fig.tight_layout()
@@ -529,8 +563,9 @@ def _force_plot(plt: Any, rows: list[dict[str, Any]], destination: Path, seed: i
     )
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     rng = np.random.default_rng(seed)
+    projections = [name for name in IK_VARIANTS if any(row["projection"] == name for row in rows)]
     for axis, (metric, ylabel) in zip(axes, metrics):
-        for projection, color in (("raw", "#d95f02"), ("physical", "#1b9e77")):
+        for projection in projections:
             stats = []
             for level in force_levels:
                 members = _axis_level_rows(rows, projection, "force_pulse", level)
@@ -543,7 +578,7 @@ def _force_plot(plt: Any, rows: list[dict[str, Any]], destination: Path, seed: i
                 marker="o",
                 capsize=3,
                 label=projection,
-                color=color,
+                color=VARIANT_COLORS[projection],
             )
         axis.set_xticks(force_levels)
         axis.set_xlabel("force-pulse level")
@@ -592,15 +627,16 @@ def _projection_delta_plot(plt: Any, rows: list[dict[str, Any]], destination: Pa
 
 
 def _trajectory_plot(plt: Any, rows: list[dict[str, Any]], destination: Path) -> None:
-    shapes = ("circle", "figure8", "ellipse", "square")
+    shapes = sorted({str(row["reference_type"]) for row in rows})
     available = {str(row["condition"]) for row in rows}
     conditions = [f"{item}_l6" for item in PERTURBATIONS if f"{item}_l6" in available]
     if not conditions:
         conditions = sorted(available.difference({"nominal"}))
     if not conditions:
         return
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-    for axis, projection in zip(axes, ("raw", "physical")):
+    projections = [name for name in IK_VARIANTS if any(row["projection"] == name for row in rows)]
+    fig, axes = plt.subplots(1, len(projections), figsize=(7 * len(projections), 5), sharey=True, squeeze=False)
+    for axis, projection in zip(axes.ravel(), projections):
         matrix = np.full((len(shapes), len(conditions)), np.nan)
         for shape_index, shape in enumerate(shapes):
             for condition_index, condition in enumerate(conditions):
@@ -673,8 +709,14 @@ def _write_or_validate_manifest(
         "kind": "direct_ik_robustness",
         "source_manifest": file_identity(source_manifest),
         "case_ids": sorted({spec.case_id for spec in specs}),
-        "projections": sorted({spec.projection for spec in specs}),
-        "ik_preview_steps": 0,
+        "variants": sorted({spec.projection for spec in specs}),
+        "variant_settings": {
+            variant: {
+                "ik_command_projection": variant_settings(variant, args.preview_steps)[0],
+                "ik_preview_steps": variant_settings(variant, args.preview_steps)[1],
+            }
+            for variant in sorted({spec.projection for spec in specs})
+        },
         "conditions": [
             {
                 "name": condition.name,
@@ -736,7 +778,11 @@ def main(argv: list[str] | None = None) -> None:
             raise ValueError(f"Use --levels/--perturbations instead of --{argument}")
     levels = _levels(args.levels)
     perturbations = _csv_values(args.perturbations, name="--perturbations")
-    projections = _csv_values(args.ik_command_projections, name="--ik_command_projections")
+    projections = (
+        _csv_values(args.ik_variants, name="--ik_variants")
+        if args.ik_variants.strip()
+        else _csv_values(args.ik_command_projections, name="--ik_command_projections")
+    )
     case_ids = _csv_values(args.case_ids, name="--case_ids")
     manifest_path = RUNNER.resolve_runtime_path(args.manifest)
     _, cases = load_task_cases(manifest_path, case_ids)
@@ -759,7 +805,7 @@ def main(argv: list[str] | None = None) -> None:
                 repeated_cases.append(repeated)
         cases = repeated_cases
     conditions = build_conditions(levels, perturbations)
-    specs = build_specs(cases, conditions, projections)
+    specs = build_specs(cases, conditions, projections, args.preview_steps)
     save_root = RUNNER.resolve_runtime_path(args.save_dir)
     _write_or_validate_manifest(
         save_root / "experiment_manifest.json",

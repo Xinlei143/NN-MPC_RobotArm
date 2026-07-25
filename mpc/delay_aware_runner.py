@@ -21,6 +21,7 @@ from mpc.delay_protocol import resolve_delay_protocol
 from mpc.history import commit_command_and_append_placeholder, future_history_tokens
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
+from mpc.preview_nominal import nominal_command, nominal_window
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 
 
@@ -35,6 +36,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
     if dynamics_backend == "mujoco_oracle" and args.multirate_mode != "virtual_asap":
         raise ValueError("mujoco_oracle only supports deterministic virtual_asap")
     delay = int(args.anticipation_delay_steps)
+    preview_steps = int(args.mpc_preview_nominal_steps)
     if delay < 0:
         raise ValueError("anticipation_delay_steps must be non-negative")
     protocol = resolve_delay_protocol(getattr(args, "delay_protocol", "full"))
@@ -73,7 +75,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         )
         if args.max_execution_steps is not None:
             execution_steps = min(execution_steps, args.max_execution_steps)
-        execution_steps = min(execution_steps, reference.shape[0] - args.horizon - delay - 1)
+        execution_steps = min(execution_steps, reference.shape[0] - args.horizon - delay - preview_steps - 1)
         if execution_steps <= 0:
             raise ValueError("reference is too short for horizon plus anticipation delay")
         exact_task_cost = None
@@ -191,7 +193,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             forecast_command_offsets: list[np.ndarray] = []
             forecast_command, forecast_velocity = previous_command.copy(), previous_velocity.copy()
             for offset in range(delay):
-                nominal = np.asarray(reference[step + offset + 1], dtype=np.float32)
+                nominal = nominal_command(reference, step + offset, preview_steps)
                 payload_residual = active_payload_residual(step + offset)
                 forecast_requested_residuals.append(active_requested_residual(step + offset))
                 execution_nominal = nominal
@@ -259,7 +261,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             )
 
         def execution_for_step(step: int) -> tuple[Any, ...]:
-            nominal = np.asarray(reference[step + 1], dtype=np.float32)
+            nominal = nominal_command(reference, step, preview_steps)
             age = -1
             plan_residual = np.zeros(args.n_joints, dtype=np.float32)
             planner_requested = np.zeros(args.n_joints, dtype=np.float32)
@@ -372,15 +374,15 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             planning_time = float("nan"); replanned = 0; failure = 0
             best = mean = baseline = selected = elite = float("nan")
             selection = "direct_ik_nominal" if age < 0 else "delayed_packet_feedback"
-            if step % args.replan_interval_steps == 0 and step + delay + args.horizon < reference.shape[0]:
+            if step % args.replan_interval_steps == 0 and step + delay + args.horizon + preview_steps < reference.shape[0]:
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_residual, anchor_residual_velocity, anchor_snapshot = prediction_context(step)
                 anchor = step + delay
                 reference_anchor = anchor if protocol.future_reference else step
                 future_q = t(reference[reference_anchor + 1 : reference_anchor + 1 + args.horizon])
-                planner_nominal = future_q
+                planner_nominal = t(nominal_window(reference, reference_anchor, args.horizon, preview_steps))
                 if args.nominal_command_semantics == "executable_ik":
                     planner_nominal = project_nominal_q_ref_sequence(
-                        future_q, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
+                        planner_nominal, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
                         control_dt=control_dt, velocity_limit=t(physical_v), acceleration_limit=t(physical_a),
                         joint_low=joint_low, joint_high=joint_high, joint_limit_margin=args.joint_limit_margin,
                     )
@@ -561,7 +563,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         "nominal_command_semantics": np.asarray(args.nominal_command_semantics),
         "projection_tolerance": np.asarray(1e-6, dtype=np.float32),
         "replan_interval_steps": np.asarray(args.replan_interval_steps, dtype=np.int64), "replan_deadline_s": np.asarray(delay * control_dt, dtype=np.float32),
-        "multirate_mode": np.asarray(args.multirate_mode), "delay_protocol": np.asarray(protocol.name), "anticipation_delay_steps": np.asarray(delay, dtype=np.int64), "feedback_kq": np.asarray(args.feedback_kq, dtype=np.float32), "feedback_kdq": np.asarray(args.feedback_kdq, dtype=np.float32), "feedback_max": feedback_max, "residual_max": residual_max, "q_ref_velocity_limit": physical_v, "q_ref_acceleration_limit": physical_a,
+        "multirate_mode": np.asarray(args.multirate_mode), "delay_protocol": np.asarray(protocol.name), "anticipation_delay_steps": np.asarray(delay, dtype=np.int64), "mpc_preview_nominal_steps": np.asarray(preview_steps, dtype=np.int64), "feedback_kq": np.asarray(args.feedback_kq, dtype=np.float32), "feedback_kdq": np.asarray(args.feedback_kdq, dtype=np.float32), "feedback_max": feedback_max, "residual_max": residual_max, "q_ref_velocity_limit": physical_v, "q_ref_acceleration_limit": physical_a,
         "dynamics_backend": np.asarray(dynamics_backend), "oracle_fixed_logical_delay": np.asarray(dynamics_backend == "mujoco_oracle"),
         "planner_solve_count": np.asarray(int(np.sum(np.asarray(rec["mpc_replanned"], dtype=np.int64))), dtype=np.int64),
         "planner_late_drop_count": np.asarray(sum("late_plan_dropped" in str(value) for value in rec["packet_event"]), dtype=np.int64),

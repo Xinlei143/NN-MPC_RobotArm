@@ -11,6 +11,7 @@ import torch
 
 from neural_dynamics.rollout import rollout_dynamics_batch
 from mpc.constraints import project_nominal_q_ref_sequence
+from mpc.preview_nominal import nominal_command, nominal_window
 from mpc.asap_shared import LatestSnapshotStore, PlanPacketStore, PlannerResultStore
 from mpc.asap_types import ASAPPlanPacket, PlannerResultEvent, PlanningSnapshot
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
@@ -212,7 +213,7 @@ class ASAPPlannerWorker(threading.Thread):
         requested_residuals: list[np.ndarray] = []
         for offset in range(delay):
             step = snapshot.launch_step + offset
-            nominal = np.asarray(self.reference[step + 1], dtype=np.float32)
+            nominal = nominal_command(self.reference, step, int(self.args.mpc_preview_nominal_steps))
             payload_residual = self._packet_residual(snapshot.packet_schedule, step, requested=False)
             requested_residual = self._packet_residual(snapshot.packet_schedule, step, requested=True)
             execution_nominal = nominal
@@ -330,16 +331,26 @@ class ASAPPlannerWorker(threading.Thread):
                 if refreshed is not None:
                     snapshot = refreshed
                 last_request = snapshot.request_id
-                if snapshot.launch_step + self.args.anticipation_delay_steps + self.args.horizon >= self.reference.shape[0]:
+                if (
+                    snapshot.launch_step
+                    + self.args.anticipation_delay_steps
+                    + self.args.horizon
+                    + int(self.args.mpc_preview_nominal_steps)
+                    >= self.reference.shape[0]
+                ):
                     continue
                 last_launch_ns = time.perf_counter_ns()
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_requested_residual, anchor_requested_residual_velocity, anchor_command_nominal_offset, anchor_command_nominal_offset_velocity, anchor_payload_residual = self._forecast_anchor(snapshot, bundle, device, velocity_limit, acceleration_limit)
                 anchor = snapshot.launch_step + self.args.anticipation_delay_steps
                 future_q = t(self.reference[anchor + 1:anchor + 1 + self.args.horizon])
-                planner_nominal = future_q
+                planner_nominal = t(
+                    nominal_window(
+                        self.reference, anchor, self.args.horizon, int(self.args.mpc_preview_nominal_steps)
+                    )
+                )
                 if self.args.nominal_command_semantics == "executable_ik":
                     planner_nominal = project_nominal_q_ref_sequence(
-                        future_q, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
+                        planner_nominal, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
                         control_dt=bundle.control_dt, velocity_limit=t(velocity_limit), acceleration_limit=t(acceleration_limit),
                         joint_low=t(self.joint_low), joint_high=t(self.joint_high), joint_limit_margin=self.args.joint_limit_margin,
                     )

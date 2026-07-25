@@ -35,6 +35,7 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         self.assertEqual(args.model_type, "gru")
         self.assertEqual(args.delay_protocol, "full")
         self.assertEqual(args.ik_preview_steps, 0)
+        self.assertEqual(args.mpc_preview_nominal_steps, 0)
         self.assertEqual(args.planner_projection, "on")
         self.assertEqual(args.planner_projection_backend, "compiled")
         self.assertEqual(args.planner_projection_strategy, "two_stage")
@@ -82,6 +83,20 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
             ]
         )
         with self.assertRaisesRegex(ValueError, "two-stage MPC"):
+            RUNNER.run_closed_loop_mpc(args)
+
+    def test_mpc_preview_nominal_requires_task_mpc(self) -> None:
+        args = RUNNER.parse_args([
+            "--controller_mode", "ik_direct", "--reference_mode", "task",
+            "--mpc_preview_nominal_steps", "7",
+        ])
+        with self.assertRaisesRegex(ValueError, "only valid with --controller_mode mpc"):
+            RUNNER.run_closed_loop_mpc(args)
+        args = RUNNER.parse_args([
+            "--controller_mode", "mpc", "--reference_mode", "joint_sine",
+            "--mpc_preview_nominal_steps", "7",
+        ])
+        with self.assertRaisesRegex(ValueError, "requires --reference_mode task"):
             RUNNER.run_closed_loop_mpc(args)
 
     def test_task_reference_validation_honors_execution_cap(self) -> None:

@@ -181,6 +181,9 @@ def _run_args(
     args.planner_projection = base.planner_projection
     args.planner_projection_backend = base.planner_projection_backend
     args.planner_projection_strategy = base.planner_projection_strategy
+    # P is calibrated independently of each formal benchmark case and must be
+    # frozen for every protocol/seed/perturbation run.
+    args.mpc_preview_nominal_steps = base.mpc_preview_nominal_steps
     args.reference_mode = "task"
     args.multirate_mode = spec.method.multirate_mode
     args.delay_protocol = spec.method.delay_protocol
@@ -605,6 +608,7 @@ def _write_or_validate_manifest(
         "planner_projection": args.planner_projection,
         "planner_projection_backend": args.planner_projection_backend,
         "planner_projection_strategy": args.planner_projection_strategy,
+        "mpc_preview_nominal_steps": args.mpc_preview_nominal_steps,
         "case_ids": sorted({spec.case_id for spec in specs}),
         "methods": [
             {

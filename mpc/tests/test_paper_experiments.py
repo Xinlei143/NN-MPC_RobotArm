@@ -18,7 +18,7 @@ from mpc.delay_protocol import PROTOCOL_NAMES, resolve_delay_protocol
 from mpc.task_space_reference import generate_task_space_trajectory
 from scripts.experiment_utils.bootstrap import paired_bootstrap_rows
 from scripts.paper_experiments.evaluation import summarize_arrays
-from scripts.paper_experiments.workflow import _base_args, suite_cases
+from scripts.paper_experiments.workflow import _base_args, _select_preview, suite_cases
 
 
 def load_runner():
@@ -70,6 +70,18 @@ class DelayProtocolTests(unittest.TestCase):
         ])
         arrays = RUNNER.run_closed_loop_mpc(args)["arrays"]
         self.assertEqual(arrays["packet_age"].tolist(), [-1, 0])
+
+
+class PreviewSelectionTests(unittest.TestCase):
+    def test_orientation_guard_selects_best_tcp_among_eligible_candidates(self) -> None:
+        rows = [
+            {"preview_steps": 3, "tcp_rmse_m": 0.0346, "orientation_rmse_rad": 0.0309},
+            {"preview_steps": 7, "tcp_rmse_m": 0.0311, "orientation_rmse_rad": 0.0333},
+            {"preview_steps": 8, "tcp_rmse_m": 0.0303, "orientation_rmse_rad": 0.0346},
+        ]
+        selected, limit = _select_preview(rows, 0.10)
+        self.assertAlmostEqual(limit, 0.03399)
+        self.assertEqual(selected["preview_steps"], 7)
 
 
 class RoundedSquareTests(unittest.TestCase):

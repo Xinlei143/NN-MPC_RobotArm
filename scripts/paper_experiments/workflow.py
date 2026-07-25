@@ -29,8 +29,8 @@ from scripts.robustness._runtime import ROOT, load_runner
 
 RUNNER = load_runner("paper_delay_aware_runner")
 DEFAULT_ROOT = ROOT / "outputs" / "paper_delay_aware_two_stage_v1"
-CHECKPOINT = ROOT / "outputs" / "checkpoints" / "gru_20260720_202923" / "best_model.pt"
-NORMALIZER = ROOT / "outputs" / "checkpoints" / "gru_20260720_202923" / "normalizer.pt"
+CHECKPOINT = ROOT / "dynamics_modeling" / "outputs" / "checkpoints" / "gru_20260717_182930" / "best_model.pt"
+NORMALIZER = ROOT / "dynamics_modeling" / "outputs" / "checkpoints" / "gru_20260717_182930" / "normalizer.pt"
 MODEL_XML = ROOT / "dynamics_modeling" / "ABB_IRB2400.xml"
 TRAJECTORIES = ("circle", "figure8", "fast_ellipse", "rounded_square")
 
@@ -61,6 +61,12 @@ def parser() -> argparse.ArgumentParser:
 
     preview = sub.add_parser("calibrate-preview")
     preview.add_argument("--preview-values", default="0,1,2,3,4")
+    preview.add_argument(
+        "--orientation-tolerance",
+        type=float,
+        default=0.10,
+        help="Maximum relative orientation-RMSE increase over the best candidate when selecting preview.",
+    )
     preview.add_argument("--smoke", action="store_true")
 
     validation = sub.add_parser("validate-model")
@@ -183,6 +189,7 @@ def calibrate_delay(output: Path, samples: int, provisional: int, guard_ms: floa
         "guard_ms": guard_ms, "control_dt_s": 0.01, "anticipation_delay_steps": delay,
         "provisional_delay_steps": provisional, "source": "planner_end_to_end_latency_s",
         "calibration_reference": file_identity(reference),
+        "checkpoint": file_identity(CHECKPOINT), "normalizer": file_identity(NORMALIZER),
         "method": {key: getattr(args, key) for key in (
             "exact_task_space_cost", "planner_projection", "planner_projection_backend",
             "planner_projection_strategy", "horizon", "num_samples", "cem_iters",
@@ -227,7 +234,19 @@ def generate_references(output: Path, overwrite: bool) -> None:
     write_immutable_json(manifest, {"schema_version": 1, "references": records})
 
 
-def calibrate_preview(output: Path, values: list[int], smoke: bool) -> Path:
+def _select_preview(rows: list[dict[str, Any]], orientation_tolerance: float) -> tuple[dict[str, Any], float]:
+    if orientation_tolerance < 0.0:
+        raise ValueError("orientation tolerance must be non-negative")
+    orientations = np.asarray([float(row["orientation_rmse_rad"]) for row in rows], dtype=np.float64)
+    if not np.all(np.isfinite(orientations)):
+        raise ValueError("preview calibration produced a non-finite orientation RMSE")
+    limit = float(np.min(orientations) * (1.0 + orientation_tolerance))
+    eligible = [row for row in rows if float(row["orientation_rmse_rad"]) <= limit]
+    selected = min(eligible, key=lambda row: (float(row["tcp_rmse_m"]), int(row["preview_steps"])))
+    return selected, limit
+
+
+def calibrate_preview(output: Path, values: list[int], smoke: bool, orientation_tolerance: float = 0.10) -> Path:
     path = output / "calibration" / ("preview_smoke.json" if smoke else "preview.json")
     if path.exists():
         raise FileExistsError(f"Refusing to overwrite immutable calibration: {path}")
@@ -240,14 +259,23 @@ def calibrate_preview(output: Path, values: list[int], smoke: bool) -> Path:
             raise ValueError("preview values must be non-negative")
         args = _base_args(); args.controller_mode = "ik_direct"; args.multirate_mode = "synchronous"
         args.checkpoint = None; args.normalizer = None; args.reference_mode = "task"; args.reference_file = str(reference)
+        args.exact_task_space_cost = "off"
         args.ik_preview_steps = preview; args.max_execution_steps = 10 if smoke else None
         result = RUNNER.run_closed_loop_mpc(args)
         run_dir = output / "calibration" / "preview" / f"p{preview}"
         save_mpc_run(run_dir, result["arrays"], result["rows"])
         row = summarize_arrays(f"PreviewIK_{preview}", result["arrays"]); row["preview_steps"] = preview; rows.append(row)
-    selected = min(rows, key=lambda row: (float(row["tcp_rmse_m"]), int(row["preview_steps"])))
+    selected, orientation_limit = _select_preview(rows, orientation_tolerance)
     write_csv(output / "calibration" / "preview" / "summary.csv", rows)
-    write_immutable_json(path, {"candidate_steps": values, "selected_steps": int(selected["preview_steps"]), "criterion": "minimum calibration TCP RMSE; ties choose smaller preview"})
+    write_immutable_json(path, {
+        "candidate_steps": values,
+        "selected_steps": int(selected["preview_steps"]),
+        "criterion": "minimum calibration TCP RMSE subject to an orientation-RMSE tolerance; ties choose smaller preview",
+        "orientation_tolerance_fraction": orientation_tolerance,
+        "orientation_rmse_limit_rad": orientation_limit,
+        "selected_tcp_rmse_m": float(selected["tcp_rmse_m"]),
+        "selected_orientation_rmse_rad": float(selected["orientation_rmse_rad"]),
+    })
     return path
 
 
@@ -390,7 +418,9 @@ def _run_case(output: Path, manifest: dict[str, Any], case: dict[str, Any], resu
     args.ik_preview_steps = int(case.get("preview_steps", 0)); args.dynamics_backend = case.get("dynamics_backend", "learned")
     if "exact_task_space_cost" in case:
         args.exact_task_space_cost = str(case["exact_task_space_cost"])
-    if args.controller_mode == "ik_direct": args.checkpoint = args.normalizer = None
+    if args.controller_mode == "ik_direct":
+        args.checkpoint = args.normalizer = None
+        args.exact_task_space_cost = "off"
     fingerprint_case = {key: value for key, value in case.items() if key != "label"}
     payload = {"manifest_commit": manifest["environment"]["git_commit"], "case": fingerprint_case,
                "run_args": {key: value for key, value in vars(args).items() if key != "save_dir"},
@@ -528,7 +558,9 @@ def smoke(output: Path) -> None:
     for label, mode, protocol, delay, controller in specs:
         args = deepcopy(base); args.multirate_mode = mode; args.delay_protocol = protocol
         args.anticipation_delay_steps = delay; args.controller_mode = controller
-        if controller == "ik_direct": args.checkpoint = args.normalizer = None
+        if controller == "ik_direct":
+            args.checkpoint = args.normalizer = None
+            args.exact_task_space_cost = "off"
         payload = {"smoke": True, "label": label, "args": {key: value for key, value in vars(args).items() if key != "save_dir"}}
         fingerprint = run_fingerprint(payload); run_dir = output / "smoke" / label
         result = RUNNER.run_closed_loop_mpc(args); save_mpc_run(run_dir, result["arrays"], result["rows"], result.get("planner_events"))
@@ -553,7 +585,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "generate-references": generate_references(output, args.overwrite)
     elif args.command == "calibrate-preview":
         values = [int(value) for value in args.preview_values.split(",") if value.strip()]
-        print(calibrate_preview(output, values, args.smoke))
+        print(calibrate_preview(output, values, args.smoke, args.orientation_tolerance))
     elif args.command == "validate-model": validate_model(output, args.num_rollouts, args.rollout_len)
     elif args.command == "build-manifest": print(build_manifest(output, args.allow_dirty, args.profile))
     elif args.command == "run":

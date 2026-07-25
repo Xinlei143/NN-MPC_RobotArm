@@ -29,6 +29,7 @@ from mpc.logging import save_mpc_run
 from mpc.delay_aware_runner import run as run_delay_aware_virtual
 from mpc.asap_runner import run as run_threaded_asap
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig, reanchor_residual_command
+from mpc.preview_nominal import nominal_command as preview_nominal_command, nominal_window as preview_nominal_window
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
@@ -296,6 +297,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=0,
         type=int,
         help="Fixed task-reference preview for Direct/Preview IK; calibrated once and frozen across test trajectories.",
+    )
+    parser.add_argument(
+        "--mpc_preview_nominal_steps",
+        default=0,
+        type=int,
+        help=(
+            "Preview the task-space IK nominal by this many 100 Hz steps for residual MPC. "
+            "Tracking targets and planner-delay alignment remain unshifted."
+        ),
     )
     parser.add_argument(
         "--ik_command_projection",
@@ -646,7 +656,11 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     # Virtual delay-aware execution shortens the executable prefix near the
     # end of a reference, rather than requiring a separately padded file.
     # The runner applies that prefix truncation before issuing a future plan.
-    future_steps = args.horizon if args.controller_mode == "mpc" else int(args.ik_preview_steps)
+    future_steps = (
+        args.horizon + int(args.mpc_preview_nominal_steps)
+        if args.controller_mode == "mpc"
+        else int(args.ik_preview_steps)
+    )
     if args.controller_mode == "mpc" and args.multirate_mode in {"virtual_asap", "virtual_smooth"}:
         future_steps += int(args.anticipation_delay_steps)
     bundle = load_reference_bundle(
@@ -656,12 +670,21 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     effective_execution_steps = int(bundle.execution_steps)
     if args.max_execution_steps is not None:
         effective_execution_steps = min(effective_execution_steps, int(args.max_execution_steps))
+    # Preview nominal needs extra samples at the tail.  Existing immutable
+    # paper references may have been padded for H+D but not an additional P;
+    # shorten only the executable prefix instead of changing reference data or
+    # evaluating an out-of-range future command.
+    effective_execution_steps = min(
+        effective_execution_steps,
+        int(np.asarray(bundle.q_des).shape[0]) - int(future_steps) - 1,
+    )
     _validate_task_reference(
         bundle,
         args.n_joints,
         future_steps,
         execution_steps=effective_execution_steps,
     )
+    bundle.execution_steps = effective_execution_steps
     return bundle
 
 
@@ -680,7 +703,9 @@ def _load_joint_file_reference(args: argparse.Namespace) -> tuple[np.ndarray, np
         execution_steps = int(np.asarray(archive["execution_steps"]).item())
     if q_des.ndim != 2 or q_des.shape[1] != args.n_joints or dq_des.shape != q_des.shape or ddq_des.shape != q_des.shape:
         raise ValueError(f"Joint benchmark reference {path} has incompatible q/dq/ddq shapes")
-    future_steps = args.horizon + (int(args.anticipation_delay_steps) if args.multirate_mode in {"virtual_asap", "virtual_smooth"} else 0)
+    future_steps = args.horizon + int(args.mpc_preview_nominal_steps)
+    if args.multirate_mode in {"virtual_asap", "virtual_smooth"}:
+        future_steps += int(args.anticipation_delay_steps)
     if execution_steps <= 0 or q_des.shape[0] < execution_steps + future_steps + 1:
         raise ValueError("Joint benchmark reference lacks horizon plus delay padding")
     if not np.all(np.isfinite(q_des)) or not np.all(np.isfinite(dq_des)) or not np.all(np.isfinite(ddq_des)):
@@ -760,6 +785,12 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("--ik_preview_steps must be non-negative")
     if args.controller_mode != "ik_direct" and args.ik_preview_steps:
         raise ValueError("--ik_preview_steps is only valid with --controller_mode ik_direct")
+    if args.mpc_preview_nominal_steps < 0:
+        raise ValueError("--mpc_preview_nominal_steps must be non-negative")
+    if args.controller_mode != "mpc" and args.mpc_preview_nominal_steps:
+        raise ValueError("--mpc_preview_nominal_steps is only valid with --controller_mode mpc")
+    if args.mpc_preview_nominal_steps and args.reference_mode != "task":
+        raise ValueError("--mpc_preview_nominal_steps requires --reference_mode task")
     if args.anticipation_delay_steps < 0:
         raise ValueError("--anticipation_delay_steps must be non-negative")
     if args.reference_mode != "task" and args.episode_len <= 0:
@@ -1145,16 +1176,25 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             recovery_trigger_reason = ""
             buffered_residual = np.zeros(args.n_joints, dtype=np.float32)
             multirate_buffer_mode = "not_applicable"
-            nominal_command = np.asarray(reference[step_idx + 1], dtype=np.float32).copy()
+            nominal_command = preview_nominal_command(
+                reference, step_idx, int(args.mpc_preview_nominal_steps)
+            )
             if args.controller_mode == "mpc":
                 if bundle is None or cost_config is None or rollout_config is None:
                     raise RuntimeError("MPC controller dependencies were not initialized")
                 future_q_des = torch.as_tensor(
                     reference[step_idx + 1 : step_idx + 1 + args.horizon], dtype=torch.float32, device=device
                 )
+                future_nominal = torch.as_tensor(
+                    preview_nominal_window(
+                        reference, step_idx, args.horizon, int(args.mpc_preview_nominal_steps)
+                    ),
+                    dtype=torch.float32,
+                    device=device,
+                )
                 if args.mpc_policy == "residual":
                     nominal_q_ref = project_nominal_q_ref_sequence(
-                        future_q_des,
+                        future_nominal,
                         previous_q_ref=torch.as_tensor(previous_q_ref, dtype=torch.float32, device=device),
                         previous_q_ref_velocity=torch.as_tensor(previous_q_ref_velocity, dtype=torch.float32, device=device),
                         control_dt=bundle.control_dt,
@@ -1637,6 +1677,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         "projection_tolerance": np.asarray(1e-6, dtype=np.float32),
         "ik_preview_steps": np.asarray(args.ik_preview_steps, dtype=np.int64),
         "ik_command_projection": np.asarray(args.ik_command_projection),
+        "mpc_preview_nominal_steps": np.asarray(args.mpc_preview_nominal_steps, dtype=np.int64),
         "delay_protocol": np.asarray(args.delay_protocol),
         "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
         "actual_states": _stack_records(actual_states),

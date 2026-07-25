@@ -50,6 +50,23 @@ class DirectIKRobustnessEvaluatorTests(unittest.TestCase):
             if nonzero:
                 self.assertIn(nonzero[0], (3, 6))
 
+    def test_paper_three_variant_five_seed_matrix_has_540_runs(self) -> None:
+        cases = [
+            {"id": f"{shape}_seed_{seed}", "reference_type": shape, "run_args": {"reference_mode": "task", "seed": seed}}
+            for shape in ("circle", "figure8", "fast_ellipse", "rounded_square")
+            for seed in range(5)
+        ]
+        conditions = MODULE.build_conditions((0, 3, 6), MODULE.PERTURBATIONS)
+        specs = MODULE.build_specs(cases, conditions, ("raw", "physical", "preview"), preview_steps=7)
+
+        self.assertEqual(len(conditions), 9)
+        self.assertEqual(len(specs), 540)
+        self.assertEqual(MODULE.variant_settings("raw", 7), ("raw", 0))
+        self.assertEqual(MODULE.variant_settings("physical", 7), ("physical", 0))
+        self.assertEqual(MODULE.variant_settings("preview", 7), ("physical", 7))
+        with self.assertRaisesRegex(ValueError, "preview_steps"):
+            MODULE.build_specs(cases, conditions, ("preview",), preview_steps=0)
+
     def test_task_case_loading_checks_mode_and_reference_hash(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -88,6 +105,28 @@ class DirectIKRobustnessEvaluatorTests(unittest.TestCase):
             task.write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "hash mismatch"):
                 MODULE.load_task_cases(manifest, ["circle_00"])
+
+    def test_paper_benchmark_kind_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            task = root / "circle.npz"
+            task.write_bytes(b"paper-task")
+            manifest = root / "benchmark.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "kind": "paper_direct_ik_robustness",
+                        "cases": [{
+                            "id": "circle", "reference_type": "circle",
+                            "reference_sha256": digest(task),
+                            "run_args": {"reference_mode": "task", "reference_file": str(task)},
+                        }],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            _, selected = MODULE.load_task_cases(manifest, ["circle"])
+            self.assertEqual(selected[0]["id"], "circle")
 
     def test_summary_reports_safety_noise_force_and_command_variation(self) -> None:
         condition = MODULE.build_conditions((0, 3), ("force_pulse",))[1]

@@ -18,8 +18,8 @@ conda activate pendulum-rl
 cd ~/Data/RL_Projects/NN-MPC_RobotArm
 
 export PAPER_OUT=outputs/paper_delay_aware_two_stage_v1
-export PAPER_CKPT=outputs/checkpoints/gru_20260720_202923/best_model.pt
-export PAPER_NORM=outputs/checkpoints/gru_20260720_202923/normalizer.pt
+export PAPER_CKPT=dynamics_modeling/outputs/checkpoints/gru_20260717_182930/best_model.pt
+export PAPER_NORM=dynamics_modeling/outputs/checkpoints/gru_20260717_182930/normalizer.pt
 mkdir -p "$PAPER_OUT/logs"
 
 test -f "$PAPER_CKPT"
@@ -115,10 +115,51 @@ python -m scripts.paper_experiments.workflow \
 python -m scripts.paper_experiments.workflow \
   --output-root "$PAPER_OUT" \
   calibrate-preview \
-  --preview-values 0,1,2,3,4
+  --preview-values 0,1,2,3,4,5,6,7,8 \
+  --orientation-tolerance 0.10
 ```
 
-选择规则为 calibration TCP RMSE 最小；完全相同时选择更小 preview。选出的同一个 preview 用于全部四条正式轨迹，禁止在测试轨迹上重新选择。
+选择规则为：在姿态 RMSE 不超过最优值 10% 的候选中，选择 calibration TCP RMSE 最小的 preview；完全相同时选择更小 preview。选出的同一个 preview 用于全部四条正式轨迹，禁止在测试轨迹上重新选择。
+
+### Preview IK 作为 residual MPC nominal
+
+`--mpc_preview_nominal_steps P` 使 residual MPC 围绕 Preview IK 而非
+Direct IK 优化。它只改变 actuator nominal：
+
+```text
+q_nom[k] = q_des[t + k + 1 + P]
+q_target[k] = q_des[t + k + 1]      # tracking cost 不前移
+```
+
+`P` 必须取本节 calibration 冻结值（当前为 7），且与 planner E2E
+delay `D_cal` 独立：`D_cal` 仍只确定 plan activation anchor。threaded
+packet 继续缓存 residual；每个执行 tick 使用当前的 Preview nominal
+重新锚定，绝不重放过期的绝对 Preview 命令。
+
+下列命令是 circle/figure8、两个 seed、全部单因素 L0/L3/L6 的 144 条
+MPC rollout（4 protocols × 2 trajectories × 2 seeds × 9 conditions），不启用
+不确定性感知：
+
+```bash
+export PREVIEW_MPC_OUT=outputs/robustness/paper_preview_nominal_p7_circle_figure8_s2_v1
+
+python scripts/robustness/evaluate_delay_aware_mpc.py \
+  --manifest outputs/robustness/paper_three_ik_l036_s5_v1/benchmark.json \
+  --delay_calibration "$PAPER_OUT/calibration/delay.json" \
+  --checkpoint "$PAPER_CKPT" \
+  --normalizer "$PAPER_NORM" \
+  --device cuda \
+  --uncertainty_mode off \
+  --methods IdealZeroDelay,NaiveDelayed,VirtualDelayAware,ThreadedAsync \
+  --case_ids circle,figure8 \
+  --levels 0,3,6 \
+  --perturbations payload,actuator_gain,force_pulse,observation_noise \
+  --seeds 0,1 \
+  --mpc_preview_nominal_steps 7 \
+  --bootstrap_samples 10000 \
+  --resume \
+  --save_dir "$PREVIEW_MPC_OUT"
+```
 
 ## 7. GRU 冻结模型验证
 
