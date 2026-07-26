@@ -26,6 +26,16 @@ def _copy(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def _copy_tree_files(
+    source_root: Path,
+    destination_root: Path,
+    suffixes: set[str],
+) -> None:
+    for source in sorted(source_root.glob("**/*")):
+        if source.is_file() and source.suffix in suffixes:
+            _copy(source, destination_root / source.relative_to(source_root))
+
+
 def _commit() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
 
@@ -42,6 +52,10 @@ def main() -> None:
     manifest = load_json(paper / "manifests" / "paper.json")
     _copy(paper / "manifests" / "paper.json", output / "manifests" / "control_manifest.json")
     _copy(audit / "audit_summary.json", output / "manifests" / "evidence_inventory.json")
+    _copy_tree_files(audit, output / "audit", {".csv", ".json"})
+    _copy_tree_files(paper / "calibration", output / "calibration", {".json", ".npz"})
+    _copy_tree_files(paper / "diagnostics", output / "diagnostics", {".csv", ".json", ".npz"})
+    _copy_tree_files(paper / "runs" / "indexes", output / "manifests" / "case_indexes", {".json"})
     for source in sorted((paper / "summaries").glob("*")):
         if source.suffix == ".csv":
             _copy(source, output / "summaries" / source.name)
@@ -61,7 +75,7 @@ def main() -> None:
         if path.is_file()
     ]
     analysis_manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "paper_control_commit": manifest["paper_control_commit"],
         "analysis_commit": manifest["analysis_commit"],
         "report_commit": args.report_commit or _commit(),
