@@ -176,6 +176,37 @@ def _cluster_bootstrap(rows: list[dict[str, Any]], samples: int, seed: int) -> d
     return report
 
 
+def perturbation_family(condition: str, perturbation: str = "") -> str:
+    """Return the frozen paper perturbation family, independent of L3/L6."""
+    if condition == "nominal" or perturbation == "nominal":
+        return "nominal"
+    aliases = {
+        "payload": "payload",
+        "actuator_gain": "actuator_gain",
+        "force_pulse": "force_pulse",
+        "observation_noise": "observation_noise",
+    }
+    for token, family in aliases.items():
+        if token in condition or token in perturbation:
+            return family
+    raise ValueError(f"Unrecognized perturbation condition: {condition!r}/{perturbation!r}")
+
+
+def grouped_cluster_bootstrap(
+    rows: list[dict[str, Any]],
+    group_key: str,
+    samples: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Bootstrap trajectory-condition clusters separately for each requested group."""
+    report: dict[str, Any] = {"samples": samples, "seed": seed, "groups": {}}
+    groups = sorted({str(row[group_key]) for row in rows})
+    for offset, group in enumerate(groups):
+        members = [row for row in rows if str(row[group_key]) == group]
+        report["groups"][group] = _cluster_bootstrap(members, samples, seed + offset)
+    return report
+
+
 def main() -> None:
     args = parser().parse_args()
     mpc_root = Path(args.mpc_root).resolve()
@@ -193,6 +224,10 @@ def main() -> None:
     )
     unique_ik, deduplication = _deduplicate_ik(ik_rows)
     pairs = _pairs(mpc_rows, unique_ik)
+    for row in pairs:
+        row["perturbation_family"] = perturbation_family(
+            str(row["condition"]), str(row["perturbation"])
+        )
     _write_csv(output / "mpc_vs_projected_ik_pairs.csv", pairs)
     aggregate: list[dict[str, Any]] = []
     for key in sorted({(row["mpc_method"], row["ik_method"], row["condition"]) for row in pairs}):
@@ -207,6 +242,28 @@ def main() -> None:
     _write_csv(output / "mpc_vs_projected_ik_by_condition.csv", aggregate)
     (output / "mpc_vs_projected_ik_bootstrap.json").write_text(
         json.dumps(_cluster_bootstrap(pairs, args.bootstrap_samples, args.bootstrap_seed), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (output / "mpc_vs_projected_ik_by_perturbation.json").write_text(
+        json.dumps(
+            grouped_cluster_bootstrap(
+                pairs, "perturbation_family", args.bootstrap_samples, args.bootstrap_seed + 100
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (output / "mpc_vs_projected_ik_by_level.json").write_text(
+        json.dumps(
+            grouped_cluster_bootstrap(
+                pairs, "condition", args.bootstrap_samples, args.bootstrap_seed + 200
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
     (output / "baseline_deduplication_report.json").write_text(

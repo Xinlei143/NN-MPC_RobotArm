@@ -18,7 +18,15 @@ from mpc.delay_protocol import PROTOCOL_NAMES, resolve_delay_protocol
 from mpc.task_space_reference import generate_task_space_trajectory
 from scripts.experiment_utils.bootstrap import paired_bootstrap_rows
 from scripts.paper_experiments.evaluation import summarize_arrays
-from scripts.paper_experiments.merge_mpc_ik_results import _deduplicate_ik
+from scripts.paper_experiments.merge_mpc_ik_results import (
+    _deduplicate_ik,
+    grouped_cluster_bootstrap,
+    perturbation_family,
+)
+from scripts.paper_experiments.revision_evidence import (
+    replace_fullvirtual,
+    select_fullvirtual_cases,
+)
 from scripts.paper_experiments.workflow import (
     _base_args,
     _legacy_compatibility_backfill,
@@ -123,6 +131,21 @@ class RoundedSquareTests(unittest.TestCase):
 
 
 class ExperimentStatisticsTests(unittest.TestCase):
+    def test_perturbation_family_ignores_level(self) -> None:
+        self.assertEqual(perturbation_family("payload_L6", "payload"), "payload")
+        self.assertEqual(perturbation_family("observation_noise_L3"), "observation_noise")
+
+    def test_grouped_bootstrap_keeps_perturbations_separate(self) -> None:
+        rows = []
+        for family, delta in (("payload", -1.0), ("force_pulse", 2.0)):
+            rows.append({
+                "perturbation_family": family, "mpc_method": "M", "ik_method": "I",
+                "trajectory": "circle", "condition": f"{family}_L3",
+                "delta_tcp_rmse_m": delta, "delta_tcp_p95_m": delta,
+                "delta_orientation_rmse_rad": delta, "delta_joint_rmse_rad": delta,
+            })
+        report = grouped_cluster_bootstrap(rows, "perturbation_family", 20, 1)
+        self.assertEqual(set(report["groups"]), {"payload", "force_pulse"})
     def test_bootstrap_pairs_cases_not_timesteps(self) -> None:
         rows = [
             {"label": "naive", "case_id": "circle:0", "metric": 3.0},
@@ -215,6 +238,27 @@ class ExperimentStatisticsTests(unittest.TestCase):
 
 
 class PaperMatrixTests(unittest.TestCase):
+    def test_frozen_fullvirtual_selection_has_twenty_unique_cases(self) -> None:
+        manifest = {
+            "delay_calibration": {"anticipation_delay_steps": 6},
+            "paired_cem_seeds": [0, 1, 2, 3, 4],
+        }
+        cases = select_fullvirtual_cases(manifest)
+        self.assertEqual(len(cases), 20)
+
+    def test_fullvirtual_replacement_preserves_matched_matrix(self) -> None:
+        original = []
+        fresh = []
+        for trajectory in ("circle", "figure8", "fast_ellipse", "rounded_square"):
+            for seed in range(5):
+                original.append({"label": "FullVirtual", "trajectory": trajectory, "seed": seed, "suite": "ablation"})
+                fresh.append({"label": "FullVirtual", "trajectory": trajectory, "seed": seed, "run_dir": "fresh"})
+                for label in ("NoFutureAlignment", "NoReanchor", "NoFeedback"):
+                    original.append({"label": label, "trajectory": trajectory, "seed": seed, "suite": "ablation"})
+        merged = replace_fullvirtual(original, fresh)
+        self.assertEqual(len(merged), 80)
+        self.assertEqual(sum(row.get("run_dir") == "fresh" for row in merged), 20)
+
     def test_paper_base_args_freeze_stage_one_off(self) -> None:
         args = _base_args()
         self.assertEqual((args.stage_one_task_space_cost, args.stage_one_task_compile), ("off", "off"))
