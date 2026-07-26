@@ -6,7 +6,7 @@
 cd /home/xinlei/Data/RL_Projects/NN-MPC_RobotArm
 ```
 
-## 任务空间 residual MPC
+## 默认配置：Paper H20 residual MPC（无 stage-one GPU FK）
 
 先生成并验证参考：
 
@@ -19,23 +19,32 @@ conda run -n pendulum-rl python scripts/validate_ik.py \
   --reference_file outputs/references/figure8/reference.npz
 ```
 
-推荐运行：
+以下是当前默认、也是 Paper robustness 使用的 MPC 配置。它保留最终 exact final-pool
+MuJoCo task-space scorer，但**不**在 CEM population stage 使用 Torch/GPU FK：
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
-  --checkpoint dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/best_model.pt \
-  --normalizer dynamics_modeling/outputs/checkpoints_transformer/transformer_20260606_154206/normalizer.pt \
-  --model_type transformer \
+  --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_182930/best_model.pt \
+  --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_182930/normalizer.pt \
+  --model_type gru \
   --reference_mode task \
-  --reference_file outputs/references/figure8/reference.npz \
-  --horizon 20 --multirate_mode threaded_asap --anticipation_delay_steps 6 \
+  --reference_file outputs/paper_delay_aware_two_stage_v1/references/figure8/reference.npz \
+  --horizon 20 --residual_parameterization full \
+  --multirate_mode threaded_asap --delay_protocol full --anticipation_delay_steps 6 \
   --num_samples 128 --cem_iters 2 --rollout_batch_size 128 \
   --mpc_policy residual --cem_execute lowest_cost \
-  --save_dir outputs/mpc/task_figure8_residual
+  --planner_projection on --planner_projection_backend compiled \
+  --planner_projection_strategy two_stage --exact_task_space_cost on \
+  --stage_one_task_space_cost off --stage_one_task_compile off \
+  --save_dir outputs/mpc/paper_default_figure8
 ```
 
-H20 full-residual GPU task-space search 是默认方法；CEM 直接搜索每个 10 ms
-控制步的 residual，不使用 control-point 插值：
+H20 full-residual MPC 是默认方法；CEM 直接搜索每个 10 ms 控制步的 residual，
+不使用 control-point 插值，也不使用 stage-one GPU FK。代码层面的 CLI 默认同样为
+`--stage_one_task_space_cost off --stage_one_task_compile off`。
+
+以下命令才是可选的 GPU stage-one task-space 消融（只在最后一次 CEM iteration、
+7 个时间点参与搜索），不能替代上述默认配置：
 
 ```bash
 conda run -n pendulum-rl python scripts/run_cem_mpc.py \
@@ -45,7 +54,8 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --reference_mode task \
   --reference_file outputs/references/circle_3laps/reference.npz \
   --horizon 20 \
-  --stage_one_task_space_cost gpu \
+  --stage_one_task_space_cost gpu_budgeted \
+  --stage_one_task_steps 0,3,6,9,12,15,19 \
   --planner_projection on \
   --planner_projection_strategy two_stage \
   --exact_task_space_cost on \
@@ -56,8 +66,10 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
 ```
 
 该方法的 CEM mean/std、projection、GRU rollout、cost 和 delay-aware packet
-均使用完整 `[20,6]` 序列。启用前必须单独标定 E2E delay；GPU
-stage-one 仅支持 CUDA task reference，并继续由 MuJoCo exact final pool 最终裁决。
+均使用完整 `[20,6]` 序列；GPU scorer 仅在最后一轮对 `[128,7,6]` sparse pose
+计算 task cost。启用前必须单独标定 E2E delay；GPU stage-one 仅支持 CUDA task
+reference，并继续由 MuJoCo exact final pool 最终裁决。若测试 compile，附加
+`--stage_one_task_compile on`，并将该首轮 warm-up 排除在标定外。
 
 task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。`threaded_asap` 需要 CUDA，且不支持 `--visualize`；主实验请记录 control deadline miss、planner update rate、late packet drop 和 fallback。若要进行确定性逻辑延迟消融，显式使用 `--multirate_mode virtual_asap`。
 

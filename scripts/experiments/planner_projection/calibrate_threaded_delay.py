@@ -65,6 +65,9 @@ def _apply_variant_configuration(run_args: argparse.Namespace, args: argparse.Na
         "planner_projection_strategy",
         "exact_task_space_cost",
         "stage_one_task_space_cost",
+        "stage_one_task_steps",
+        "stage_one_task_compile",
+        "stage_one_task_profile",
         "w_task_position",
         "w_task_orientation",
         "task_position_scale_m",
@@ -116,6 +119,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.stage_one_task_space_cost == "gpu":
+        args.stage_one_task_space_cost = "gpu_full"
     if args.plans <= 0 or args.calibration_delay <= 0:
         raise ValueError("plans and calibration_delay must be positive")
     if args.horizon <= 0:
@@ -211,6 +216,9 @@ def main() -> None:
         "planner_projection_strategy": args.planner_projection_strategy,
         "exact_task_space_cost": args.exact_task_space_cost,
         "stage_one_task_space_cost": args.stage_one_task_space_cost,
+        "stage_one_task_steps": args.stage_one_task_steps,
+        "stage_one_task_compile": args.stage_one_task_compile,
+        "stage_one_task_profile": args.stage_one_task_profile,
         "w_task_position": args.w_task_position,
         "w_task_orientation": args.w_task_orientation,
         "task_position_scale_m": args.task_position_scale_m,

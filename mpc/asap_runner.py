@@ -375,6 +375,14 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
     )
     arrays["control_point_tail_mode"] = np.asarray("hold")
     arrays["stage_one_task_space_cost"] = np.asarray(args.stage_one_task_space_cost)
+    arrays["stage_one_task_step_indices"] = np.asarray(
+        getattr(args, "stage_one_task_step_indices", ()), dtype=np.int64
+    )
+    arrays["stage_one_task_weighting"] = np.asarray(
+        "nearest_interval" if args.stage_one_task_space_cost == "gpu_budgeted" else "full"
+    )
+    arrays["stage_one_task_compile"] = np.asarray(getattr(args, "stage_one_task_compile", "off"))
+    arrays["stage_one_task_profile"] = np.asarray(getattr(args, "stage_one_task_profile", "off"))
     pulse_start, pulse_stop = robustness.pulse_window(execution_steps)
     arrays["force_pulse_start_step"] = np.asarray(pulse_start, dtype=np.int64)
     arrays["force_pulse_stop_step"] = np.asarray(pulse_stop, dtype=np.int64)

@@ -182,6 +182,52 @@ class TorchTaskSpaceCostTests(unittest.TestCase):
             approximate["task_orientation"], exact["task_orientation"], atol=2e-4, rtol=2e-5
         )
 
+    def test_sparse_interval_weights_aggregate_full_horizon_discount(self) -> None:
+        steps = (0, 3, 6, 9, 12, 15, 19)
+        scorer = TorchTaskSpaceCost(
+            self.model,
+            ee_site_name="ee_site",
+            n_joints=6,
+            config=self.config,
+            device="cpu",
+            step_indices=steps,
+            rollout_horizon=20,
+        )
+        full = np.power(self.config.temporal_discount, np.arange(20, dtype=np.float64))
+        full /= full.sum()
+        expected = np.zeros(len(steps), dtype=np.float64)
+        for index in range(20):
+            nearest = int(np.argmin(np.abs(np.asarray(steps) - index)))
+            expected[nearest] += full[index]
+        self.assertEqual(scorer.sparse_weighting, "nearest_interval")
+        np.testing.assert_allclose(scorer.temporal_weights.numpy(), expected, atol=1e-7)
+        self.assertAlmostEqual(float(scorer.temporal_weights.sum()), 1.0, places=6)
+
+    def test_all_step_sparse_scorer_matches_full_scorer(self) -> None:
+        rng = np.random.default_rng(17)
+        predicted_q = torch.as_tensor(
+            rng.uniform(self.model.jnt_range[:6, 0], self.model.jnt_range[:6, 1], size=(3, 4, 6)),
+            dtype=torch.float32,
+        )
+        desired_q = rng.uniform(self.model.jnt_range[:6, 0], self.model.jnt_range[:6, 1], size=(4, 6))
+        poses = [self.exact_fk.forward(value) for value in desired_q]
+        positions = np.asarray([pose[0] for pose in poses])
+        rotations = np.asarray([pose[1] for pose in poses])
+        full = TorchTaskSpaceCost(
+            self.model, ee_site_name="ee_site", n_joints=6, config=self.config, device="cpu"
+        ).evaluate(predicted_q, positions, rotations)
+        sparse = TorchTaskSpaceCost(
+            self.model,
+            ee_site_name="ee_site",
+            n_joints=6,
+            config=self.config,
+            device="cpu",
+            step_indices=(0, 1, 2, 3),
+            rollout_horizon=4,
+        ).evaluate(predicted_q, positions, rotations)
+        torch.testing.assert_close(sparse["task_position"], full["task_position"], atol=2e-6, rtol=0.0)
+        torch.testing.assert_close(sparse["task_orientation"], full["task_orientation"], atol=2e-6, rtol=0.0)
+
 
 class _FakeTaskScorer:
     def __init__(self) -> None:

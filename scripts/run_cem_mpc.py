@@ -367,9 +367,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--stage_one_task_space_cost",
-        choices=["off", "gpu"],
+        choices=["off", "gpu", "gpu_full", "gpu_budgeted"],
         default="off",
-        help="Add batched Torch FK TCP costs to every CEM population; requires CUDA task-space MPC.",
+        help="Optional Torch-FK task cost: full applies both CEM iterations; budgeted applies sparse FK in the final iteration.",
+    )
+    parser.add_argument(
+        "--stage_one_task_steps",
+        default="0,3,6,9,12,15,19",
+        type=str,
+        help="Comma-separated full-horizon steps used by gpu_budgeted.",
+    )
+    parser.add_argument(
+        "--stage_one_task_compile",
+        choices=["off", "on"],
+        default="off",
+        help="Compile the fixed-shape gpu_budgeted Torch FK scorer.",
+    )
+    parser.add_argument(
+        "--stage_one_task_profile",
+        choices=["off", "on"],
+        default="off",
+        help="Synchronize CUDA events around stage-one FK for diagnostic profiling only.",
     )
     parser.add_argument("--w_task_position", default=1.0, type=float)
     parser.add_argument("--w_task_orientation", default=0.25, type=float)
@@ -565,6 +583,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_arg_parser().parse_args(argv)
+
+
+def _parse_stage_one_task_steps(value: str, horizon: int) -> tuple[int, ...]:
+    try:
+        steps = tuple(int(item.strip()) for item in value.split(",") if item.strip())
+    except ValueError as exc:
+        raise ValueError("--stage_one_task_steps must be comma-separated integers") from exc
+    if not steps or tuple(sorted(set(steps))) != steps:
+        raise ValueError("--stage_one_task_steps must be non-empty, unique, and strictly increasing")
+    if steps[0] < 0 or steps[-1] >= horizon:
+        raise ValueError("--stage_one_task_steps must lie in [0, horizon)")
+    return steps
 
 
 def resolve_device(value: str) -> torch.device:
@@ -872,6 +902,9 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         if not args.reset_std_each_step:
             raise ValueError("linear_control_points requires --reset_std_each_step")
     if args.stage_one_task_space_cost == "gpu":
+        # Historical spelling; artifacts use the unambiguous canonical value.
+        args.stage_one_task_space_cost = "gpu_full"
+    if args.stage_one_task_space_cost != "off":
         if args.controller_mode != "mpc" or args.reference_mode != "task":
             raise ValueError("GPU stage-one task cost requires task-space MPC")
         if args.exact_task_space_cost != "on":
@@ -880,6 +913,24 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             raise ValueError("GPU stage-one task cost requires an available CUDA device")
         if getattr(args, "dynamics_backend", "learned") != "learned":
             raise ValueError("GPU stage-one task cost currently requires learned dynamics")
+        if args.stage_one_task_space_cost == "gpu_budgeted":
+            args.stage_one_task_step_indices = _parse_stage_one_task_steps(
+                args.stage_one_task_steps, args.horizon
+            )
+            if args.residual_parameterization != "full":
+                raise ValueError("gpu_budgeted requires --residual_parameterization full")
+            if args.cem_iters < 2:
+                raise ValueError("gpu_budgeted requires --cem_iters >= 2")
+        else:
+            args.stage_one_task_step_indices = ()
+        if args.stage_one_task_compile == "on" and args.stage_one_task_space_cost != "gpu_budgeted":
+            raise ValueError("--stage_one_task_compile on requires --stage_one_task_space_cost gpu_budgeted")
+    else:
+        args.stage_one_task_step_indices = ()
+        if args.stage_one_task_compile != "off":
+            raise ValueError("--stage_one_task_compile on requires GPU stage-one task cost")
+    if args.stage_one_task_profile == "on" and args.stage_one_task_space_cost == "off":
+        raise ValueError("--stage_one_task_profile on requires GPU stage-one task cost")
     if args.uncertainty_mode == "ensemble_gate":
         args.uncertainty_mode = "ensemble_soft_gate"
     ensemble_enabled = args.uncertainty_mode != "off"
@@ -1072,14 +1123,26 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 n_joints=args.n_joints,
                 config=task_cost_config,
             )
-        if args.stage_one_task_space_cost == "gpu":
+        if args.stage_one_task_space_cost != "off":
             stage_one_task_cost = TorchTaskSpaceCost(
                 env.model,
                 ee_site_name=args.ee_site_name,
                 n_joints=args.n_joints,
                 config=task_cost_config,
                 device=device,
+                step_indices=(
+                    args.stage_one_task_step_indices
+                    if args.stage_one_task_space_cost == "gpu_budgeted"
+                    else None
+                ),
+                rollout_horizon=(
+                    args.horizon if args.stage_one_task_space_cost == "gpu_budgeted" else None
+                ),
             )
+            if args.stage_one_task_compile == "on":
+                stage_one_task_cost.enable_compile()
+                stage_one_task_cost.warm_up(args.num_samples)
+            stage_one_task_cost.set_profile_enabled(args.stage_one_task_profile == "on")
         cost_config = None
         rollout_config = None
         physical_velocity_limit = _parse_joint_vector(
@@ -1384,6 +1447,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                                     if args.planner_projection_strategy == "two_stage"
                                     else "none"
                                 ),
+                                stage_one_task_mode=args.stage_one_task_space_cost,
                             ),
                             planner=planner,
                             joint_low=env.joint_low,
@@ -1744,6 +1808,12 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         ),
         "control_point_tail_mode": np.asarray("hold"),
         "stage_one_task_space_cost": np.asarray(args.stage_one_task_space_cost),
+        "stage_one_task_step_indices": np.asarray(args.stage_one_task_step_indices, dtype=np.int64),
+        "stage_one_task_weighting": np.asarray(
+            "nearest_interval" if args.stage_one_task_space_cost == "gpu_budgeted" else "full"
+        ),
+        "stage_one_task_compile": np.asarray(args.stage_one_task_compile),
+        "stage_one_task_profile": np.asarray(args.stage_one_task_profile),
         "delay_protocol": np.asarray(args.delay_protocol),
         "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
         "actual_states": _stack_records(actual_states),

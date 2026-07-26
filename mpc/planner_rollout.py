@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -220,6 +220,25 @@ class LearnedDynamicsPlanner:
     stage_one_task_space_cost: TorchTaskSpaceCost | None = None
     task_positions_des: np.ndarray | None = None
     task_rotations_des: np.ndarray | None = None
+    _stage_task_positions: torch.Tensor | None = field(default=None, init=False, repr=False)
+    _stage_task_rotations: torch.Tensor | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Prepare this anchor's task window once; scorer geometry stays persistent."""
+        if self.stage_one_task_space_cost is None:
+            return
+        if self.task_positions_des is None or self.task_rotations_des is None:
+            raise ValueError("stage-one task-space cost requires position and rotation targets")
+        scorer = self.stage_one_task_space_cost
+        device = scorer.site_device
+        dtype = scorer.kinematics.body_positions.dtype
+        positions = torch.as_tensor(self.task_positions_des, device=device, dtype=dtype)
+        rotations = torch.as_tensor(self.task_rotations_des, device=device, dtype=dtype)
+        if scorer.is_sparse:
+            positions = positions.index_select(0, scorer.step_indices)
+            rotations = rotations.index_select(0, scorer.step_indices)
+        self._stage_task_positions = positions
+        self._stage_task_rotations = rotations
 
     def residual_parameterizer(self, reference: torch.Tensor | None = None) -> ResidualParameterization:
         horizon = int(self.q_des.shape[-2])
@@ -362,12 +381,16 @@ class LearnedDynamicsPlanner:
         )
         cost_terms["base_total"] = costs
         if include_stage_one_task_cost and self.stage_one_task_space_cost is not None:
-            if self.task_positions_des is None or self.task_rotations_des is None:
-                raise ValueError("stage-one task-space cost requires position and rotation targets")
+            if self._stage_task_positions is None or self._stage_task_rotations is None:
+                raise RuntimeError("stage-one task targets were not prepared")
+            predicted_q = pred_states[:, 1:, : self.state_dim // 2]
+            scorer = self.stage_one_task_space_cost
+            if scorer.is_sparse:
+                predicted_q = predicted_q.index_select(1, scorer.step_indices)
             task_terms = self.stage_one_task_space_cost.evaluate(
-                pred_states[:, 1:, : self.state_dim // 2],
-                self.task_positions_des,
-                self.task_rotations_des,
+                predicted_q,
+                self._stage_task_positions,
+                self._stage_task_rotations,
             )
             cost_terms.update(task_terms)
             task_config = self.stage_one_task_space_cost.config
@@ -376,6 +399,20 @@ class LearnedDynamicsPlanner:
                 + float(task_config.w_position) * task_terms["task_position"]
                 + float(task_config.w_orientation) * task_terms["task_orientation"]
             )
+            batch_size = int(predicted_q.shape[0])
+            step_count = int(predicted_q.shape[1])
+            stage_one_diagnostics = {
+                "stage_one_task_calls": torch.ones((), device=costs.device, dtype=costs.dtype),
+                "stage_one_task_candidate_count": torch.as_tensor(batch_size, device=costs.device, dtype=costs.dtype),
+                "stage_one_task_step_count": torch.as_tensor(step_count, device=costs.device, dtype=costs.dtype),
+                "stage_one_task_pose_count": torch.as_tensor(batch_size * step_count, device=costs.device, dtype=costs.dtype),
+            }
+            if np.isfinite(scorer.last_profile_ms):
+                stage_one_diagnostics["stage_one_task_time_ms"] = torch.as_tensor(
+                    scorer.last_profile_ms, device=costs.device, dtype=costs.dtype
+                )
+        else:
+            stage_one_diagnostics = {}
         costs = torch.where(feasible.to(device=costs.device), costs, torch.full_like(costs, float("inf")))
         cost_terms["total"] = costs
         return {
@@ -394,6 +431,7 @@ class LearnedDynamicsPlanner:
             "hard_state_constraint_valid": cost_terms["hard_state_constraint_violation"] == 0,
             "cost_valid": torch.isfinite(costs),
             "pred_states": pred_states,
+            **stage_one_diagnostics,
         }
 
     def evaluate(
@@ -401,12 +439,15 @@ class LearnedDynamicsPlanner:
         candidate_action: torch.Tensor,
         *,
         project_kinematics_override: bool | None = None,
+        include_stage_one_task_cost: bool | None = None,
     ) -> dict[str, torch.Tensor]:
         return self._evaluate_impl(
             candidate_action,
             project_kinematics_override=project_kinematics_override,
-            include_stage_one_task_cost=not bool(
-                getattr(self, "_suppress_stage_one_task_cost", False)
+            include_stage_one_task_cost=(
+                not bool(getattr(self, "_suppress_stage_one_task_cost", False))
+                if include_stage_one_task_cost is None
+                else bool(include_stage_one_task_cost)
             ),
         )
 

@@ -315,7 +315,7 @@ class ASAPPlannerWorker(threading.Thread):
                     n_joints=self.args.n_joints,
                     config=task_cost_config,
                 )
-            if self.args.stage_one_task_space_cost == "gpu":
+            if self.args.stage_one_task_space_cost != "off":
                 assert self.kinematics_model is not None
                 stage_one_task_cost = TorchTaskSpaceCost(
                     self.kinematics_model,
@@ -323,6 +323,22 @@ class ASAPPlannerWorker(threading.Thread):
                     n_joints=self.args.n_joints,
                     config=task_cost_config,
                     device=device,
+                    step_indices=(
+                        getattr(self.args, "stage_one_task_step_indices", ())
+                        if self.args.stage_one_task_space_cost == "gpu_budgeted"
+                        else None
+                    ),
+                    rollout_horizon=(
+                        self.args.horizon
+                        if self.args.stage_one_task_space_cost == "gpu_budgeted"
+                        else None
+                    ),
+                )
+                if getattr(self.args, "stage_one_task_compile", "off") == "on":
+                    stage_one_task_cost.enable_compile()
+                    stage_one_task_cost.warm_up(self.args.num_samples)
+                stage_one_task_cost.set_profile_enabled(
+                    getattr(self.args, "stage_one_task_profile", "off") == "on"
                 )
             controller: CEMMPCController | None = None
             last_request = -1
@@ -400,7 +416,7 @@ class ASAPPlannerWorker(threading.Thread):
                     ],
                 )
                 if controller is None:
-                    controller = CEMMPCController(CEMMPCConfig(horizon=self.args.horizon, action_dim=self.args.n_joints, decision_horizon=self.args.horizon if self.args.residual_parameterization == "full" else self.args.residual_control_points, num_samples=self.args.num_samples, num_elites=self.args.num_elites, elite_ratio=self.args.elite_ratio, cem_iters=self.args.cem_iters, init_std=self.args.init_std, min_std=self.args.min_std, smoothing_alpha=self.args.smoothing_alpha, temporal_noise_alpha=self.args.temporal_noise_alpha, reset_std_each_step=self.args.reset_std_each_step, uniform_sample_ratio=self.args.uniform_sample_ratio, force_baseline_candidate=True, execute=self.args.cem_execute, seed=self.args.seed, device=str(device), selection_validation="exact_final_pool" if self.args.planner_projection_strategy == "two_stage" else "none"), planner, self.joint_low, self.joint_high)
+                    controller = CEMMPCController(CEMMPCConfig(horizon=self.args.horizon, action_dim=self.args.n_joints, decision_horizon=self.args.horizon if self.args.residual_parameterization == "full" else self.args.residual_control_points, num_samples=self.args.num_samples, num_elites=self.args.num_elites, elite_ratio=self.args.elite_ratio, cem_iters=self.args.cem_iters, init_std=self.args.init_std, min_std=self.args.min_std, smoothing_alpha=self.args.smoothing_alpha, temporal_noise_alpha=self.args.temporal_noise_alpha, reset_std_each_step=self.args.reset_std_each_step, uniform_sample_ratio=self.args.uniform_sample_ratio, force_baseline_candidate=True, execute=self.args.cem_execute, seed=self.args.seed, device=str(device), selection_validation="exact_final_pool" if self.args.planner_projection_strategy == "two_stage" else "none", stage_one_task_mode=self.args.stage_one_task_space_cost), planner, self.joint_low, self.joint_high)
                     generator_state = controller.generator.get_state()
                     for _ in range(self.args.mpc_warmup_plans):
                         controller.plan(anchor_state, anchor_command)

@@ -48,6 +48,8 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         self.assertEqual(args.residual_parameterization, "full")
         self.assertEqual(args.residual_control_points, 8)
         self.assertEqual(args.stage_one_task_space_cost, "off")
+        self.assertEqual(args.stage_one_task_steps, "0,3,6,9,12,15,19")
+        self.assertEqual(args.stage_one_task_compile, "off")
         self.assertEqual(args.residual_cost_semantics, "requested")
         self.assertEqual(args.packet_residual_semantics, "requested")
         self.assertEqual(args.residual_feasibility_semantics, "finite")
@@ -72,6 +74,16 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         ])
         with self.assertRaisesRegex(ValueError, "in \\[2, horizon\\]"):
             RUNNER.run_closed_loop_mpc(args)
+
+    def test_budgeted_task_step_parser_rejects_invalid_indices(self) -> None:
+        self.assertEqual(
+            RUNNER._parse_stage_one_task_steps("0,3,6,9,12,15,19", 20),
+            (0, 3, 6, 9, 12, 15, 19),
+        )
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            RUNNER._parse_stage_one_task_steps("0,3,3", 20)
+        with self.assertRaisesRegex(ValueError, "\\[0, horizon\\)"):
+            RUNNER._parse_stage_one_task_steps("0,20", 20)
 
     def test_budget_sweep_defaults_to_and_accepts_threaded_asap(self) -> None:
         with mock.patch.object(sys, "argv", ["run_cem_budget_sweep.py"]):

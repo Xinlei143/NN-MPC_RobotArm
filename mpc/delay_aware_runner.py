@@ -96,13 +96,25 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 n_joints=args.n_joints,
                 config=task_cost_config,
             )
-        if args.stage_one_task_space_cost == "gpu":
+        if args.stage_one_task_space_cost != "off":
             stage_one_task_cost = TorchTaskSpaceCost(
                 env.model,
                 ee_site_name=args.ee_site_name,
                 n_joints=args.n_joints,
                 config=task_cost_config,
                 device=device,
+                step_indices=(
+                    getattr(args, "stage_one_task_step_indices", ())
+                    if args.stage_one_task_space_cost == "gpu_budgeted"
+                    else None
+                ),
+                rollout_horizon=(args.horizon if args.stage_one_task_space_cost == "gpu_budgeted" else None),
+            )
+            if getattr(args, "stage_one_task_compile", "off") == "on":
+                stage_one_task_cost.enable_compile()
+                stage_one_task_cost.warm_up(args.num_samples)
+            stage_one_task_cost.set_profile_enabled(
+                getattr(args, "stage_one_task_profile", "off") == "on"
             )
         parse = api["_parse_joint_vector"]
         physical_v = parse(args.command_velocity_physical_limit, args.n_joints, "command_velocity_physical_limit")
@@ -454,6 +466,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                             else "none"
                         ),
                         alternative_distance_scale=residual_max,
+                        stage_one_task_mode=args.stage_one_task_space_cost,
                     ), planner, env.joint_low, env.joint_high)
                     # CUDA's first rollout is a runtime initialisation artefact,
                     # not a representative asynchronous-plan delay.
@@ -593,6 +606,14 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         "control_point_interpolation": np.asarray("identity" if args.residual_parameterization == "full" else "linear_align_corners"),
         "control_point_tail_mode": np.asarray("hold"),
         "stage_one_task_space_cost": np.asarray(args.stage_one_task_space_cost),
+        "stage_one_task_step_indices": np.asarray(
+            getattr(args, "stage_one_task_step_indices", ()), dtype=np.int64
+        ),
+        "stage_one_task_weighting": np.asarray(
+            "nearest_interval" if args.stage_one_task_space_cost == "gpu_budgeted" else "full"
+        ),
+        "stage_one_task_compile": np.asarray(getattr(args, "stage_one_task_compile", "off")),
+        "stage_one_task_profile": np.asarray(getattr(args, "stage_one_task_profile", "off")),
         "ddq_des": stack([ddq_reference[i] for i in range(len(rec["q_des"]))]),
         **api["config_arrays"](robustness, env),
     })

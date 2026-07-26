@@ -37,6 +37,7 @@ class CEMMPCConfig:
     execute: str = "lowest_cost"
     alternative_distance_scale: np.ndarray | None = None
     selection_validation: str = "none"
+    stage_one_task_mode: str = "off"
 
 
 @dataclass
@@ -107,6 +108,10 @@ class CEMMPCController:
             raise ValueError("force_baseline_candidate requires at least three samples")
         if config.selection_validation not in {"none", "exact_final_pool"}:
             raise ValueError("selection_validation must be 'none' or 'exact_final_pool'")
+        if config.stage_one_task_mode not in {"off", "gpu_full", "gpu_budgeted"}:
+            raise ValueError("stage_one_task_mode must be 'off', 'gpu_full', or 'gpu_budgeted'")
+        if config.stage_one_task_mode == "gpu_budgeted" and config.cem_iters < 2:
+            raise ValueError("gpu_budgeted requires at least two CEM iterations")
         self.config = config
         self.planner = planner
         self.device = torch.device(config.device)
@@ -385,11 +390,54 @@ class CEMMPCController:
         ] = {}
 
         try:
-            for _ in range(self.config.cem_iters):
+            for iteration_index in range(self.config.cem_iters):
+                use_stage_one_task = (
+                    self.config.stage_one_task_mode == "gpu_full"
+                    or (
+                        self.config.stage_one_task_mode == "gpu_budgeted"
+                        and iteration_index == self.config.cem_iters - 1
+                    )
+                )
+                if self.config.stage_one_task_mode == "gpu_budgeted" and use_stage_one_task:
+                    # The first iteration optimizes base cost only.  Its best is
+                    # not comparable with the final task-aware objective.
+                    best_sequence = None
+                    best_action_sequence = None
+                    best_q_ref_sequence = None
+                    best_residual_sequence = None
+                    best_cost_terms = {}
+                    best_predicted_next_state = np.full(2 * self.config.action_dim, np.nan, dtype=np.float32)
+                    best_predicted_state_sequence = None
+                    best_cost = torch.as_tensor(float("inf"), device=self.device)
                 samples = self._sample_population(mean, std)
-                evaluation = self.planner.evaluate(samples)
+                if use_stage_one_task:
+                    evaluation = self.planner.evaluate(samples, include_stage_one_task_cost=True)
+                elif self.config.stage_one_task_mode == "gpu_budgeted":
+                    evaluation = self.planner.evaluate(samples, include_stage_one_task_cost=False)
+                else:
+                    evaluation = self.planner.evaluate(samples)
                 costs = evaluation["costs"].to(self.device)
                 candidate_count += int(costs.numel())
+                if use_stage_one_task:
+                    candidate_diagnostics["stage_one_task_iteration_index"] = iteration_index
+                    for diagnostic_name in (
+                        "stage_one_task_calls",
+                        "stage_one_task_candidate_count",
+                        "stage_one_task_step_count",
+                        "stage_one_task_pose_count",
+                        "stage_one_task_time_ms",
+                    ):
+                        value = evaluation.get(diagnostic_name)
+                        if isinstance(value, torch.Tensor) and value.numel() == 1:
+                            amount: int | float = (
+                                float(value.detach().cpu())
+                                if diagnostic_name == "stage_one_task_time_ms"
+                                else int(value.detach().cpu())
+                            )
+                            candidate_diagnostics[diagnostic_name] = (
+                                candidate_diagnostics.get(diagnostic_name, 0)
+                                + amount
+                            )
                 for diagnostic_name in (
                     "requested_residual_valid", "projected_command_valid", "rollout_valid",
                     "hard_state_constraint_valid", "cost_valid",

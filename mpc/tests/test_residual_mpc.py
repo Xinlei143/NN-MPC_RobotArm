@@ -393,6 +393,57 @@ class CEMBaselineTests(unittest.TestCase):
         self.assertEqual(result.selected_q_ref_sequence.shape, (3, 1))
         self.assertEqual(result.selected_residual_sequence.shape, (3, 1))
         self.assertEqual(result.selected_predicted_state_sequence.shape, (4, 2))
+
+    def test_budgeted_task_cost_resets_first_iteration_best(self) -> None:
+        class BudgetedPlanner(_BaselinePlanner):
+            def __init__(self) -> None:
+                self.calls: list[bool] = []
+                self.exact_pool: torch.Tensor | None = None
+
+            def evaluate(self, action: torch.Tensor, *, include_stage_one_task_cost=None) -> dict[str, torch.Tensor]:
+                use_task = bool(include_stage_one_task_cost)
+                self.calls.append(use_task)
+                result = super().evaluate(action)
+                batch = action.shape[0]
+                result["costs"] = (
+                    torch.arange(batch, dtype=torch.float32)
+                    if not use_task
+                    else torch.arange(batch - 1, -1, -1, dtype=torch.float32)
+                )
+                result["cost_terms"] = {"total": result["costs"]}
+                return result
+
+            def evaluate_exact(self, action: torch.Tensor) -> dict[str, torch.Tensor]:
+                self.exact_pool = action.detach().clone()
+                return super().evaluate(action)
+
+        planner = BudgetedPlanner()
+        controller = CEMMPCController(
+            CEMMPCConfig(
+                horizon=3,
+                action_dim=1,
+                num_samples=4,
+                cem_iters=2,
+                elite_ratio=0.25,
+                execute="best",
+                selection_validation="exact_final_pool",
+                stage_one_task_mode="gpu_budgeted",
+            ),
+            planner=planner,
+            joint_low=np.array([-20.0], dtype=np.float32),
+            joint_high=np.array([20.0], dtype=np.float32),
+        )
+        first = (1.0 + torch.arange(4, dtype=torch.float32)).view(4, 1, 1).expand(-1, 3, -1).clone()
+        second = (10.0 + torch.arange(4, dtype=torch.float32)).view(4, 1, 1).expand(-1, 3, -1).clone()
+        populations = [first, second]
+        controller._sample_population = lambda _mean, _std: populations.pop(0)  # type: ignore[method-assign]
+        result = controller.plan(np.zeros(2, dtype=np.float32), np.zeros(1, dtype=np.float32))
+        self.assertFalse(result.failure, result.failure_reason)
+        self.assertEqual(planner.calls, [False, True])
+        assert planner.exact_pool is not None
+        self.assertTrue(bool(torch.any(torch.all(planner.exact_pool == second[3], dim=(1, 2)))))
+        self.assertFalse(bool(torch.any(torch.all(planner.exact_pool == first[0], dim=(1, 2)))))
+        self.assertEqual(result.candidate_diagnostics["stage_one_task_iteration_index"], 1)
         self.assertEqual(result.selected_action_sequence.shape, (3, 1))
         np.testing.assert_allclose(result.selected_action_sequence, 0.0)
         np.testing.assert_allclose(result.selected_residual_sequence, 0.0)
