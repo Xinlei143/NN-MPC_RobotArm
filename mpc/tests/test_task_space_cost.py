@@ -16,7 +16,12 @@ if str(DYNAMICS_ROOT) not in sys.path:
 
 from mpc.kinematics_utils import MujocoKinematics
 from mpc.planner_rollout import LearnedDynamicsPlanner
-from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
+from mpc.task_space_cost import (
+    ExactTaskSpaceCost,
+    TaskSpaceCostConfig,
+    TorchSerialKinematics,
+    TorchTaskSpaceCost,
+)
 
 
 MODEL_XML = ROOT / "dynamics_modeling" / "ABB_IRB2400.xml"
@@ -89,6 +94,93 @@ class ExactTaskSpaceCostTests(unittest.TestCase):
             TaskSpaceCostConfig(w_position=-1.0).validate()
         with self.assertRaisesRegex(ValueError, "scales"):
             TaskSpaceCostConfig(position_scale_m=0.0).validate()
+
+
+class TorchTaskSpaceCostTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
+        cls.exact_fk = MujocoKinematics(cls.model)
+        cls.torch_fk = TorchSerialKinematics(cls.model)
+        cls.config = TaskSpaceCostConfig(
+            w_position=1.0,
+            w_orientation=0.25,
+            position_scale_m=0.05,
+            orientation_scale_rad=0.1,
+            temporal_discount=0.95,
+        )
+
+    @staticmethod
+    def rotation_distance(first: np.ndarray, second: np.ndarray) -> float:
+        relative = first.T @ second
+        sine = 0.5 * np.linalg.norm(
+            [
+                relative[2, 1] - relative[1, 2],
+                relative[0, 2] - relative[2, 0],
+                relative[1, 0] - relative[0, 1],
+            ]
+        )
+        cosine = np.clip((np.trace(relative) - 1.0) * 0.5, -1.0, 1.0)
+        return float(np.arctan2(sine, cosine))
+
+    def test_batched_fk_matches_mujoco(self) -> None:
+        rng = np.random.default_rng(20260726)
+        q = rng.uniform(self.model.jnt_range[:6, 0], self.model.jnt_range[:6, 1], size=(128, 6))
+        positions, rotations = self.torch_fk.forward(torch.as_tensor(q, dtype=torch.float32))
+        max_position = 0.0
+        max_rotation = 0.0
+        for index, joint_position in enumerate(q):
+            exact_position, exact_rotation = self.exact_fk.forward(joint_position)
+            max_position = max(max_position, float(np.linalg.norm(positions[index].numpy() - exact_position)))
+            max_rotation = max(
+                max_rotation,
+                self.rotation_distance(rotations[index].numpy(), exact_rotation),
+            )
+        self.assertLessEqual(max_position, 1e-5)
+        self.assertLessEqual(max_rotation, 1e-4)
+
+    def test_torch_cost_matches_exact_cost(self) -> None:
+        rng = np.random.default_rng(11)
+        predicted_q = rng.uniform(
+            self.model.jnt_range[:6, 0],
+            self.model.jnt_range[:6, 1],
+            size=(3, 4, 6),
+        )
+        desired_q = rng.uniform(
+            self.model.jnt_range[:6, 0],
+            self.model.jnt_range[:6, 1],
+            size=(4, 6),
+        )
+        poses = [self.exact_fk.forward(value) for value in desired_q]
+        desired_positions = np.asarray([pose[0] for pose in poses])
+        desired_rotations = np.asarray([pose[1] for pose in poses])
+        exact = ExactTaskSpaceCost(
+            self.model,
+            ee_site_name="ee_site",
+            n_joints=6,
+            config=self.config,
+        ).evaluate(
+            torch.as_tensor(predicted_q, dtype=torch.float32),
+            desired_positions,
+            desired_rotations,
+        )
+        approximate = TorchTaskSpaceCost(
+            self.model,
+            ee_site_name="ee_site",
+            n_joints=6,
+            config=self.config,
+            device="cpu",
+        ).evaluate(
+            torch.as_tensor(predicted_q, dtype=torch.float32),
+            desired_positions,
+            desired_rotations,
+        )
+        torch.testing.assert_close(
+            approximate["task_position"], exact["task_position"], atol=2e-4, rtol=2e-5
+        )
+        torch.testing.assert_close(
+            approximate["task_orientation"], exact["task_orientation"], atol=2e-4, rtol=2e-5
+        )
 
 
 class _FakeTaskScorer:

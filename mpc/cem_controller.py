@@ -20,6 +20,7 @@ class PlannerProtocol(Protocol):
 class CEMMPCConfig:
     horizon: int
     action_dim: int
+    decision_horizon: int | None = None
     num_samples: int = 1024
     num_elites: int | None = None
     elite_ratio: float = 0.08
@@ -65,6 +66,7 @@ class CEMMPCResult:
     failure_reason: str
     best_sequence: np.ndarray
     selected_action_sequence: np.ndarray
+    selected_control_points: np.ndarray
     selected_q_ref_sequence: np.ndarray
     selected_residual_sequence: np.ndarray
     cost_terms: dict[str, float]
@@ -88,6 +90,11 @@ class CEMMPCController:
     ) -> None:
         if config.horizon <= 0 or config.action_dim <= 0:
             raise ValueError("horizon and action_dim must be positive")
+        decision_horizon = config.horizon if config.decision_horizon is None else int(config.decision_horizon)
+        if not 0 < decision_horizon <= config.horizon:
+            raise ValueError("decision_horizon must be in [1, horizon]")
+        if decision_horizon < config.horizon and not config.reset_std_each_step:
+            raise ValueError("reduced decision horizons require reset_std_each_step=True")
         if config.num_samples <= 0 or config.cem_iters <= 0:
             raise ValueError("num_samples and cem_iters must be positive")
         if config.execute not in {"mean", "best", "lowest_cost"}:
@@ -104,7 +111,7 @@ class CEMMPCController:
         self.planner = planner
         self.device = torch.device(config.device)
         self.generator = torch.Generator(device=self.device).manual_seed(config.seed)
-        self.mean = torch.zeros((config.horizon, config.action_dim), dtype=torch.float32, device=self.device)
+        self.mean = torch.zeros((decision_horizon, config.action_dim), dtype=torch.float32, device=self.device)
         self.initial_std = torch.full_like(self.mean, float(config.init_std))
         self.std = self.initial_std.clone()
         self.joint_low = torch.as_tensor(joint_low, dtype=torch.float32, device=self.device)
@@ -116,6 +123,10 @@ class CEMMPCController:
             if scale.shape != (config.action_dim,) or not bool(torch.all(torch.isfinite(scale))) or bool(torch.any(scale <= 0)):
                 raise ValueError("alternative_distance_scale must contain one finite positive value per action dimension")
             self.alternative_distance_scale = scale
+
+    @property
+    def decision_horizon(self) -> int:
+        return int(self.mean.shape[0])
 
     @property
     def num_elites(self) -> int:
@@ -130,14 +141,14 @@ class CEMMPCController:
 
     def _sample_temporal_noise(self, count: int) -> torch.Tensor:
         noise = torch.randn(
-            (count, self.config.horizon, self.config.action_dim),
+            (count, self.decision_horizon, self.config.action_dim),
             generator=self.generator,
             device=self.device,
         )
         alpha = float(self.config.temporal_noise_alpha)
         if alpha <= 0:
             return noise
-        for step_idx in range(1, self.config.horizon):
+        for step_idx in range(1, self.decision_horizon):
             noise[:, step_idx] = alpha * noise[:, step_idx - 1] + (1.0 - alpha) * noise[:, step_idx]
         return noise
 
@@ -156,7 +167,7 @@ class CEMMPCController:
             samples.append(torch.clamp(gaussian, min=-1.0, max=1.0))
         if uniform_count:
             uniform = 2.0 * torch.rand(
-                (uniform_count, self.config.horizon, self.config.action_dim),
+                (uniform_count, self.decision_horizon, self.config.action_dim),
                 generator=self.generator,
                 device=self.device,
             ) - 1.0
@@ -182,17 +193,29 @@ class CEMMPCController:
         """Align the saved unshifted sequence to a later planning anchor."""
         if shift_steps <= 0:
             return
-        shift = min(int(shift_steps), self.config.horizon)
-        tail = self.mean[-1:].expand(shift, -1)
-        self.mean = torch.cat([self.mean[shift:], tail], dim=0).detach().clone()
+        self.mean = self._shift_decisions(self.mean, shift_steps)
 
     def _shifted_warm_start(self, shift_steps: int) -> torch.Tensor:
         """Return an aligned mean without mutating controller state."""
         if shift_steps <= 0:
             return self.mean.clone()
-        shift = min(int(shift_steps), self.config.horizon)
-        tail = self.mean[-1:].expand(shift, -1)
-        return torch.cat([self.mean[shift:], tail], dim=0).detach().clone()
+        return self._shift_decisions(self.mean, shift_steps)
+
+    def _shift_decisions(self, decisions: torch.Tensor, shift_steps: int) -> torch.Tensor:
+        shifter = getattr(self.planner, "shift_control_points", None)
+        if callable(shifter):
+            return shifter(decisions, int(shift_steps)).detach().clone()
+        shift = min(int(shift_steps), decisions.shape[0])
+        tail = decisions[-1:].expand(shift, -1)
+        return torch.cat([decisions[shift:], tail], dim=0).detach().clone()
+
+    def _expand_decisions(self, decisions: torch.Tensor) -> torch.Tensor:
+        expander = getattr(self.planner, "expand_action", None)
+        if callable(expander):
+            return expander(decisions)
+        if decisions.shape != (self.config.horizon, self.config.action_dim):
+            raise RuntimeError("planner must provide expand_action for reduced decision horizons")
+        return decisions
 
     def _fallback(
         self,
@@ -216,8 +239,9 @@ class CEMMPCController:
             planning_time=perf_counter() - start_time,
             failure=True,
             failure_reason=reason,
-            best_sequence=np.zeros((self.config.horizon, self.config.action_dim), dtype=np.float32),
+            best_sequence=np.zeros((self.decision_horizon, self.config.action_dim), dtype=np.float32),
             selected_action_sequence=np.zeros((self.config.horizon, self.config.action_dim), dtype=np.float32),
+            selected_control_points=np.zeros((self.decision_horizon, self.config.action_dim), dtype=np.float32),
             selected_q_ref_sequence=np.repeat(previous[None, :], self.config.horizon, axis=0),
             selected_residual_sequence=np.zeros((self.config.horizon, self.config.action_dim), dtype=np.float32),
             cost_terms={},
@@ -341,6 +365,7 @@ class CEMMPCController:
         std = self.initial_std.clone() if self.config.reset_std_each_step else self.std.clone()
         sampling_std_start_mean = float(std.mean().detach().cpu())
         best_sequence = None
+        best_action_sequence = None
         best_q_ref_sequence = None
         best_residual_sequence = None
         best_cost_terms: dict[str, float] = {}
@@ -392,9 +417,16 @@ class CEMMPCController:
                     best_sequence = samples[best_local].detach().clone()
                     if "q_ref_sequences" in evaluation:
                         best_q_ref_sequence = evaluation["q_ref_sequences"][best_local].detach().clone()
-                    residual_sequences = evaluation.get("residual_sequences", samples)
-                    if residual_sequences.shape == samples.shape:
+                    residual_sequences = evaluation.get("residual_sequences")
+                    normalized_sequences = evaluation.get("normalized_residual_sequences")
+                    if isinstance(residual_sequences, torch.Tensor):
                         best_residual_sequence = residual_sequences[best_local].detach().clone()
+                    elif samples.shape[1] == self.config.horizon:
+                        best_residual_sequence = samples[best_local].detach().clone()
+                    if isinstance(normalized_sequences, torch.Tensor):
+                        best_action_sequence = normalized_sequences[best_local].detach().clone()
+                    elif samples.shape[1] == self.config.horizon:
+                        best_action_sequence = samples[best_local].detach().clone()
                     best_cost_terms, best_predicted_next_state = self._diagnostics_from_evaluation(evaluation, int(best_local))
                     best_predicted_state_sequence = evaluation["pred_states"][best_local].detach().clone()
                 new_mean = torch.clamp(elites.mean(dim=0), min=-1.0, max=1.0)
@@ -408,7 +440,13 @@ class CEMMPCController:
         except RuntimeError as exc:
             return self._fallback(previous_q_ref, start_time, f"planner_runtime_error:{exc}", candidate_count, valid_candidate_count, candidate_diagnostics)
 
-        if best_sequence is None or best_q_ref_sequence is None or best_residual_sequence is None or best_predicted_state_sequence is None:
+        if (
+            best_sequence is None
+            or best_action_sequence is None
+            or best_q_ref_sequence is None
+            or best_residual_sequence is None
+            or best_predicted_state_sequence is None
+        ):
             return self._fallback(previous_q_ref, start_time, "no_valid_sequence", candidate_count, valid_candidate_count, candidate_diagnostics)
         if self.config.selection_validation == "exact_final_pool":
             if final_samples is None or final_elite_indices is None:
@@ -425,6 +463,12 @@ class CEMMPCController:
             exact_costs = exact["costs"].to(self.device)
             exact_q = exact["q_ref_sequences"].to(self.device)
             exact_residual = exact.get("residual_sequences", pool).to(self.device)
+            exact_actions = exact.get("normalized_residual_sequences")
+            if not isinstance(exact_actions, torch.Tensor):
+                if pool.shape[1] != self.config.horizon:
+                    return self._fallback(previous_q_ref, start_time, "missing_exact_expanded_actions", candidate_count, valid_candidate_count, candidate_diagnostics)
+                exact_actions = pool
+            exact_actions = exact_actions.to(self.device)
             exact_predicted = exact["pred_states"].to(self.device)
             exact_valid = torch.isfinite(exact_costs)
             exact_count = int(torch.sum(exact_valid).detach().cpu())
@@ -458,6 +502,7 @@ class CEMMPCController:
             )
             selected_exact = exact_tuple(selected_index)
             best_cost, best_q_ref_sequence, best_residual_sequence = selected_exact[:3]
+            best_action_sequence = exact_actions[selected_index]
             best_cost_terms, best_predicted_next_state, best_predicted_state_sequence = selected_exact[3:]
             best_sequence = pool[selected_index].detach().clone()
             approximate_best_unique = entry_to_unique[self.num_elites]
@@ -493,7 +538,8 @@ class CEMMPCController:
         if (
             not torch.all(torch.isfinite(best_sequence))
             or not self._valid_q_ref_sequence(best_q_ref_sequence.unsqueeze(0), batch_size=1)
-            or best_residual_sequence.shape != best_sequence.shape
+            or best_action_sequence.shape != (self.config.horizon, self.config.action_dim)
+            or best_residual_sequence.shape != (self.config.horizon, self.config.action_dim)
             or not bool(torch.all(torch.isfinite(best_residual_sequence)))
         ):
             return self._fallback(previous_q_ref, start_time, "invalid_selected_action", candidate_count, valid_candidate_count, candidate_diagnostics)
@@ -501,6 +547,7 @@ class CEMMPCController:
         mean_cost = float("nan")
         baseline_cost = float("nan")
         selected_raw_sequence = best_sequence
+        selected_action_sequence = best_action_sequence
         selected_q_ref_sequence = best_q_ref_sequence
         selected_residual_sequence = best_residual_sequence
         selected_cost = best_cost
@@ -516,6 +563,7 @@ class CEMMPCController:
                 mean_cost = float(mean_cost_tensor.detach().cpu())
                 if self.config.execute == "mean":
                     selected_raw_sequence = mean
+                    selected_action_sequence = self._expand_decisions(mean)
                     selected_q_ref_sequence = mean_q_ref_sequence
                     selected_residual_sequence = mean_residual_sequence
                     selected_cost = mean_cost_tensor
@@ -590,9 +638,12 @@ class CEMMPCController:
                 candidates, key=lambda item: (float(item[2].detach().cpu()), preference[item[0]])
             )
             selection_mode = selected_name
+            selected_action_sequence = self._expand_decisions(selected_raw_sequence)
 
-        saved_mean = selected_raw_sequence if asynchronous_anchor else torch.cat(
-            [selected_raw_sequence[1:], selected_raw_sequence[-1:].clone()], dim=0
+        saved_mean = (
+            selected_raw_sequence
+            if asynchronous_anchor
+            else self._shift_decisions(selected_raw_sequence, 1)
         )
         self.mean = torch.clamp(saved_mean, min=-1.0, max=1.0).detach().clone()
         sampling_std_end_mean = float(std.mean().detach().cpu())
@@ -664,7 +715,8 @@ class CEMMPCController:
             failure=False,
             failure_reason="",
             best_sequence=best_sequence.detach().cpu().numpy().astype(np.float32),
-            selected_action_sequence=selected_raw_sequence.detach().cpu().numpy().astype(np.float32),
+            selected_action_sequence=selected_action_sequence.detach().cpu().numpy().astype(np.float32),
+            selected_control_points=selected_raw_sequence.detach().cpu().numpy().astype(np.float32),
             selected_q_ref_sequence=selected_q_ref_sequence.detach().cpu().numpy().astype(np.float32),
             selected_residual_sequence=selected_residual_sequence.detach().cpu().numpy().astype(np.float32),
             cost_terms=selected_cost_terms,

@@ -1,4 +1,10 @@
-"""Calibrate real threaded E2E delay for one H20 planner-projection variant."""
+"""Calibrate real threaded E2E delay for a residual-MPC planner variant.
+
+The filename is retained for compatibility with the original H20 workflow.  The
+calibration itself is horizon-agnostic: it measures the configured threaded
+planner, including its residual parameterization and optional GPU stage-one
+task-space cost, then derives the deployment delay from E2E P95.
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,12 +25,74 @@ from scripts.robustness.evaluate_direct_ik import load_task_cases
 ensure_import_paths()
 
 
-RUNNER = load_runner("planner_projection_h20_calibration_runner")
+RUNNER = load_runner("planner_projection_delay_calibration_runner")
+
+
+def decision_horizon(args: argparse.Namespace) -> int:
+    """Return the CEM latent horizon, distinct from the dynamics rollout horizon."""
+    if args.residual_parameterization == "full":
+        return int(args.horizon)
+    return int(args.residual_control_points)
+
+
+def _apply_variant_configuration(run_args: argparse.Namespace, args: argparse.Namespace) -> None:
+    """Restore planner settings after a benchmark case supplies its reference.
+
+    Benchmark manifests record the historical H20 settings.  They should supply
+    trajectory/reference metadata here, but must not silently overwrite the
+    variant whose latency is being calibrated.
+    """
+    fields = (
+        "horizon",
+        "num_samples",
+        "num_elites",
+        "elite_ratio",
+        "cem_iters",
+        "init_std",
+        "min_std",
+        "smoothing_alpha",
+        "temporal_noise_alpha",
+        "reset_std_each_step",
+        "uniform_sample_ratio",
+        "rollout_batch_size",
+        "cem_execute",
+        "residual_parameterization",
+        "residual_control_points",
+        "planner_guard_ms",
+        "planner_min_interval_ms",
+        "planner_projection",
+        "planner_projection_backend",
+        "planner_projection_strategy",
+        "exact_task_space_cost",
+        "stage_one_task_space_cost",
+        "w_task_position",
+        "w_task_orientation",
+        "task_position_scale_m",
+        "task_orientation_scale_rad",
+        "temporal_discount",
+        "mpc_preview_nominal_steps",
+        "residual_cost_semantics",
+        "packet_residual_semantics",
+        "residual_feasibility_semantics",
+        "nominal_command_semantics",
+        "asap_history_mode",
+        "asap_snapshot_mode",
+        "feedback_kq",
+        "feedback_kdq",
+        "feedback_max",
+        "mpc_warmup_plans",
+    )
+    for field in fields:
+        setattr(run_args, field, getattr(args, field))
 
 
 def parse_args() -> argparse.Namespace:
     parser = RUNNER.build_arg_parser()
-    parser.add_argument("--manifest", default="outputs/robustness_h20_d10/benchmark.json")
+    parser.add_argument(
+        "--manifest",
+        default="outputs/robustness/benchmark.json",
+        help="Task-reference benchmark manifest; it supplies cases, not the calibrated MPC configuration.",
+    )
     parser.add_argument("--case_ids", default="circle_00,figure8_00")
     parser.add_argument("--plans", default=500, type=int)
     parser.add_argument("--calibration_delay", default=10, type=int)
@@ -50,9 +118,16 @@ def main() -> None:
     args = parse_args()
     if args.plans <= 0 or args.calibration_delay <= 0:
         raise ValueError("plans and calibration_delay must be positive")
-    if args.horizon != 20:
-        raise ValueError("planner-projection calibration is frozen to horizon=20")
+    if args.horizon <= 0:
+        raise ValueError("horizon must be positive")
+    if args.residual_parameterization == "linear_control_points":
+        if not 2 <= args.residual_control_points <= args.horizon:
+            raise ValueError("--residual_control_points must be in [2, horizon]")
+        if not args.reset_std_each_step:
+            raise ValueError("linear_control_points calibration requires --reset_std_each_step")
     case_ids = [value.strip() for value in args.case_ids.split(",") if value.strip()]
+    if not case_ids:
+        raise ValueError("--case_ids must contain at least one case")
     manifest_path = RUNNER.resolve_runtime_path(args.manifest)
     _, cases = load_task_cases(manifest_path, case_ids)
     solve: list[float] = []
@@ -65,12 +140,12 @@ def main() -> None:
         for key, value in case["run_args"].items():
             if hasattr(run_args, key):
                 setattr(run_args, key, value)
+        _apply_variant_configuration(run_args, args)
         run_args.checkpoint = args.checkpoint
         run_args.normalizer = args.normalizer
         run_args.model_type = "gru"
         run_args.history_len = 16
         run_args.device = args.device
-        run_args.horizon = 20
         run_args.controller_mode = "mpc"
         run_args.mpc_policy = "residual"
         run_args.reference_mode = "task"
@@ -110,9 +185,22 @@ def main() -> None:
         }
 
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "threaded_e2e_delay_calibration",
-        "horizon": 20,
+        # Keep horizon for old consumers; rollout_horizon/decision_horizon make
+        # Control-point variants unambiguous for new consumers.
+        "horizon": args.horizon,
+        "rollout_horizon": args.horizon,
+        "decision_horizon": decision_horizon(args),
+        "residual_parameterization": args.residual_parameterization,
+        "residual_control_points": (
+            None if args.residual_parameterization == "full" else args.residual_control_points
+        ),
+        "control_point_interpolation": (
+            "identity" if args.residual_parameterization == "full" else "linear_align_corners"
+        ),
+        "control_point_tail_mode": "hold",
+        "cem_reset_std_each_step": args.reset_std_each_step,
         "num_samples": args.num_samples,
         "cem_iters": args.cem_iters,
         "plans": args.plans,
@@ -122,10 +210,13 @@ def main() -> None:
         "planner_projection_backend": args.planner_projection_backend,
         "planner_projection_strategy": args.planner_projection_strategy,
         "exact_task_space_cost": args.exact_task_space_cost,
+        "stage_one_task_space_cost": args.stage_one_task_space_cost,
         "w_task_position": args.w_task_position,
         "w_task_orientation": args.w_task_orientation,
         "task_position_scale_m": args.task_position_scale_m,
         "task_orientation_scale_rad": args.task_orientation_scale_rad,
+        "temporal_discount": args.temporal_discount,
+        "mpc_preview_nominal_steps": args.mpc_preview_nominal_steps,
         "calibration_delay_steps": args.calibration_delay,
         "solve_latency": stats(solve_array),
         "end_to_end_latency": stats(e2e_array),
@@ -141,6 +232,8 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(
+        f"H={args.horizon}, K={decision_horizon(args)}, "
+        f"stage1_task={args.stage_one_task_space_cost}; "
         f"E2E p95={payload['end_to_end_latency']['p95_s'] * 1e3:.2f} ms; "
         f"D={delay}; saved {output}"
     )

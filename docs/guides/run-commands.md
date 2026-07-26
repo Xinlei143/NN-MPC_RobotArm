@@ -34,6 +34,31 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
   --save_dir outputs/mpc/task_figure8_residual
 ```
 
+H20 full-residual GPU task-space search 是默认方法；CEM 直接搜索每个 10 ms
+控制步的 residual，不使用 control-point 插值：
+
+```bash
+conda run -n pendulum-rl python scripts/run_cem_mpc.py \
+  --checkpoint dynamics_modeling/outputs/checkpoints/gru_20260717_182930/best_model.pt \
+  --normalizer dynamics_modeling/outputs/checkpoints/gru_20260717_182930/normalizer.pt \
+  --model_type gru \
+  --reference_mode task \
+  --reference_file outputs/references/circle_3laps/reference.npz \
+  --horizon 20 \
+  --stage_one_task_space_cost gpu \
+  --planner_projection on \
+  --planner_projection_strategy two_stage \
+  --exact_task_space_cost on \
+  --num_samples 128 --cem_iters 2 --rollout_batch_size 128 \
+  --multirate_mode threaded_asap \
+  --anticipation_delay_steps <H20_FULL_GPU_CALIBRATED_D> \
+  --save_dir outputs/mpc/h20_full_gpu_circle
+```
+
+该方法的 CEM mean/std、projection、GRU rollout、cost 和 delay-aware packet
+均使用完整 `[20,6]` 序列。启用前必须单独标定 E2E delay；GPU
+stage-one 仅支持 CUDA task reference，并继续由 MuJoCo exact final pool 最终裁决。
+
 task 模式使用 reference 的 `execution_steps`，因此不需要也不会使用 `--episode_len`。`threaded_asap` 需要 CUDA，且不支持 `--visualize`；主实验请记录 control deadline miss、planner update rate、late packet drop 和 fallback。若要进行确定性逻辑延迟消融，显式使用 `--multirate_mode virtual_asap`。
 
 ## IK direct baseline

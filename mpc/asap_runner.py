@@ -363,6 +363,18 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
     arrays["packet_residual_semantics"] = np.asarray(args.packet_residual_semantics)
     arrays["residual_feasibility_semantics"] = np.asarray(args.residual_feasibility_semantics)
     arrays["nominal_command_semantics"] = np.asarray(args.nominal_command_semantics)
+    arrays["rollout_horizon"] = np.asarray(args.horizon, dtype=np.int64)
+    arrays["decision_horizon"] = np.asarray(
+        args.horizon if args.residual_parameterization == "full" else args.residual_control_points,
+        dtype=np.int64,
+    )
+    arrays["residual_parameterization"] = np.asarray(args.residual_parameterization)
+    arrays["residual_control_points"] = np.asarray(args.residual_control_points, dtype=np.int64)
+    arrays["control_point_interpolation"] = np.asarray(
+        "identity" if args.residual_parameterization == "full" else "linear_align_corners"
+    )
+    arrays["control_point_tail_mode"] = np.asarray("hold")
+    arrays["stage_one_task_space_cost"] = np.asarray(args.stage_one_task_space_cost)
     pulse_start, pulse_stop = robustness.pulse_window(execution_steps)
     arrays["force_pulse_start_step"] = np.asarray(pulse_start, dtype=np.int64)
     arrays["force_pulse_stop_step"] = np.asarray(pulse_stop, dtype=np.int64)

@@ -18,8 +18,8 @@ D = ceil((E2E P95 + planner_guard) / control_dt)
 
 ```bash
 conda run -n pendulum-rl python \
-  scripts/experiments/planner_projection/calibrate_h20.py \
-  --manifest outputs/robustness_h20_d10/benchmark.json \
+  scripts/experiments/planner_projection/calibrate_threaded_delay.py \
+  --manifest outputs/robustness/benchmark.json \
   --case_ids circle_00,figure8_00 \
   --plans 500 \
   --calibration_delay 10 \

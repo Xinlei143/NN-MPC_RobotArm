@@ -13,7 +13,8 @@ from mpc.constraints import (
     project_position_command_sequence,
 )
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
-from mpc.task_space_cost import ExactTaskSpaceCost
+from mpc.task_space_cost import ExactTaskSpaceCost, TorchTaskSpaceCost
+from mpc.residual_parameterization import ResidualParameterization
 
 
 def construct_actuator_q_ref_sequence(
@@ -191,6 +192,8 @@ class PlannerRolloutConfig:
     projection_strategy: str = "full"
     residual_cost_semantics: str = "requested"
     residual_feasibility_semantics: str = "finite"
+    residual_parameterization: str = "full"
+    residual_control_points: int | None = None
 
 
 @dataclass
@@ -214,8 +217,41 @@ class LearnedDynamicsPlanner:
     cost_config: JointSpaceCostConfig
     rollout_config: PlannerRolloutConfig
     exact_task_space_cost: ExactTaskSpaceCost | None = None
+    stage_one_task_space_cost: TorchTaskSpaceCost | None = None
     task_positions_des: np.ndarray | None = None
     task_rotations_des: np.ndarray | None = None
+
+    def residual_parameterizer(self, reference: torch.Tensor | None = None) -> ResidualParameterization:
+        horizon = int(self.q_des.shape[-2])
+        decision_horizon = (
+            horizon
+            if self.rollout_config.residual_parameterization == "full"
+            else int(self.rollout_config.residual_control_points or 0)
+        )
+        target = self.q_des if reference is None else reference
+        return ResidualParameterization.create(
+            rollout_horizon=horizon,
+            decision_horizon=decision_horizon,
+            mode=self.rollout_config.residual_parameterization,
+            device=target.device,
+            dtype=target.dtype,
+        )
+
+    @property
+    def decision_horizon(self) -> int:
+        return self.residual_parameterizer().decision_horizon
+
+    @property
+    def rollout_horizon(self) -> int:
+        return int(self.q_des.shape[-2])
+
+    def expand_action(self, candidate_action: torch.Tensor) -> torch.Tensor:
+        if self.rollout_config.mpc_policy != "residual":
+            return candidate_action
+        return self.residual_parameterizer(candidate_action).expand(candidate_action)
+
+    def shift_control_points(self, control_points: torch.Tensor, shift_steps: int) -> torch.Tensor:
+        return self.residual_parameterizer(control_points).shift(control_points, shift_steps)
 
     def nominal_sequence(self) -> torch.Tensor:
         if self.nominal_q_ref is not None:
@@ -232,11 +268,12 @@ class LearnedDynamicsPlanner:
             joint_limit_margin=self.rollout_config.joint_limit_margin,
         )
 
-    def evaluate(
+    def _evaluate_impl(
         self,
         candidate_action: torch.Tensor,
         *,
         project_kinematics_override: bool | None = None,
+        include_stage_one_task_cost: bool,
     ) -> dict[str, torch.Tensor]:
         if self.rollout_config.mpc_policy == "residual":
             if self.rollout_config.residual_max is None:
@@ -246,8 +283,9 @@ class LearnedDynamicsPlanner:
                 if project_kinematics_override is None
                 else project_kinematics_override
             )
+            expanded_candidate_action = self.expand_action(candidate_action)
             q_ref_sequences, requested_residual_sequences, projected_nominal_offsets, feasible = construct_residual_q_ref_sequence(
-                candidate_action,
+                expanded_candidate_action,
                 nominal_q_ref=self.nominal_sequence(),
                 residual_max=self.rollout_config.residual_max,
                 previous_q_ref=self.previous_q_ref,
@@ -274,6 +312,7 @@ class LearnedDynamicsPlanner:
                 else projected_nominal_offsets
             )
         elif self.rollout_config.mpc_policy == "legacy_acceleration":
+            expanded_candidate_action = candidate_action
             q_ref_sequences = construct_actuator_q_ref_sequence(
                 candidate_action,
                 previous_q_ref=self.previous_q_ref,
@@ -321,6 +360,22 @@ class LearnedDynamicsPlanner:
             else self.previous_residual_velocity.to(device=pred_states.device, dtype=pred_states.dtype),
             return_terms=True,
         )
+        cost_terms["base_total"] = costs
+        if include_stage_one_task_cost and self.stage_one_task_space_cost is not None:
+            if self.task_positions_des is None or self.task_rotations_des is None:
+                raise ValueError("stage-one task-space cost requires position and rotation targets")
+            task_terms = self.stage_one_task_space_cost.evaluate(
+                pred_states[:, 1:, : self.state_dim // 2],
+                self.task_positions_des,
+                self.task_rotations_des,
+            )
+            cost_terms.update(task_terms)
+            task_config = self.stage_one_task_space_cost.config
+            costs = (
+                costs
+                + float(task_config.w_position) * task_terms["task_position"]
+                + float(task_config.w_orientation) * task_terms["task_orientation"]
+            )
         costs = torch.where(feasible.to(device=costs.device), costs, torch.full_like(costs, float("inf")))
         cost_terms["total"] = costs
         return {
@@ -331,6 +386,7 @@ class LearnedDynamicsPlanner:
             "requested_residual_sequences": requested_residual_sequences,
             "projected_nominal_offsets": projected_nominal_offsets,
             "residual_cost_sequences": residual_cost_sequence,
+            "normalized_residual_sequences": expanded_candidate_action,
             "candidate_feasible": feasible,
             "requested_residual_valid": torch.all(torch.isfinite(requested_residual_sequences), dim=(1, 2)),
             "projected_command_valid": torch.all(torch.isfinite(q_ref_sequences), dim=(1, 2)),
@@ -340,9 +396,27 @@ class LearnedDynamicsPlanner:
             "pred_states": pred_states,
         }
 
+    def evaluate(
+        self,
+        candidate_action: torch.Tensor,
+        *,
+        project_kinematics_override: bool | None = None,
+    ) -> dict[str, torch.Tensor]:
+        return self._evaluate_impl(
+            candidate_action,
+            project_kinematics_override=project_kinematics_override,
+            include_stage_one_task_cost=not bool(
+                getattr(self, "_suppress_stage_one_task_cost", False)
+            ),
+        )
+
     def evaluate_exact(self, candidate_action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Evaluate physical candidates and optionally align final selection with TCP metrics."""
-        evaluation = self.evaluate(candidate_action, project_kinematics_override=True)
+        self._suppress_stage_one_task_cost = True
+        try:
+            evaluation = self.evaluate(candidate_action, project_kinematics_override=True)
+        finally:
+            self._suppress_stage_one_task_cost = False
         if self.exact_task_space_cost is None:
             return evaluation
         if self.task_positions_des is None or self.task_rotations_des is None:

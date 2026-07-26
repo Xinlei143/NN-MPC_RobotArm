@@ -32,7 +32,7 @@ from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig, re
 from mpc.preview_nominal import nominal_command as preview_nominal_command, nominal_window as preview_nominal_window
 from mpc.reference import finite_difference_dq, generate_joint_reference
 from mpc.reference_pipeline import ReferenceBundle, load_reference_bundle
-from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
+from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTaskSpaceCost
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
 from mpc.robustness import RobustnessConfig, config_arrays, resolve_robustness_config
@@ -365,6 +365,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="on",
         help="Add TCP pose costs when selecting the two-stage exact final pool (default: on).",
     )
+    parser.add_argument(
+        "--stage_one_task_space_cost",
+        choices=["off", "gpu"],
+        default="off",
+        help="Add batched Torch FK TCP costs to every CEM population; requires CUDA task-space MPC.",
+    )
     parser.add_argument("--w_task_position", default=1.0, type=float)
     parser.add_argument("--w_task_orientation", default=0.25, type=float)
     parser.add_argument("--task_position_scale_m", default=0.05, type=float)
@@ -424,6 +430,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=["residual", "legacy_acceleration"],
         default="residual",
         help="Default residual MPC anchors commands to an executable IK nominal; legacy_acceleration reproduces the former unanchored action space.",
+    )
+    parser.add_argument(
+        "--residual_parameterization",
+        choices=["full", "linear_control_points"],
+        default="full",
+    )
+    parser.add_argument(
+        "--residual_control_points",
+        default=8,
+        type=int,
+        help="Latent decision horizon used by linear_control_points.",
     )
     parser.add_argument("--num_samples", default=128, type=int)
     parser.add_argument("--num_elites", default=None, type=int)
@@ -821,6 +838,15 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("recovery_min_tracking_error must be non-negative")
     if args.planner_guard_ms < 0.0 or args.planner_min_interval_ms < 0.0:
         raise ValueError("planner_guard_ms and planner_min_interval_ms must be non-negative")
+    dynamics_backend = getattr(args, "dynamics_backend", "learned")
+    if dynamics_backend == "mujoco_oracle":
+        if args.controller_mode != "mpc" or args.mpc_policy != "residual":
+            raise ValueError("mujoco_oracle requires --controller_mode mpc --mpc_policy residual")
+        if args.multirate_mode != "virtual_asap":
+            raise ValueError("mujoco_oracle is an offline upper bound and only supports --multirate_mode virtual_asap")
+        # Oracle is a joint-cost upper-bound diagnostic and has no learned
+        # two-stage task-space final pool.
+        args.exact_task_space_cost = "off"
     using_two_stage_mpc = args.controller_mode == "mpc" and args.planner_projection_strategy == "two_stage"
     if using_two_stage_mpc and args.planner_projection != "on":
         raise ValueError("two_stage planner projection requires --planner_projection on")
@@ -838,6 +864,22 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             orientation_scale_rad=args.task_orientation_scale_rad,
             temporal_discount=args.temporal_discount,
         ).validate()
+    if args.residual_parameterization == "linear_control_points":
+        if args.mpc_policy != "residual":
+            raise ValueError("linear_control_points requires residual MPC")
+        if not 2 <= args.residual_control_points <= args.horizon:
+            raise ValueError("--residual_control_points must be in [2, horizon]")
+        if not args.reset_std_each_step:
+            raise ValueError("linear_control_points requires --reset_std_each_step")
+    if args.stage_one_task_space_cost == "gpu":
+        if args.controller_mode != "mpc" or args.reference_mode != "task":
+            raise ValueError("GPU stage-one task cost requires task-space MPC")
+        if args.exact_task_space_cost != "on":
+            raise ValueError("GPU stage-one task cost requires exact final-pool task cost")
+        if not str(args.device).startswith("cuda") or not torch.cuda.is_available():
+            raise ValueError("GPU stage-one task cost requires an available CUDA device")
+        if getattr(args, "dynamics_backend", "learned") != "learned":
+            raise ValueError("GPU stage-one task cost currently requires learned dynamics")
     if args.uncertainty_mode == "ensemble_gate":
         args.uncertainty_mode = "ensemble_soft_gate"
     ensemble_enabled = args.uncertainty_mode != "off"
@@ -899,17 +941,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             raise ValueError("ensemble uncertainty requires at least two replica checkpoints and paired normalizers")
     elif args.uncertainty_checkpoints or args.uncertainty_normalizers:
         raise ValueError("uncertainty replica paths require a non-off --uncertainty_mode")
-    dynamics_backend = getattr(args, "dynamics_backend", "learned")
     if using_two_stage_mpc and dynamics_backend != "learned":
         raise ValueError("two_stage planner projection currently supports only learned dynamics")
     robustness = _robustness_config(args)
     if robustness.enabled and dynamics_backend == "mujoco_oracle":
         raise ValueError("Robustness perturbations are only defined for learned MPC and Direct IK, not mujoco_oracle")
-    if dynamics_backend == "mujoco_oracle":
-        if args.controller_mode != "mpc" or args.mpc_policy != "residual":
-            raise ValueError("mujoco_oracle requires --controller_mode mpc --mpc_policy residual")
-        if args.multirate_mode != "virtual_asap":
-            raise ValueError("mujoco_oracle is an offline upper bound and only supports --multirate_mode virtual_asap")
     if args.multirate_mode == "threaded_asap":
         if args.delay_protocol != "full":
             raise ValueError("threaded_asap only supports --delay_protocol full")
@@ -1019,6 +1055,14 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         if args.max_execution_steps is not None:
             execution_steps = min(execution_steps, args.max_execution_steps)
         exact_task_cost = None
+        stage_one_task_cost = None
+        task_cost_config = TaskSpaceCostConfig(
+            w_position=args.w_task_position,
+            w_orientation=args.w_task_orientation,
+            position_scale_m=args.task_position_scale_m,
+            orientation_scale_rad=args.task_orientation_scale_rad,
+            temporal_discount=args.temporal_discount,
+        )
         if args.exact_task_space_cost == "on":
             if task_reference is None:
                 raise ValueError("exact task-space cost requires a task-space reference")
@@ -1026,13 +1070,15 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 env.model,
                 ee_site_name=args.ee_site_name,
                 n_joints=args.n_joints,
-                config=TaskSpaceCostConfig(
-                    w_position=args.w_task_position,
-                    w_orientation=args.w_task_orientation,
-                    position_scale_m=args.task_position_scale_m,
-                    orientation_scale_rad=args.task_orientation_scale_rad,
-                    temporal_discount=args.temporal_discount,
-                ),
+                config=task_cost_config,
+            )
+        if args.stage_one_task_space_cost == "gpu":
+            stage_one_task_cost = TorchTaskSpaceCost(
+                env.model,
+                ee_site_name=args.ee_site_name,
+                n_joints=args.n_joints,
+                config=task_cost_config,
+                device=device,
             )
         cost_config = None
         rollout_config = None
@@ -1130,6 +1176,8 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 projection_strategy=args.planner_projection_strategy,
                 residual_cost_semantics=args.residual_cost_semantics,
                 residual_feasibility_semantics=args.residual_feasibility_semantics,
+                residual_parameterization=args.residual_parameterization,
+                residual_control_points=args.residual_control_points,
             )
         controller: CEMMPCController | None = None
         # ``command_buffer`` is retained for the old absolute-command action
@@ -1289,6 +1337,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                         cost_config=cost_config,
                         rollout_config=rollout_config,
                         exact_task_space_cost=exact_task_cost,
+                        stage_one_task_space_cost=stage_one_task_cost,
                         task_positions_des=None
                         if task_reference is None
                         else np.asarray(
@@ -1311,6 +1360,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                             config=CEMMPCConfig(
                                 horizon=args.horizon,
                                 action_dim=args.n_joints,
+                                decision_horizon=(
+                                    args.horizon
+                                    if args.residual_parameterization == "full"
+                                    else args.residual_control_points
+                                ),
                                 num_samples=args.num_samples,
                                 num_elites=args.num_elites,
                                 elite_ratio=args.elite_ratio,
@@ -1678,6 +1732,18 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         "ik_preview_steps": np.asarray(args.ik_preview_steps, dtype=np.int64),
         "ik_command_projection": np.asarray(args.ik_command_projection),
         "mpc_preview_nominal_steps": np.asarray(args.mpc_preview_nominal_steps, dtype=np.int64),
+        "rollout_horizon": np.asarray(args.horizon, dtype=np.int64),
+        "decision_horizon": np.asarray(
+            args.horizon if args.residual_parameterization == "full" else args.residual_control_points,
+            dtype=np.int64,
+        ),
+        "residual_parameterization": np.asarray(args.residual_parameterization),
+        "residual_control_points": np.asarray(args.residual_control_points, dtype=np.int64),
+        "control_point_interpolation": np.asarray(
+            "identity" if args.residual_parameterization == "full" else "linear_align_corners"
+        ),
+        "control_point_tail_mode": np.asarray("hold"),
+        "stage_one_task_space_cost": np.asarray(args.stage_one_task_space_cost),
         "delay_protocol": np.asarray(args.delay_protocol),
         "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
         "actual_states": _stack_records(actual_states),

@@ -45,11 +45,33 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         self.assertAlmostEqual(args.task_position_scale_m, 0.05)
         self.assertAlmostEqual(args.task_orientation_scale_rad, np.deg2rad(5.0))
         self.assertEqual(args.horizon, 20)
+        self.assertEqual(args.residual_parameterization, "full")
+        self.assertEqual(args.residual_control_points, 8)
+        self.assertEqual(args.stage_one_task_space_cost, "off")
         self.assertEqual(args.residual_cost_semantics, "requested")
         self.assertEqual(args.packet_residual_semantics, "requested")
         self.assertEqual(args.residual_feasibility_semantics, "finite")
         self.assertEqual(args.nominal_command_semantics, "raw_ik")
         self.assertEqual(args.ik_command_projection, "raw")
+
+    def test_linear_control_points_require_valid_horizon_and_std_reset(self) -> None:
+        args = RUNNER.parse_args([
+            "--reference_mode", "task",
+            "--residual_parameterization", "linear_control_points",
+            "--residual_control_points", "8",
+            "--horizon", "32",
+        ])
+        with self.assertRaisesRegex(ValueError, "reset_std_each_step"):
+            RUNNER.run_closed_loop_mpc(args)
+        args = RUNNER.parse_args([
+            "--reference_mode", "task",
+            "--residual_parameterization", "linear_control_points",
+            "--residual_control_points", "33",
+            "--horizon", "32",
+            "--reset_std_each_step",
+        ])
+        with self.assertRaisesRegex(ValueError, "in \\[2, horizon\\]"):
+            RUNNER.run_closed_loop_mpc(args)
 
     def test_budget_sweep_defaults_to_and_accepts_threaded_asap(self) -> None:
         with mock.patch.object(sys, "argv", ["run_cem_budget_sweep.py"]):
@@ -114,6 +136,34 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
         RUNNER._validate_task_reference(bundle, 6, 3, execution_steps=6)
         with mock.patch.object(sys, "argv", ["run_cem_budget_sweep.py", "--multirate_mode", "threaded_asap"]):
             self.assertEqual(SWEEP.parse_args().multirate_mode, "threaded_asap")
+
+    def test_preview_nominal_truncates_only_the_reference_tail(self) -> None:
+        bundle = SimpleNamespace(
+            q_des=np.zeros((10, 6), dtype=np.float32),
+            dq_des=np.zeros((10, 6), dtype=np.float32),
+            ddq_des=np.zeros((10, 6), dtype=np.float32),
+            execution_steps=8,
+            task_positions_des=np.zeros((10, 3), dtype=np.float32),
+            task_rotations_des=np.zeros((10, 3, 3), dtype=np.float32),
+            segment_ids=np.zeros(10, dtype=np.int64),
+            lap_ids=np.zeros(10, dtype=np.int64),
+        )
+        args = SimpleNamespace(
+            reference_file="reference.npz",
+            controller_mode="mpc",
+            horizon=2,
+            mpc_preview_nominal_steps=2,
+            ik_preview_steps=0,
+            multirate_mode="virtual_asap",
+            anticipation_delay_steps=1,
+            max_execution_steps=None,
+            n_joints=6,
+        )
+        with mock.patch.object(RUNNER, "load_reference_bundle", return_value=bundle):
+            returned = RUNNER._load_task_reference(args)
+        self.assertIs(returned, bundle)
+        # 10 - (H=2 + D=1 + P=2) - 1 = 4; original execution is 8.
+        self.assertEqual(bundle.execution_steps, 4)
 
 
 if __name__ == "__main__":

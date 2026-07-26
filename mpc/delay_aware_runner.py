@@ -22,7 +22,7 @@ from mpc.history import commit_command_and_append_placeholder, future_history_to
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.preview_nominal import nominal_command, nominal_window
-from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
+from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTaskSpaceCost
 
 
 def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
@@ -79,6 +79,14 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         if execution_steps <= 0:
             raise ValueError("reference is too short for horizon plus anticipation delay")
         exact_task_cost = None
+        stage_one_task_cost = None
+        task_cost_config = TaskSpaceCostConfig(
+            w_position=args.w_task_position,
+            w_orientation=args.w_task_orientation,
+            position_scale_m=args.task_position_scale_m,
+            orientation_scale_rad=args.task_orientation_scale_rad,
+            temporal_discount=args.temporal_discount,
+        )
         if args.exact_task_space_cost == "on":
             if task_reference is None:
                 raise ValueError("exact task-space cost requires a task-space reference")
@@ -86,13 +94,15 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 env.model,
                 ee_site_name=args.ee_site_name,
                 n_joints=args.n_joints,
-                config=TaskSpaceCostConfig(
-                    w_position=args.w_task_position,
-                    w_orientation=args.w_task_orientation,
-                    position_scale_m=args.task_position_scale_m,
-                    orientation_scale_rad=args.task_orientation_scale_rad,
-                    temporal_discount=args.temporal_discount,
-                ),
+                config=task_cost_config,
+            )
+        if args.stage_one_task_space_cost == "gpu":
+            stage_one_task_cost = TorchTaskSpaceCost(
+                env.model,
+                ee_site_name=args.ee_site_name,
+                n_joints=args.n_joints,
+                config=task_cost_config,
+                device=device,
             )
         parse = api["_parse_joint_vector"]
         physical_v = parse(args.command_velocity_physical_limit, args.n_joints, "command_velocity_physical_limit")
@@ -123,6 +133,8 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
             projection_strategy=args.planner_projection_strategy,
             residual_cost_semantics=args.residual_cost_semantics,
             residual_feasibility_semantics=args.residual_feasibility_semantics,
+            residual_parameterization=args.residual_parameterization,
+            residual_control_points=args.residual_control_points,
         )
         joint_low, joint_high = t(env.joint_low), t(env.joint_high)
         controller: CEMMPCController | None = None
@@ -402,6 +414,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                         state_dim=bundle.state_dim, target_mode=bundle.target_mode, control_dt=control_dt,
                         initial_history=future_history,
                         exact_task_space_cost=exact_task_cost,
+                        stage_one_task_space_cost=stage_one_task_cost,
                         task_positions_des=None
                         if task_reference is None
                         else np.asarray(
@@ -428,7 +441,9 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                     )
                 if controller is None:
                     controller = CEMMPCController(CEMMPCConfig(
-                        horizon=args.horizon, action_dim=args.n_joints, num_samples=args.num_samples, num_elites=args.num_elites,
+                        horizon=args.horizon, action_dim=args.n_joints,
+                        decision_horizon=args.horizon if args.residual_parameterization == "full" else args.residual_control_points,
+                        num_samples=args.num_samples, num_elites=args.num_elites,
                         elite_ratio=args.elite_ratio, cem_iters=args.cem_iters, init_std=args.init_std, min_std=args.min_std,
                         smoothing_alpha=args.smoothing_alpha, temporal_noise_alpha=args.temporal_noise_alpha,
                         reset_std_each_step=args.reset_std_each_step, uniform_sample_ratio=args.uniform_sample_ratio,
@@ -571,6 +586,13 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         "cem_reset_std_each_step": np.asarray(args.reset_std_each_step), "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32), "cem_uniform_sample_count": np.asarray(int(round((args.num_samples - 2) * args.uniform_sample_ratio)), dtype=np.int64),
         "cem_num_samples": np.asarray(args.num_samples, dtype=np.int64), "cem_iters": np.asarray(args.cem_iters, dtype=np.int64),
         "cem_horizon": np.asarray(args.horizon, dtype=np.int64), "cem_seed": np.asarray(args.seed, dtype=np.int64),
+        "rollout_horizon": np.asarray(args.horizon, dtype=np.int64),
+        "decision_horizon": np.asarray(args.horizon if args.residual_parameterization == "full" else args.residual_control_points, dtype=np.int64),
+        "residual_parameterization": np.asarray(args.residual_parameterization),
+        "residual_control_points": np.asarray(args.residual_control_points, dtype=np.int64),
+        "control_point_interpolation": np.asarray("identity" if args.residual_parameterization == "full" else "linear_align_corners"),
+        "control_point_tail_mode": np.asarray("hold"),
+        "stage_one_task_space_cost": np.asarray(args.stage_one_task_space_cost),
         "ddq_des": stack([ddq_reference[i] for i in range(len(rec["q_des"]))]),
         **api["config_arrays"](robustness, env),
     })
