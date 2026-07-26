@@ -42,6 +42,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--save_dir", default="outputs/figures", type=str)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--action_std", default=0.3, type=str)
+    parser.add_argument(
+        "--action_std_groups",
+        default=None,
+        type=str,
+        help="Optional scalar schedule such as '0.5:10,0.8:10'; counts must sum to num_rollouts.",
+    )
     parser.add_argument("--settle_steps", default=50, type=int, help="Steps to hold q_ref=q after reset before evaluation")
     parser.add_argument("--warmup_steps", default=0, type=int)
     parser.add_argument("--horizons", default="1,5,10,20,50,200", type=str)
@@ -56,6 +62,24 @@ def parse_horizons(value: str) -> list[int]:
     if any(horizon <= 0 for horizon in horizons):
         raise ValueError(f"Horizons must be positive integers, got {horizons}")
     return sorted(set(horizons))
+
+
+def parse_action_std_groups(value: str | None, num_rollouts: int) -> list[float] | None:
+    if value is None:
+        return None
+    schedule: list[float] = []
+    for item in value.split(","):
+        try:
+            std_text, count_text = item.split(":", 1)
+            std, count = float(std_text), int(count_text)
+        except ValueError as exc:
+            raise ValueError("--action_std_groups must use STD:COUNT entries") from exc
+        if not np.isfinite(std) or std < 0 or count <= 0:
+            raise ValueError("--action_std_groups values must be finite/non-negative with positive counts")
+        schedule.extend([std] * count)
+    if len(schedule) != num_rollouts:
+        raise ValueError("--action_std_groups counts must sum to --num_rollouts")
+    return schedule
 
 
 def state_labels(n_joints: int) -> list[str]:
@@ -406,6 +430,7 @@ def main() -> None:
     if args.settle_steps < 0:
         raise ValueError(f"settle_steps must be non-negative, got {args.settle_steps}")
     action_std = parse_action_std(args.action_std, args.n_joints)
+    action_std_schedule = parse_action_std_groups(args.action_std_groups, args.num_rollouts)
     horizons = parse_horizons(args.horizons)
     set_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -434,13 +459,14 @@ def main() -> None:
     teacher_rows: list[dict[str, float | int | str]] = []
     try:
         for rollout_idx in range(args.num_rollouts):
+            rollout_action_std = action_std if action_std_schedule is None else action_std_schedule[rollout_idx]
             total_steps = args.warmup_steps + max(args.rollout_len, max(horizons))
             true_states_all, actions, true_next_states_all, torque_all = collect_truth_rollout_with_torque(
                 env,
                 rng,
                 args.n_joints,
                 total_steps,
-                action_std,
+                rollout_action_std,
                 settle_steps=args.settle_steps,
                 mode_id=rollout_idx,
             )
@@ -450,6 +476,8 @@ def main() -> None:
                 true_states=true_states_all,
                 actions=actions,
                 true_next_states=true_next_states_all,
+                action_std=np.asarray(rollout_action_std, dtype=np.float32),
+                motion_mode=np.asarray(MOTION_MODE_NAMES[rollout_idx % len(MOTION_MODE_NAMES)]),
             )
             torque_components = {
                 key: value[args.warmup_steps : args.warmup_steps + args.rollout_len]
@@ -502,7 +530,7 @@ def main() -> None:
                         "rollout": rollout_idx,
                         "mode": "open_loop",
                         "horizon": horizon,
-                        "action_std": args.action_std,
+                        "action_std": str(rollout_action_std),
                         "warmup_steps": args.warmup_steps,
                         **summarize_prediction(
                             horizon_truth, horizon_pred, labels,
@@ -540,7 +568,7 @@ def main() -> None:
                         "rollout": rollout_idx,
                         "mode": "teacher_forcing",
                         "horizon": 1,
-                        "action_std": args.action_std,
+                        "action_std": str(rollout_action_std),
                         "warmup_steps": args.warmup_steps,
                         **summarize_prediction(
                             true_next_states_all, teacher_pred_next, labels,

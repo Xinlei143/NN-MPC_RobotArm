@@ -23,6 +23,22 @@ def _rms(values: Any) -> float:
     return float(np.sqrt(np.mean(np.square(finite)))) if finite.size else float("nan")
 
 
+def _max(values: Any, *, absolute: bool = False) -> float:
+    finite = _finite(values)
+    if absolute:
+        finite = np.abs(finite)
+    return float(np.max(finite)) if finite.size else float("nan")
+
+
+def _longest_true_run(values: Any) -> int:
+    array = np.asarray(values, dtype=bool).reshape(-1)
+    longest = current = 0
+    for value in array:
+        current = current + 1 if value else 0
+        longest = max(longest, current)
+    return longest
+
+
 def _event_metric(events: list[dict[str, Any]], key: str) -> np.ndarray:
     return _finite([event.get("candidate_diagnostics", {}).get(key, np.nan) for event in events])
 
@@ -40,6 +56,7 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray], planner_events: 
     replanned = np.asarray(arrays.get("mpc_replanned", np.empty(0)), dtype=bool)
     solves = planning[replanned] if replanned.shape == planning.shape else planning
     packet_age = np.asarray(arrays.get("packet_age", np.empty(0)), dtype=np.float64)
+    fallback = np.asarray(arrays.get("fallback_active", packet_age < 0), dtype=bool)
     scalar = lambda key, default="": np.asarray(arrays.get(key, default)).reshape(-1)[0]
     solve_count = int(np.asarray(arrays.get("planner_solve_count", np.sum(replanned))).reshape(-1)[0])
     late_count = int(np.asarray(arrays.get("planner_late_drop_count", 0)).reshape(-1)[0])
@@ -74,9 +91,16 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray], planner_events: 
         "actuator_torque_rms_nm": _rms(arrays.get("tau_actuator", np.empty(0))),
         "total_torque_rms_nm": _rms(arrays.get("tau_total", np.empty(0))),
         "residual_rms_rad": _rms(arrays.get("executed_residual", np.empty(0))),
+        "feedback_rms_rad": _rms(arrays.get("feedback", np.empty(0))),
         "projection_discrepancy_rms_rad": _rms(arrays.get("projection_discrepancy", np.empty(0))),
+        "projection_discrepancy_p95_rad": _percentile(np.abs(np.asarray(arrays.get("projection_discrepancy", np.empty(0)))), 95),
+        "projection_discrepancy_max_rad": _max(arrays.get("projection_discrepancy", np.empty(0)), absolute=True),
         "safety_projection_offset_rms_rad": _rms(arrays.get("safety_projection_offset", np.empty(0))),
+        "safety_projection_offset_p95_rad": _percentile(np.abs(np.asarray(arrays.get("safety_projection_offset", np.empty(0)))), 95),
+        "safety_projection_offset_max_rad": _max(arrays.get("safety_projection_offset", np.empty(0)), absolute=True),
         "planner_execution_qref_error_rms_rad": _rms(arrays.get("planner_execution_qref_error", np.empty(0))),
+        "planner_execution_qref_error_p95_rad": _percentile(np.abs(np.asarray(arrays.get("planner_execution_qref_error", np.empty(0)))), 95),
+        "planner_execution_qref_error_max_rad": _max(arrays.get("planner_execution_qref_error", np.empty(0)), absolute=True),
         "projection_activation_rate": float(np.mean(np.asarray(arrays.get("projection_active", np.empty(0))) != 0)) if np.asarray(arrays.get("projection_active", np.empty(0))).size else float("nan"),
         "residual_saturation_rate": float(np.mean(np.asarray(arrays.get("residual_saturated", np.empty(0))) != 0)) if np.asarray(arrays.get("residual_saturated", np.empty(0))).size else float("nan"),
         "feedback_saturation_rate": float(np.mean(np.asarray(arrays.get("feedback_saturated", np.empty(0))) != 0)) if np.asarray(arrays.get("feedback_saturated", np.empty(0))).size else float("nan"),
@@ -84,16 +108,36 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray], planner_events: 
         "velocity_violation_count": int(np.sum(np.asarray(arrays.get("command_velocity_violation_flags", np.empty(0))) != 0)),
         "acceleration_violation_count": int(np.sum(np.asarray(arrays.get("command_acceleration_violation_flags", np.empty(0))) != 0)),
         "solve_p50_s": _percentile(solves, 50), "solve_p95_s": _percentile(solves, 95), "solve_p99_s": _percentile(solves, 99),
+        "solve_max_s": _max(solves),
         "e2e_p50_s": _percentile(arrays.get("planner_end_to_end_latency_s", np.empty(0)), 50),
         "e2e_p95_s": _percentile(arrays.get("planner_end_to_end_latency_s", np.empty(0)), 95),
         "e2e_p99_s": _percentile(arrays.get("planner_end_to_end_latency_s", np.empty(0)), 99),
+        "e2e_max_s": _max(arrays.get("planner_end_to_end_latency_s", np.empty(0))),
         "planner_hz": float(scalar("planner_actual_update_rate_hz", np.nan)),
         "late_packet_rate": float(late_count / solve_count) if solve_count else float("nan"),
         "active_packet_ratio": float(np.mean(packet_age >= 0)) if packet_age.size else float("nan"),
+        "packet_age_p50_steps": _percentile(packet_age[packet_age >= 0], 50),
+        "packet_age_p95_steps": _percentile(packet_age[packet_age >= 0], 95),
+        "packet_age_max_steps": _max(packet_age[packet_age >= 0]),
+        "fallback_duty_cycle": float(np.mean(fallback)) if fallback.size else float("nan"),
+        "active_packet_gap_max_steps": _longest_true_run(fallback),
+        "active_packet_gap_max_s": 0.01 * _longest_true_run(fallback),
+        "control_compute_p50_s": _percentile(arrays.get("control_step_wall_time", np.empty(0)), 50),
+        "control_compute_p95_s": _percentile(arrays.get("control_step_wall_time", np.empty(0)), 95),
         "control_compute_p99_s": _percentile(arrays.get("control_step_wall_time", np.empty(0)), 99),
+        "control_compute_max_s": _max(arrays.get("control_step_wall_time", np.empty(0))),
+        "control_period_p50_s": _percentile(arrays.get("actual_control_period_s", np.empty(0)), 50),
+        "control_period_p95_s": _percentile(arrays.get("actual_control_period_s", np.empty(0)), 95),
         "control_period_p99_s": _percentile(arrays.get("actual_control_period_s", np.empty(0)), 99),
+        "control_period_max_s": _max(arrays.get("actual_control_period_s", np.empty(0))),
+        "wakeup_lateness_p50_s": _percentile(arrays.get("control_wakeup_lateness_s", np.empty(0)), 50),
+        "wakeup_lateness_p95_s": _percentile(arrays.get("control_wakeup_lateness_s", np.empty(0)), 95),
         "wakeup_lateness_p99_s": _percentile(arrays.get("control_wakeup_lateness_s", np.empty(0)), 99),
+        "wakeup_lateness_max_s": _max(arrays.get("control_wakeup_lateness_s", np.empty(0))),
+        "start_jitter_p50_s": _percentile(arrays.get("control_start_jitter_s", np.empty(0)), 50),
+        "start_jitter_p95_s": _percentile(arrays.get("control_start_jitter_s", np.empty(0)), 95),
         "start_jitter_p99_s": _percentile(arrays.get("control_start_jitter_s", np.empty(0)), 99),
+        "start_jitter_max_s": _max(arrays.get("control_start_jitter_s", np.empty(0))),
         "control_deadline_miss_count": int(np.sum(np.asarray(arrays.get("control_deadline_miss", np.empty(0))) != 0)),
         "planner_failure_count": planner_failure_count,
         "packet_expiration_count": int(scalar("packet_expiration_count", 0)),
@@ -102,6 +146,7 @@ def summarize_arrays(label: str, arrays: dict[str, np.ndarray], planner_events: 
         "planner_event_count": len(events),
         "exact_final_pool_time_p50_s": _percentile(exact_pool_time, 50),
         "exact_final_pool_time_p95_s": _percentile(exact_pool_time, 95),
+        "exact_final_pool_time_max_s": _max(exact_pool_time),
         "exact_pool_candidate_count_mean": float(np.mean(exact_count)) if exact_count.size else float("nan"),
         "exact_pool_valid_count_mean": float(np.mean(exact_valid)) if exact_valid.size else float("nan"),
         "exact_selection_changed_rate": float(np.mean(exact_changed != 0)) if exact_changed.size else float("nan"),
@@ -133,11 +178,24 @@ def aggregate_rows(rows: list[dict[str, Any]], group_fields: tuple[str, ...]) ->
         "failure_rate", "planner_failure_step_rate",
         "command_acceleration_rms_rad_s2", "command_acceleration_max_abs_rad_s2", "actuator_torque_rms_nm",
         "projection_discrepancy_rms_rad", "safety_projection_offset_rms_rad",
-        "planner_execution_qref_error_rms_rad", "projection_activation_rate",
+        "projection_discrepancy_p95_rad", "projection_discrepancy_max_rad",
+        "safety_projection_offset_p95_rad", "safety_projection_offset_max_rad",
+        "planner_execution_qref_error_rms_rad", "planner_execution_qref_error_p95_rad",
+        "planner_execution_qref_error_max_rad", "projection_activation_rate",
         "residual_saturation_rate", "feedback_saturation_rate", "e2e_p95_s",
-        "planner_hz", "late_packet_rate", "control_deadline_miss_count",
+        "solve_p95_s", "solve_p99_s", "solve_max_s", "e2e_p99_s", "e2e_max_s",
+        "planner_hz", "late_packet_rate", "fallback_duty_cycle",
+        "active_packet_gap_max_s", "control_deadline_miss_count",
+        "control_compute_p50_s", "control_compute_p95_s", "control_compute_max_s",
+        "control_period_p50_s", "control_period_p95_s", "control_period_p99_s",
+        "control_period_max_s", "wakeup_lateness_p50_s", "wakeup_lateness_p95_s",
+        "wakeup_lateness_p99_s", "wakeup_lateness_max_s",
+        "start_jitter_p50_s", "start_jitter_p95_s", "start_jitter_p99_s",
+        "start_jitter_max_s", "packet_age_p50_steps", "packet_age_p95_steps",
+        "packet_age_max_steps",
         "planner_failure_count", "packet_expiration_count",
-        "exact_final_pool_time_p95_s", "exact_pool_candidate_count_mean", "exact_pool_valid_count_mean",
+        "exact_final_pool_time_p95_s", "exact_final_pool_time_max_s",
+        "exact_pool_candidate_count_mean", "exact_pool_valid_count_mean",
         "exact_selection_changed_rate", "baseline_selection_rate",
     )
     output: list[dict[str, Any]] = []

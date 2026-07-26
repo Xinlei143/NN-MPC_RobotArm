@@ -18,7 +18,14 @@ from mpc.delay_protocol import PROTOCOL_NAMES, resolve_delay_protocol
 from mpc.task_space_reference import generate_task_space_trajectory
 from scripts.experiment_utils.bootstrap import paired_bootstrap_rows
 from scripts.paper_experiments.evaluation import summarize_arrays
-from scripts.paper_experiments.workflow import _base_args, _select_preview, suite_cases
+from scripts.paper_experiments.merge_mpc_ik_results import _deduplicate_ik
+from scripts.paper_experiments.workflow import (
+    _base_args,
+    _legacy_compatibility_backfill,
+    _select_preview,
+    suite_cases,
+)
+from dynamics_modeling.scripts.eval_dynamics import parse_action_std_groups
 
 
 def load_runner():
@@ -40,6 +47,13 @@ class DelayProtocolTests(unittest.TestCase):
         self.assertEqual(len(rows), len(set(rows)))
         self.assertEqual(rows[0], (True, True, True, True))
         self.assertEqual(resolve_delay_protocol("no_future_alignment").future_reference, False)
+
+    def test_anchor_only_protocol_semantics(self) -> None:
+        protocol = resolve_delay_protocol("anchor_only")
+        self.assertEqual(
+            (protocol.future_state, protocol.future_reference, protocol.reanchor_residual, protocol.feedback),
+            (True, True, False, False),
+        )
 
     def test_zero_delay_plan_is_active_on_the_same_logical_tick(self) -> None:
         args = RUNNER.parse_args([
@@ -82,6 +96,10 @@ class PreviewSelectionTests(unittest.TestCase):
         selected, limit = _select_preview(rows, 0.10)
         self.assertAlmostEqual(limit, 0.03399)
         self.assertEqual(selected["preview_steps"], 7)
+
+    def test_gru_action_std_groups_cover_frozen_training_support(self) -> None:
+        values = parse_action_std_groups("0.5:10,0.8:10", 20)
+        self.assertEqual(values, [0.5] * 10 + [0.8] * 10)
 
 
 class RoundedSquareTests(unittest.TestCase):
@@ -155,8 +173,55 @@ class ExperimentStatisticsTests(unittest.TestCase):
         self.assertEqual(summary["exact_selection_changed_rate"], 0.5)
         self.assertEqual(summary["baseline_selection_rate"], 0.5)
 
+    def test_timing_summary_contains_max_values(self) -> None:
+        summary = summarize_arrays(
+            "threaded",
+            {
+                "actuator_q_ref": np.zeros((3, 1)),
+                "planning_time": np.asarray([0.01, 0.02, 0.03]),
+                "mpc_replanned": np.ones(3, dtype=bool),
+                "planner_end_to_end_latency_s": np.asarray([0.02, 0.04, 0.03]),
+                "control_step_wall_time": np.asarray([0.001, 0.002, 0.003]),
+                "actual_control_period_s": np.asarray([0.01, 0.011, 0.012]),
+                "control_wakeup_lateness_s": np.asarray([0.0, 0.001, 0.002]),
+                "control_start_jitter_s": np.asarray([0.0, 0.002, 0.004]),
+            },
+        )
+        self.assertEqual(summary["solve_max_s"], 0.03)
+        self.assertEqual(summary["e2e_max_s"], 0.04)
+        self.assertEqual(summary["control_compute_max_s"], 0.003)
+        self.assertEqual(summary["control_period_max_s"], 0.012)
+
+    def test_baseline_deduplication(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            rows = []
+            for seed in (0, 1):
+                run_dir = Path(temporary) / str(seed)
+                run_dir.mkdir()
+                np.savez_compressed(
+                    run_dir / "rollout.npz",
+                    actual_states=np.zeros((2, 2)),
+                    ee_position_errors=np.zeros(2),
+                    ee_orientation_errors=np.zeros(2),
+                )
+                rows.append({
+                    "method": "physical", "trajectory": "circle", "condition": "nominal",
+                    "perturbation": "nominal", "level": "0", "reference_sha256": "ref",
+                    "seed": seed, "run_dir": str(run_dir),
+                })
+            unique, report = _deduplicate_ik(rows)
+            self.assertEqual(len(unique), 1)
+            self.assertTrue(report[0]["deterministic"])
+
 
 class PaperMatrixTests(unittest.TestCase):
+    def test_paper_base_args_freeze_stage_one_off(self) -> None:
+        args = _base_args()
+        self.assertEqual((args.stage_one_task_space_cost, args.stage_one_task_compile), ("off", "off"))
+
+    def test_paper_base_args_use_full_residual_parameterization(self) -> None:
+        self.assertEqual(_base_args().residual_parameterization, "full")
+
     def test_paper_base_args_pin_the_final_gru_two_stage_method(self) -> None:
         args = _base_args()
         self.assertEqual(args.model_type, "gru")
@@ -164,6 +229,7 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(args.horizon, 20)
         self.assertEqual(args.num_samples, 128)
         self.assertEqual(args.cem_iters, 2)
+        self.assertEqual(args.rollout_batch_size, 128)
         self.assertEqual(args.planner_projection, "on")
         self.assertEqual(args.planner_projection_backend, "compiled")
         self.assertEqual(args.planner_projection_strategy, "two_stage")
@@ -172,6 +238,11 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(args.w_task_orientation, 0.25)
         self.assertEqual(args.uncertainty_mode, "off")
         self.assertEqual(args.cost_profile, "blackbox")
+        self.assertEqual(args.residual_parameterization, "full")
+        self.assertEqual(args.stage_one_task_space_cost, "off")
+        self.assertEqual(args.stage_one_task_compile, "off")
+        self.assertEqual(args.cem_execute, "lowest_cost")
+        self.assertEqual(args.mpc_preview_nominal_steps, 0)
         self.assertEqual((args.payload_level, args.actuator_gain_level, args.force_pulse_level, args.observation_noise_level), (0, 0, 0, 0))
 
     @staticmethod
@@ -182,6 +253,12 @@ class PaperMatrixTests(unittest.TestCase):
             "paired_cem_seeds": [0, 1, 2, 3, 4],
             "delay_sweep_seeds": [0, 1, 2],
             "delay_sweep_steps": [0, 2, 4, 6, 8],
+            "projection_common_delay_steps": 6,
+            "delay_calibrations": {
+                "joint_only_projection_off": {"anticipation_delay_steps": 4},
+                "joint_only_full_compiled": {"anticipation_delay_steps": 6},
+                "joint_only_two_stage": {"anticipation_delay_steps": 5},
+            },
         }
 
     def test_formal_suite_sizes_match_the_registered_protocol(self) -> None:
@@ -192,6 +269,33 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(len(suite_cases(manifest, "preview")), 4)
         self.assertEqual(len(suite_cases(manifest, "oracle")), 12)
         self.assertEqual(len(suite_cases(manifest, "task_cost")), 24)
+        self.assertEqual(len(suite_cases(manifest, "delay_sweep_components")), 96)
+        self.assertEqual(len(suite_cases(manifest, "projection_choice")), 36)
+
+    def test_projection_suite_freezes_joint_only_cost_and_common_d6(self) -> None:
+        cases = suite_cases(self._manifest(), "projection_choice")
+        self.assertTrue(all(case["exact_task_space_cost"] == "off" for case in cases))
+        common = [case for case in cases if case["evaluation_set"] == "common_d"]
+        self.assertEqual(len(common), 18)
+        self.assertTrue(all(case["delay_steps"] == 6 for case in common))
+
+    def test_four_stage_delay_sweep_size(self) -> None:
+        self.assertEqual(len(suite_cases(self._manifest(), "delay_sweep_components")), 96)
+
+    def test_projection_suite_size(self) -> None:
+        self.assertEqual(len(suite_cases(self._manifest(), "projection_choice")), 36)
+
+    def test_existing_main_case_cache_compatibility(self) -> None:
+        self.assertEqual(
+            _legacy_compatibility_backfill({}),
+            {
+                "residual_parameterization": "full",
+                "stage_one_task_space_cost": "off",
+                "stage_one_task_compile": "off",
+                "mpc_preview_nominal_steps": 0,
+            },
+        )
+        self.assertIsNone(_legacy_compatibility_backfill({"stage_one_task_space_cost": "gpu_budgeted"}))
 
     def test_task_cost_suite_has_fixed_and_deployed_paired_variants(self) -> None:
         cases = suite_cases(self._manifest(), "task_cost")

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 PROTOCOL_NAMES = (
     "full",
     "naive_delayed",
+    "anchor_only",
     "no_future_alignment",
     "no_reanchor",
     "no_feedback",
@@ -30,6 +31,7 @@ class DelayProtocol:
 _PROTOCOLS = {
     "full": DelayProtocol("full", True, True, True, True),
     "naive_delayed": DelayProtocol("naive_delayed", False, False, False, False),
+    "anchor_only": DelayProtocol("anchor_only", True, True, False, False),
     # State forecast and activation-time reference shift are one future-
     # alignment module in the paper.  This variant removes both together.
     "no_future_alignment": DelayProtocol("no_future_alignment", False, False, True, True),
