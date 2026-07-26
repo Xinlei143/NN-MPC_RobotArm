@@ -24,6 +24,7 @@ from scripts.paper_experiments.merge_mpc_ik_results import (
     perturbation_family,
 )
 from scripts.paper_experiments.revision_evidence import (
+    latency_recovery_with_ci,
     replace_fullvirtual,
     select_fullvirtual_cases,
 )
@@ -146,6 +147,18 @@ class ExperimentStatisticsTests(unittest.TestCase):
             })
         report = grouped_cluster_bootstrap(rows, "perturbation_family", 20, 1)
         self.assertEqual(set(report["groups"]), {"payload", "force_pulse"})
+
+    def test_latency_recovery_bootstraps_cases(self) -> None:
+        rows = []
+        for seed, full in enumerate((2.0, 3.0)):
+            rows.extend([
+                {"trajectory": "circle", "seed": seed, "label": "NaiveDelayed", "tcp_rmse_m": 5.0},
+                {"trajectory": "circle", "seed": seed, "label": "IdealZeroDelay", "tcp_rmse_m": 1.0},
+                {"trajectory": "circle", "seed": seed, "label": "FullVirtual", "tcp_rmse_m": full},
+            ])
+        report = latency_recovery_with_ci(rows, 100, 1)
+        self.assertEqual(report["pooled"]["n"], 2)
+        self.assertAlmostEqual(report["pooled"]["mean"], 0.625)
     def test_bootstrap_pairs_cases_not_timesteps(self) -> None:
         rows = [
             {"label": "naive", "case_id": "circle:0", "metric": 3.0},

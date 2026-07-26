@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from scripts.paper_experiments.evaluation import summarize_arrays
+from scripts.paper_experiments.evaluation import latency_recovery, summarize_arrays
 from scripts.paper_experiments.merge_mpc_ik_results import perturbation_family
 from scripts.experiment_utils.bootstrap import paired_bootstrap_rows
 
@@ -147,6 +147,43 @@ def _summary_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def latency_recovery_with_ci(rows: list[dict[str, Any]], samples: int, seed: int) -> dict[str, Any]:
+    """Case-bootstrap the pre-registered recovery ratio without resampling ticks."""
+    grouped: dict[tuple[str, int], dict[str, float]] = defaultdict(dict)
+    for row in rows:
+        grouped[(str(row["trajectory"]), int(row["seed"]))][str(row["label"])] = float(row["tcp_rmse_m"])
+    by_trajectory: dict[str, list[float]] = defaultdict(list)
+    for (trajectory, _), methods in grouped.items():
+        if {"NaiveDelayed", "FullVirtual", "IdealZeroDelay"}.issubset(methods):
+            denominator = methods["NaiveDelayed"] - methods["IdealZeroDelay"]
+            if denominator > 1e-6:
+                by_trajectory[trajectory].append(
+                    (methods["NaiveDelayed"] - methods["FullVirtual"]) / denominator
+                )
+    rng = np.random.default_rng(seed)
+
+    def report(values: list[float]) -> dict[str, Any]:
+        array = np.asarray(values, dtype=np.float64)
+        draws = array[rng.integers(0, len(array), size=(samples, len(array)))].mean(axis=1)
+        return {
+            "n": int(len(array)),
+            "mean": float(array.mean()),
+            "ci95": [float(np.quantile(draws, 0.025)), float(np.quantile(draws, 0.975))],
+        }
+
+    flattened = [value for values in by_trajectory.values() for value in values]
+    return {
+        "definition": "(NaiveDelayed - FullVirtual) / (NaiveDelayed - IdealZeroDelay)",
+        "epsilon_m": 1e-6,
+        "pooled": report(flattened),
+        "by_trajectory": {
+            trajectory: report(values)
+            for trajectory, values in sorted(by_trajectory.items())
+        },
+        "legacy_point_estimate": latency_recovery(rows),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--paper-root", required=True)
@@ -173,6 +210,10 @@ def main() -> None:
         )
     }
     _write_json(output / "statistics/threaded_vs_fullvirtual.json", comparisons)
+    _write_json(
+        output / "statistics/latency_recovery_with_ci.json",
+        latency_recovery_with_ci(main_rows, args.bootstrap_samples, 20261001),
+    )
     _write_json(output / "statistics/threaded_realtime_nominal.json", pooled_timing(assembled["main"], "ThreadedASAP"))
     ablation_rows = _summary_rows(assembled["ablation"])
     ablations = {}

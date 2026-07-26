@@ -1,5 +1,3 @@
-% IEEE ROBIO 2026 manuscript scaffold.
-% Replace every \datareq{...} marker before submission.
 \documentclass[conference]{IEEEtran}
 
 \usepackage{amsmath,amssymb,bm}
@@ -7,17 +5,9 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
 
-\newcommand{\datareq}[1]{\textcolor{red}{\footnotesize\textsf{[DATA REQUIRED: #1]}}}
-\newcommand{\tbd}{\textcolor{red}{\textsf{TBD}}}
-\newcommand{\placeholderfigure}[2]{%
-  \begin{center}
-    \fbox{\parbox[c][#1][c]{0.94\columnwidth}{\centering\small\textbf{Figure placeholder}\\[0.35em]#2}}
-  \end{center}}
-\newcommand{\placeholderfigurewide}[2]{%
-  \begin{center}
-    \fbox{\parbox[c][#1][c]{0.95\textwidth}{\centering\small\textbf{Figure placeholder}\\[0.35em]#2}}
-  \end{center}}
 
 \title{Activation-Aligned Asynchronous Learned Residual CEM-MPC for Position-Controlled Manipulators}
 
@@ -28,7 +18,7 @@
 \maketitle
 
 \begin{abstract}
-Position-controlled manipulators expose absolute joint-reference commands rather than torque inputs, making their effective response depend on low-level servo behavior. Learned model predictive control can capture this closed-loop response, but sampling-based planning may take substantially longer than the command period, so a plan optimized from the launch state can be stale when activated. We study a delay-aware asynchronous learned residual cross-entropy-method MPC (CEM-MPC) architecture for this setting. A history-conditioned gated recurrent unit predicts transitions under actuator-reference commands, while CEM searches bounded corrections around a continuous inverse-kinematics (IK) nominal trajectory. The planner forecasts the state at the intended activation time and publishes a timestamped residual packet; a 100~Hz execution layer retrieves the age-aligned residual, reconstructs the current nominal, applies bounded state feedback, and falls back to Projected Direct IK when no valid packet is available. Experiments on an ABB IRB~2400 MuJoCo model compare raw, projected, and preview IK baselines with Ideal zero-delay logical MPC, naive delayed, virtual delay-aware, and real threaded execution over four trajectories and paired CEM seeds. \datareq{Insert stale-plan degradation and recovery, the paired primary endpoint, Direct-IK secondary comparison, tracking uncertainty, smoothness/torque trade-off, CEM and end-to-end latency, packet/fallback behavior, and control deadline misses.}
+Position-controlled manipulators accept absolute joint references, so a sampling MPC plan can become stale while it is being optimized. We study asynchronous residual CEM-MPC for this setting. A GRU predicts closed-loop actuator-reference dynamics; CEM plans bounded corrections around a continuous IK nominal; and a 100~Hz execution layer reconstructs the current nominal and applies an age-aligned residual packet. On an ABB IRB~2400 MuJoCo model, fixed-delay FullVirtual reduced TCP RMSE by 39.55~mm (58.1\%, 95\% CI 36.87--42.10~mm) relative to NaiveDelayed. Under nominal conditions, ThreadedASAP differed from FullVirtual by 0.054~mm (95\% CI $-1.094$--1.303~mm), reduced RMSE by 10.84~mm relative to Projected Direct IK, and reduced it by 4.21~mm relative to Preview IK. Planner end-to-end latency was 44.92/49.04~ms at p50/p95, above the 10~ms command period; the asynchronous execution layer maintained the reported soft-real-time boundary.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -66,7 +56,7 @@ We consider a six-degree-of-freedom ABB IRB~2400 model simulated in MuJoCo \cite
   \bm{x}_t=[\bm{q}_t^\top,\dot{\bm{q}}_t^\top]^\top\in\mathbb{R}^{12},
   \qquad \bm{u}_t=\bm{q}^{\mathrm{ref}}_t\in\mathbb{R}^{6}.
 \end{equation}
-The input is the absolute target of the position actuator. MuJoCo advances at 2~ms and the command layer uses five physics substeps, giving $\Delta t=10$~ms. \datareq{Confirm the final XML, gravity-compensation setting, reference generator, and paper configuration commit.}
+The input is the absolute target of the position actuator. MuJoCo advances at 2~ms and the command layer uses five physics substeps, giving $\Delta t=10$~ms. We use the frozen ABB\_IRB2400.xml task-space reference suite and clean commit \texttt{77505a5}; the evidence manifest records the checkpoint, normalizer, reference hashes, and software environment.
 
 The main model is a GRU with aligned history tokens
 \begin{equation}
@@ -78,7 +68,7 @@ It predicts a velocity increment and reconstructs the next state as
  \hat{\dot{\bm q}}_{t+1}&=\dot{\bm q}_t+\widehat{\Delta\dot{\bm q}}_{t+1},\qquad
  \hat{\bm q}_{t+1}=\bm q_t+\hat{\dot{\bm q}}_{t+1}\Delta t.
 \end{align}
-Training and online rollout use the same aligned $[\bm{x}_t,\bm{u}_t]$ convention. On 20 new held-out MuJoCo rollouts, the frozen GRU had 20-step joint-position RMSEs of 0.0216~rad at action standard deviation 0.5 and 0.0441~rad at 0.8; the lower-amplitude group had no divergent rollout. We interpret this as usable short-horizon prediction within the sampled training-action coverage, not stable generalization to arbitrary excitation. \datareq{Insert the checkpoint identifier, hidden size, layers, data split, normalization, losses, and optimizer.}
+Training and online rollout use the same aligned $[\bm{x}_t,\bm{u}_t]$ convention. The frozen checkpoint is \texttt{gru\_20260717\_182930}; it uses history length 16 and a 20-step rollout-loss training objective. On 20 new held-out MuJoCo rollouts, its 20-step joint-position RMSE was 0.0216~rad at action standard deviation 0.5 and 0.0441~rad at 0.8; the lower-amplitude group had no divergent rollout. These results show usable short-horizon prediction within the sampled training-action coverage, not stable generalization to arbitrary excitation.
 
 \subsection{IK Nominal and Residual CEM}
 A continuous bounded damped-least-squares IK solver maps the desired task-space trajectory to $\bm q^{\mathrm{IK}}$ \cite{wampler1986dls}. For a plan intended to activate at $t_a$, define the joint-range-clipped nominal
@@ -123,13 +113,14 @@ The \emph{exact-projection and kinematic final-pool score} additionally uses the
  +w_p\ell_p^{\rm TCP}+w_R\ell_R^{\rm TCP}.
  \label{eq:exact-cost}
 \end{equation}
-The lowest finite final-pool score is selected; ties prefer baseline, mean, best, and elite roles in that order. This is not oracle-dynamics evaluation: it requires known robot forward kinematics but not known actuator dynamics; ``black-box'' refers to the closed-loop dynamics. We log plan-level valid-candidate fraction, reranking time, final selection mode, baseline selection, and whether reranking changes the approximate choice. The generic implementation retains terminal, torque, and torque-slew terms, but the frozen black-box paper profile does not enable the torque terms and uses $w_{\rm terminal}=0$; they are therefore not active terms in~\eqref{eq:approx-cost}. \datareq{Insert the frozen horizon, population, elites, iterations, residual bounds, discount, barrier maximum weight, all active scales and weights, and task-space calibration protocol.}
+The lowest finite final-pool score is selected; ties prefer baseline, mean, best, and elite roles in that order. This is not oracle-dynamics evaluation: it requires known robot forward kinematics but not known actuator dynamics; ``black-box'' refers to the closed-loop dynamics. The frozen controller uses $H=20$, 128 samples, two CEM iterations, an elite ratio of 0.08, full residual parameterization, and compiled two-stage projection. It evaluates exact task-space cost only in the final pool. The generic implementation retains terminal, torque, and torque-slew terms, but the frozen black-box profile uses $w_{\rm terminal}=0$ and does not enable torque terms in~\eqref{eq:approx-cost}. A separate 500-plan calibration gave an anticipation delay of six control steps.
 
 \section{Activation-Aligned Asynchronous Execution}
 \label{sec:execution}
 \begin{figure*}[!t]
-  \placeholderfigurewide{1.35in}{\datareq{System diagram: task reference and continuous IK; snapshot and future-state forecast; slow GRU/CEM worker; timestamped residual packet; 100 Hz nominal reconstruction, feedback, execution projection, and Direct-IK fallback.}}
-  \caption{Activation-time-aligned learned residual CEM-MPC. The slow planner and 100~Hz execution layer must be shown as separate timing domains.}
+  \centering
+  \input{figures/system_overview}
+  \caption{Activation-aligned learned residual CEM-MPC. The asynchronous planner forecasts an activation state and publishes a timestamped residual packet. The 100~Hz layer rebuilds the current nominal, applies the age-aligned correction, and uses the same physical projection as the planner.}
   \label{fig:system}
 \end{figure*}
 
@@ -174,7 +165,7 @@ Virtual delay-aware MPC is a deterministic fixed-delay emulator launched at a pr
 
 \section{Experiments}
 \label{sec:protocol}
-One GRU checkpoint, normalizer, CEM budget, cost, constraints, anticipation delay, and feedback setting are selected on a separate calibration trajectory and frozen. Tests use circle, figure-eight, fast ellipse, and rounded-square references. The square is smoothed to avoid attributing reference discontinuities to controller delay. \datareq{Provide the unique paper configuration/manifest, commit hash, checkpoint, hardware, software versions, initial-state protocol, and all reference parameters.}
+One GRU checkpoint, normalizer, CEM budget, cost, constraints, anticipation delay, and feedback setting are selected on a separate calibration trajectory and then frozen. Tests use circle, figure-eight, fast ellipse, and rounded-square references. The square is smoothed to avoid attributing reference discontinuities to controller delay. Experiments use an NVIDIA RTX~4060 Laptop GPU with CUDA~13.0, PyTorch~2.11.0, MuJoCo~3.8.1, and Python~3.10.20; the manifest fixes the model, normalizer, XML, references, and clean commit.
 
 The main evaluation separates deterministic IK baselines from stochastic MPC methods:
 \begin{enumerate}
@@ -186,47 +177,44 @@ The main evaluation separates deterministic IK baselines from stochastic MPC met
  \item \textbf{Virtual delay-aware MPC}: deterministic fixed-delay validation of anchoring and reanchoring; and
  \item \textbf{Threaded asynchronous MPC}: the measured dual-thread implementation.
 \end{enumerate}
-Each deterministic IK method is run once under the fixed initial condition. MPC methods use five paired CEM seeds. The pre-specified primary endpoint is the trajectory--seed paired difference in full-trajectory TCP position RMSE between FullVirtual and NaiveDelayed. Comparisons with Projected Direct IK are key secondary endpoints. Bootstrap resampling uses trajectory--seed cases, never individual 10~ms ticks. We report per-trajectory, aggregate, and worst-seed results with 95\% paired-bootstrap confidence intervals. The three component-ablation contrasts are not interpreted as additive independent effects. \datareq{Insert the frozen bootstrap procedure, representative-run rule, and handling of any randomized initial states.}
+Each deterministic IK method is run once under the fixed initial condition. MPC methods use five paired CEM seeds. The pre-specified primary endpoint is the trajectory--seed paired difference in full-trajectory TCP position RMSE between FullVirtual and NaiveDelayed. Comparisons with Projected Direct IK are secondary endpoints. Bootstrap resampling uses trajectory--seed cases, never individual 10~ms ticks, with 10,000 resamples. We report per-trajectory, aggregate, and worst-seed results with 95\% paired-bootstrap confidence intervals. The representative plot uses the nominal circle ThreadedASAP seed whose TCP RMSE is closest to the five-seed median. The three component-ablation contrasts are not additive independent effects.
 
 CEM solve latency covers only \texttt{controller.plan()}. Planner end-to-end latency runs from snapshot launch to packet publication and determines whether a packet is late. We separately report solve and end-to-end p50/p95/p99/max, actual planner update rate, late and expired packets, fallback duty cycle, fast-loop compute time, control-period p95/p99, wake-up jitter, deadline misses, and the worst seed.
 
 \begin{table*}[!t]
-\caption{Tracking and control quality under one frozen configuration. MPC entries report paired trajectory--seed aggregates with 95\% confidence intervals; IK baselines are deterministic.}
+\caption{Nominal tracking and control-quality means under the frozen configuration. IK rows average four deterministic trajectories; MPC rows average 20 trajectory--seed cases. Paired confidence intervals for the pre-specified contrasts are reported in the text.}
 \label{tab:tracking}
 \centering
 \footnotesize
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccccc}
+\begin{tabular}{lcccccc}
 \toprule
-Method & TCP RMSE & TCP P95 & TCP max & Orient. RMSE & Joint RMSE & Cmd. accel. RMS & Torque RMS \\
- & (mm)$\downarrow$ & (mm)$\downarrow$ & (mm)$\downarrow$ & $\downarrow$ & (rad)$\downarrow$ & $\downarrow$ & $\downarrow$ \\
+Method & TCP RMSE & TCP P95 & Orient. RMSE & Joint RMSE & Cmd. accel. RMS & Torque RMS \\
+ & (mm)$\downarrow$ & (mm)$\downarrow$ & (deg)$\downarrow$ & (rad)$\downarrow$ & (rad/s$^2$) & (Nm) \\
 \midrule
-Raw Direct IK & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Projected Direct IK & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Preview IK & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Ideal zero-delay logical MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Naive delayed/cached MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Virtual delay-aware MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
-Threaded asynchronous MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd \\
+Raw Direct IK & 39.26 & 89.63 & 2.01 & 0.0148 & 0.58 & 5.60 \\
+Projected Direct IK & 39.26 & 89.63 & 2.01 & 0.0148 & 0.58 & 5.60 \\
+Preview IK & 32.64 & 74.75 & 2.04 & 0.0120 & 0.58 & 5.60 \\
+Ideal zero-delay logical MPC & 28.15 & 57.24 & 1.42 & 0.0117 & 6.51 & 20.96 \\
+Naive delayed/cached MPC & 67.93 & 140.20 & 11.65 & 0.0901 & 7.89 & 4.47 \\
+Virtual delay-aware MPC & 28.37 & 58.70 & 1.46 & 0.0117 & 6.69 & 17.17 \\
+Threaded asynchronous MPC & 28.43 & 59.07 & 1.44 & 0.0116 & 6.74 & 16.25 \\
 \bottomrule
 \end{tabular}}
 \end{table*}
 
 \begin{table*}[!t]
-\caption{Deployment, packet, and execution timing. Non-applicable logical or deterministic entries remain ``---''.}
+\caption{Nominal ThreadedASAP deployment timing. Solve and E2E values are milliseconds. ``Late'' is late packets divided by planner solves; deadline misses are fast-loop ticks. Projection offset is in mrad.}
 \label{tab:timing}
 \centering
 \footnotesize
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccccccc}
+\begin{tabular}{cccccccccc}
 \toprule
-Method & Solve p50/p95/p99/max & E2E p50/p95/p99/max & Planner Hz & Late & Expired & Fallback & Period p95/p99 & Jitter & Misses & Proj. act./p95 \\
+Solve p50/p95/p99/max & E2E p50/p95/p99/max & Planner & Fast loop & Period & Wake lateness & Late packets & Fallback & Deadline misses & Projection \\
+ & & Hz & p99 & p95/p99 & p95 & & duty & & active / offset p95 \\
 \midrule
-Projected Direct IK & --- & --- & --- & --- & --- & --- & \tbd & \tbd & \tbd & \tbd \\
-Ideal zero-delay logical MPC & \tbd & --- & \tbd & --- & --- & \tbd & --- & --- & --- & \tbd \\
-Naive delayed/cached MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & --- & --- & --- & \tbd \\
-Virtual delay-aware MPC & \tbd & \tbd & \tbd & \tbd & \tbd & \tbd & --- & --- & --- & \tbd \\
-Threaded asynchronous MPC & 36.57/38.27/41.96/171.30 & 44.92/49.04/51.94/180.48 & 25.30 & 0.388\% & 1 & 0.355\% & 10.093/10.158 & 0.266 & 12 & 85.48\%/36.47 \\
+36.57/38.27/41.96/171.30 & 44.92/49.04/51.94/180.48 & 25.30 & 1.089 & 10.093/10.158 & 0.266 & 34 / 0.388\% & 0.355\% & 12 / 34,640 (0.0346\%) & 85.48\% / 36.47 \\
 \bottomrule
 \end{tabular}}
 \end{table*}
@@ -241,38 +229,42 @@ The primary comparison is the paired full-trajectory TCP position RMSE differenc
  \frac{E_{\mathrm{naive}}-E_{\mathrm{ASAP}}}
  {E_{\mathrm{naive}}-E_{\mathrm{zero-delay}}}.
 \end{equation}
-This ratio is reported only when the denominator is positive, and never without raw errors and uncertainty. \datareq{Insert aggregate and per-trajectory TCP/orientation results, paired confidence intervals, and latency-degradation recovery.}
+FullVirtual averaged 28.37~mm TCP RMSE, close to the 28.15~mm logical zero-delay result, whereas NaiveDelayed averaged 67.93~mm. The paired FullVirtual--NaiveDelayed difference was $-39.55$~mm (95\% CI $-42.10$ to $-36.87$~mm), a mean reduction of 58.1\%. The same direction held on circle ($-40.10$~mm), fast ellipse ($-40.19$~mm), figure-eight ($-37.18$~mm), and rounded square ($-40.75$~mm). Orientation RMSE also fell by 0.178~rad (95\% CI $-0.188$ to $-0.167$~rad). The recovery ratio was 1.004 (95\% CI 0.958--1.059) over the 20 paired cases; it is reported only because every paired denominator was positive.
 
 \begin{figure}[!t]
- \placeholderfigure{1.25in}{\datareq{Representative desired/actual TCP paths and error traces for Direct IK, naive delayed/cached MPC, and threaded asynchronous MPC using a pre-specified representative seed.}}
- \caption{Representative tracking behavior under the common reference and constraints.}
- \label{fig:tracking}
+ \centering
+ \includegraphics[width=\columnwidth]{figures/representative_tracking.pdf}
+ \caption{Pre-specified nominal circle representative: the ThreadedASAP seed closest to the five-seed median. Desired and actual TCP paths use the common reference and constraints.}
+\label{fig:tracking}
 \end{figure}
+
+\subsection{Threaded Deployment and Robustness}
+Under nominal conditions, ThreadedASAP averaged 28.43~mm TCP RMSE and differed from FullVirtual by +0.054~mm (95\% CI $-1.094$ to +1.303~mm). It reduced nominal TCP RMSE by 10.84~mm relative to Projected Direct IK (95\% CI $-11.80$ to $-9.55$~mm) and by 4.21~mm relative to Preview IK (95\% CI $-5.11$ to $-2.98$~mm). The advantage over Projected IK persisted under payload, actuator-gain, force-pulse, and observation-noise perturbations. Nominal agreement did not imply equality under every perturbation: actuator-gain disturbance increased ThreadedASAP RMSE by 3.20~mm relative to FullVirtual (95\% CI 2.40--4.05~mm).
 
 \subsection{Timing, Control Quality, and Packet Behavior}
 CEM solve p50/p95 was 36.57/38.27~ms and snapshot-to-publication p50/p95 was 44.92/49.04~ms, both slower than one command tick. The fast loop nevertheless used 0.470/0.887~ms at p50/p95 and maintained control-period p95/p99 of 10.093/10.158~ms. We observed 12 deadline misses in 34,640 ticks, a 0.388\% late-packet rate, one expiration, and 0.355\% fallback duty. The 132.45~ms worst period rules out a hard-real-time claim.
 
 \begin{figure}[!t]
- \placeholderfigure{1.15in}{\datareq{Timeline and distributions separating snapshot, forecast, CEM solve, publication, activation/drop, and 100 Hz ticks.}}
+ \centering
+ \includegraphics[width=\columnwidth]{figures/planner_timeline.pdf}
  \caption{Planner end-to-end and execution-layer timing.}
  \label{fig:timing}
 \end{figure}
 
 \subsection{Controlled Mechanism-Isolation Ablations}
 \begin{table}[!t]
-\caption{Matched component ablations under the frozen virtual fixed-delay configuration.}
+\caption{Matched removal contrasts against FullVirtual under the frozen virtual fixed-delay configuration. Positive values indicate worse TCP RMSE after removal.}
 \label{tab:ablation}
 \centering
 \footnotesize
 \resizebox{\columnwidth}{!}{%
-\begin{tabular}{lcccc}
+\begin{tabular}{lcc}
 \toprule
-Variant & TCP RMSE & E2E p95 & Projection error & Saturation \\
+Removal & $\Delta$ TCP RMSE & 95\% CI \\
 \midrule
-Full virtual method & \tbd & \tbd & \tbd & \tbd \\
-No future-state anchoring & \tbd & \tbd & \tbd & \tbd \\
-No nominal/residual reanchoring & \tbd & \tbd & \tbd & \tbd \\
-No fast feedback & \tbd & \tbd & \tbd & \tbd \\
+No future alignment & +2.82 mm & [1.27, 4.39] mm \\
+No re-anchor & +654.60 mm & [528.68, 778.68] mm \\
+No feedback & $-0.95$ mm & [$-2.25$, 0.28] mm \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -282,7 +274,8 @@ All 20 FullVirtual anchors were rerun under the same frozen commit and schema as
 Virtual experiments impose $D\in\{2,4,6,8\}$ steps, corresponding to 20, 40, 60, and 80~ms. They compare naive delayed execution, future anchoring only, anchoring plus nominal/residual reanchoring, and the full method with fast feedback.
 The results do not form a monotone component ladder. Anchor-only TCP RMSE was 30.9 and 29.6~mm at $D=2,4$, but rose to 831.4 and 941.2~mm at $D=6,8$. The reanchored variant remained between 29.1 and 32.4~mm. Thus reanchoring is necessary for future alignment to remain stable through an absolute-position command interface at larger delays; fast feedback is treated as an auxiliary correction.
 \begin{figure}[!t]
- \placeholderfigure{1.15in}{\datareq{TCP RMSE versus imposed planner delay for naive delayed, anchor only, anchor plus reanchoring, and full virtual method.}}
+ \centering
+ \includegraphics[width=\columnwidth]{figures/delay_sweep.pdf}
  \caption{Sensitivity to imposed planner delay under deterministic virtual scheduling.}
  \label{fig:delay-sweep}
 \end{figure}
@@ -290,16 +283,21 @@ The results do not form a monotone component ladder. Anchor-only TCP RMSE was 30
 \subsection{Task-Space Final-Pool Cost Ablation}
 We isolate the effect of final-pool task-space reranking on circle and figure-eight trajectories with three paired CEM seeds. Joint-only and task-space variants first share fixed $D=6$ virtual delay. They are then run as wall-clock threaded MuJoCo deployments using their separately calibrated delays, so the deployment comparison includes reranking cost. In threaded deployment, task-space reranking reduced TCP RMSE by 3.05~mm (95\% CI 0.96--4.32~mm) while increasing E2E p95 by 6.82~ms. We therefore report an accuracy--latency trade-off, not an unqualified improvement.
 
+\begin{figure}[!t]
+ \centering
+ \includegraphics[width=\columnwidth]{figures/projection_tradeoff.pdf}
+ \caption{Projection-choice diagnostic. Two-stage compiled projection was non-inferior to full compiled projection under the pre-specified 5\% TCP-RMSE margin while reducing the computation--consistency burden.}
+ \label{fig:projection-tradeoff}
+\end{figure}
+
 \section{Results and Discussion}
 \label{sec:discussion}
-The evidence is intended to distinguish useful learned correction from strong raw, projected, and preview IK baselines and to distinguish activation-time alignment from merely lowering the update rate. Full need not substantially outperform Projected Direct IK for the delay-aware contribution to hold: the primary requirement is a repeatable improvement over NaiveDelayed, recovery toward Ideal zero-delay logical MPC, and no material degradation against the practical nominal baseline. Any interpretation must account for the gap between the planner-requested command in~\eqref{eq:planner-request} and the execution-projected command in~\eqref{eq:execution}.
+The primary mechanism claim comes from the paired FullVirtual--NaiveDelayed comparison. As a secondary deployment result, ThreadedASAP also outperformed Projected Direct IK under nominal conditions and under every tested perturbation category. It outperformed Preview IK overall and under nominal, payload, actuator-gain, and force-pulse conditions; under observation noise, the mean difference was +0.95~mm with a 95\% CI of $-0.49$--2.56~mm and was not significant. Any interpretation must account for the gap between the planner-requested command in~\eqref{eq:planner-request} and the execution-projected command in~\eqref{eq:execution}.
 
 The scope is limited to an ABB IRB~2400 MuJoCo model, one frozen learned model and compute platform, and Python soft-real-time threading. No physical-robot or hard-real-time claim is made, and the method has no theoretical stability guarantee. Future-state alignment and execution-time reanchoring constitute the supported mechanism claim. Fast feedback is an auxiliary state correction; task-space reranking trades accuracy for latency; and two-stage projection manages computation--consistency trade-offs. Projection was active on 85.48\% of nominal threaded ticks, so execution projection materially shapes the dispatched commands.
 
-\datareq{Optional only if supported by a complete common benchmark: report in one sentence that MPC-induced data aggregation did not consistently improve over the offline Model A; otherwise remove this marker and all Model C mentions.}
-
 \section{Conclusion}
-In conclusion, future activation alignment together with execution-time residual reanchoring recovered the stale-plan loss of a learned residual CEM planner whose 44.92/49.04~ms E2E p50/p95 exceeded the 10~ms command period. ThreadedASAP matched FullVirtual within 0.054~mm (95\% CI $-1.094$--1.303~mm) and retained a 25.30~Hz planner behind the 100~Hz execution layer. These results support the paired mechanism within the stated MuJoCo and Python soft-real-time setting; they do not establish an independent feedback gain, hard-real-time execution, or unrestricted model generalization.
+Future activation alignment and execution-time residual reanchoring recovered the stale-plan loss of a learned residual CEM planner: FullVirtual reduced TCP RMSE by 39.55~mm, or 58.1\%, relative to NaiveDelayed. Under nominal conditions, ThreadedASAP matched FullVirtual within 0.054~mm (95\% CI $-1.094$--1.303~mm) while using a 25.30~Hz planner behind the 100~Hz execution layer. Its 44.92/49.04~ms E2E p50/p95 confirms that planning is slower than the command period. These conclusions are limited to the ABB IRB~2400 MuJoCo model and Python soft-real-time deployment; they do not establish an independent feedback gain, hard-real-time behavior, or unrestricted model generalization.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

@@ -1,0 +1,31 @@
+\begin{tikzpicture}[
+  font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=8mm, minimum width=22mm, fill=blue!5},
+  fast/.style={box, fill=green!8},
+  slow/.style={box, fill=orange!12},
+  arrow/.style={-{Latex[length=2mm]}, thick},
+  dashedarrow/.style={-{Latex[length=2mm]}, thick, dashed}
+]
+  \node[box] (ref) {Task reference\\continuous IK};
+  \node[fast, right=7mm of ref] (loop) {100 Hz execution loop\\state snapshot};
+  \node[slow, above=12mm of loop] (forecast) {Future-state and\\history forecast};
+  \node[slow, right=7mm of forecast] (planner) {GRU rollout + CEM\\residual plan};
+  \node[slow, right=7mm of planner] (packet) {Timestamped\\residual packet};
+  \node[fast, right=7mm of loop] (anchor) {Current nominal\\+ packet-age residual};
+  \node[fast, right=7mm of anchor] (project) {Shared command\\projection};
+  \node[box, right=7mm of project] (plant) {MuJoCo position\\actuators and robot};
+
+  \draw[arrow] (ref) -- (loop);
+  \draw[arrow] (loop) -- (anchor);
+  \draw[arrow] (anchor) -- (project);
+  \draw[arrow] (project) -- (plant);
+  \draw[arrow] (plant.south) |- ++(0,-7mm) -| node[pos=.25, below] {measured state} (loop.south);
+  \draw[dashedarrow] (loop) -- (forecast);
+  \draw[arrow] (forecast) -- (planner);
+  \draw[arrow] (planner) -- (packet);
+  \draw[arrow] (packet) |- node[pos=.25, right] {age-aligned residual} (anchor.north);
+  \draw[dashedarrow] (ref.north) |- node[pos=.25, left] {activation reference} (planner.west);
+
+  \node[above=3mm of planner, text=orange!70!black] {asynchronous planner};
+  \node[below=12mm of anchor, align=center, text=green!50!black] {100 Hz execution layer; fallback: zero residual / Projected Direct IK};
+\end{tikzpicture}
