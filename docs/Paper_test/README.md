@@ -1,6 +1,6 @@
 # ROBIO 补充实验总览
 
-本目录汇总 2026-07-26 完成的 ROBIO 补充实验、历史证据审计和最终冻结口径。原始结果位于 `outputs/paper_delay_aware_two_stage_v2`，最终归档位于 `outputs/paper_final`。
+本目录汇总 2026-07-26 完成的 ROBIO 补充实验、历史证据审计和最终冻结口径。原始结果位于 `outputs/paper_delay_aware_two_stage_v2`，第一版归档位于 `outputs/paper_final`，论文修订证据位于 `outputs/paper_revision_v1`。
 
 ## 完成状态
 
@@ -10,7 +10,7 @@
 | 回归测试 | 130 passed，1 skipped，12 subtests passed |
 | 延迟标定 | 4 组 × 500 plans，均得到 D=6 |
 | GRU held-out 验证 | 20 rollouts，action std 0.5/0.8 各 10 |
-| 核心机制消融 | 80 cases：20 复用 + 60 新跑 |
+| 核心机制消融 | 80 cases：冻结 commit 下补跑 20 条 FullVirtual + 原 60 条消融 |
 | final-pool task-space cost | 24 cases |
 | 四阶段 delay sweep | 96 cases |
 | projection choice | 36 cases |
@@ -38,3 +38,7 @@
 - [主终点与 IK 配对](07_main_endpoint_and_ik.md)
 - [实时性与图表](08_timing_and_figures.md)
 - [最终冻结](09_final_freeze.md)
+- [ThreadedASAP 正式对比](10_threaded_formal_comparison.md)
+- [冻结 FullVirtual 重跑](11_frozen_fullvirtual_rerun.md)
+- [完整实时性表](12_complete_realtime_table.md)
+- [分扰动鲁棒性](13_robustness_by_perturbation.md)
