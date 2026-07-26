@@ -4,9 +4,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+DYNAMICS_ROOT = ROOT / "dynamics_modeling"
+for module_root in (ROOT, DYNAMICS_ROOT):
+    if str(module_root) not in sys.path:
+        sys.path.insert(0, str(module_root))
 
 import numpy as np
 import torch
