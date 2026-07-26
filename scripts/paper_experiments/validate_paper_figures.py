@@ -14,7 +14,9 @@ MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--paper-dir", type=Path, required=True)
-    args = parser.parse_args(); paper=args.paper_dir.resolve(); figures=paper/"figures"; data=paper/"figure_data"; tex=(paper/"main.tex").read_text(encoding="utf-8")
+    parser.add_argument("--figures-dir", type=Path, help="Figure bundle to validate; defaults to <paper-dir>/figures")
+    parser.add_argument("--figure-data-dir", type=Path, help="Source-data bundle; defaults to <paper-dir>/figure_data")
+    args = parser.parse_args(); paper=args.paper_dir.resolve(); figures=(args.figures_dir or paper/"figures").resolve(); data=(args.figure_data_dir or paper/"figure_data").resolve(); tex=(paper/"main.tex").read_text(encoding="utf-8")
     failures=[]
     for name in MAIN:
         for suffix in (".pdf", ".svg", ".png", ".source_manifest.json"):
