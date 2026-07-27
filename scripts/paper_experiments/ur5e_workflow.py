@@ -446,7 +446,7 @@ def preflight(output: Path, checkpoint: Path, normalizer: Path, max_steps: int) 
         result = RUNNER.run_closed_loop_mpc(args)
         arrays = result["arrays"]
         for key in (
-            "states",
+            "actual_states",
             "actuator_q_ref",
             "command_velocity_violation_flags",
             "command_acceleration_violation_flags",
@@ -454,7 +454,7 @@ def preflight(output: Path, checkpoint: Path, normalizer: Path, max_steps: int) 
         ):
             if key not in arrays:
                 raise RuntimeError(f"Preflight result is missing {key}")
-        if not np.all(np.isfinite(arrays["states"])):
+        if not np.all(np.isfinite(arrays["actual_states"])):
             raise RuntimeError(f"{label} preflight produced non-finite states")
         if any(np.any(arrays[key]) for key in (
             "command_velocity_violation_flags",
