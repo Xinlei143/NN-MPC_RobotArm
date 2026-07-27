@@ -11,7 +11,6 @@ class MuJoCoArmEnv:
     """Small MuJoCo wrapper for joint-space arm dynamics collection."""
 
     _EE_NAMES = ("ee_site", "tool0", "flange", "end_effector")
-    _ZERO_GRAVITY_COMPENSATION_JOINT_INDICES = (5,)
     _JOINT_LIMIT_TOLERANCE = 1e-6
 
     def __init__(
@@ -20,7 +19,10 @@ class MuJoCoArmEnv:
         n_joints: int = 6,
         control_mode: str = "position",
         gravity_compensation: bool = True,
+        gravity_compensation_zero_indices: tuple[int, ...] = (5,),
         gravity_compensation_model_xml: str | None = None,
+        ee_site_name: str = "ee_site",
+        home_q: np.ndarray | None = None,
         actuator_kp_scale: float = 1.0,
         actuator_kd_scale: float = 1.0,
         frame_skip: int = 5,
@@ -66,6 +68,19 @@ class MuJoCoArmEnv:
         self.n_joints = int(n_joints)
         self.control_mode = control_mode
         self.gravity_compensation = bool(gravity_compensation)
+        self.gravity_compensation_zero_indices = tuple(
+            int(value) for value in gravity_compensation_zero_indices
+        )
+        if len(set(self.gravity_compensation_zero_indices)) != len(
+            self.gravity_compensation_zero_indices
+        ) or any(
+            value < 0 or value >= self.n_joints
+            for value in self.gravity_compensation_zero_indices
+        ):
+            raise ValueError("gravity_compensation_zero_indices contains invalid indices")
+        self.ee_site_name = str(ee_site_name)
+        if not self.ee_site_name:
+            raise ValueError("ee_site_name must be non-empty")
         self.frame_skip = int(frame_skip)
         self.rng = np.random.default_rng(seed)
         self.observation_noise_std = float(observation_noise_std)
@@ -128,6 +143,15 @@ class MuJoCoArmEnv:
             joint_range = np.asarray(self.model.jnt_range[: self.n_joints], dtype=np.float32)
             self.joint_low = np.where(joint_limited, joint_range[:, 0], self.joint_low).astype(np.float32)
             self.joint_high = np.where(joint_limited, joint_range[:, 1], self.joint_high).astype(np.float32)
+        self.home_q = (
+            np.zeros(self.n_joints, dtype=np.float32)
+            if home_q is None
+            else np.asarray(home_q, dtype=np.float32)
+        )
+        if self.home_q.shape != (self.n_joints,):
+            raise ValueError(f"home_q must have shape ({self.n_joints},), got {self.home_q.shape}")
+        if np.any(self.home_q < self.joint_low) or np.any(self.home_q > self.joint_high):
+            raise ValueError("home_q is outside the model joint limits")
 
     @property
     def state_dim(self) -> int:
@@ -231,7 +255,7 @@ class MuJoCoArmEnv:
         if self._gravity_data is None:
             return np.zeros(self.n_joints, dtype=np.float64)
         gravity_tau = self._gravity_force(self._gravity_model, self._gravity_data)
-        for joint_idx in self._ZERO_GRAVITY_COMPENSATION_JOINT_INDICES:
+        for joint_idx in self.gravity_compensation_zero_indices:
             if joint_idx < self.n_joints:
                 gravity_tau[joint_idx] = 0.0
         return gravity_tau
@@ -285,7 +309,7 @@ class MuJoCoArmEnv:
         action: np.ndarray,
         *,
         external_force_world: np.ndarray | None = None,
-        external_force_site_name: str = "ee_site",
+        external_force_site_name: str | None = None,
     ) -> np.ndarray:
         action_array = np.asarray(action, dtype=np.float64)
         if action_array.shape != (self.n_joints,):
@@ -301,7 +325,10 @@ class MuJoCoArmEnv:
             self.data.qfrc_applied[:] = 0.0
             if self.gravity_compensation:
                 self.data.qfrc_applied[: self.n_joints] = self._gravity_compensation_force()
-            last_generalized = self._apply_external_force(force, external_force_site_name)
+            last_generalized = self._apply_external_force(
+                force,
+                self.ee_site_name if external_force_site_name is None else external_force_site_name,
+            )
             mujoco.mj_step(self.model, self.data)
         self.last_external_force_world = force.copy()
         self.last_external_generalized_force = last_generalized
@@ -310,9 +337,11 @@ class MuJoCoArmEnv:
 
     def reset_random(self) -> np.ndarray:
         mujoco.mj_resetData(self.model, self.data)
-        self.data.qpos[: self.n_joints] = self.rng.uniform(-0.25, 0.25, size=self.n_joints)
+        low = np.maximum(self.home_q - 0.25, self.joint_low)
+        high = np.minimum(self.home_q + 0.25, self.joint_high)
+        self.data.qpos[: self.n_joints] = self.rng.uniform(low, high)
         self.data.qvel[: self.n_joints] = self.rng.uniform(-0.05, 0.05, size=self.n_joints)
-        self.data.ctrl[: self.n_joints] = 0.0
+        self.data.ctrl[: self.n_joints] = self.data.qpos[: self.n_joints]
         self.data.qfrc_applied[: self.n_joints] = 0.0
         self.last_external_force_world.fill(0.0)
         self.last_external_generalized_force.fill(0.0)
@@ -337,12 +366,13 @@ class MuJoCoArmEnv:
         return self.get_state()
 
     def get_ee_position(self) -> Optional[np.ndarray]:
-        for name in self._EE_NAMES:
+        names = (self.ee_site_name, *self._EE_NAMES)
+        for name in names:
             site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, name)
             if site_id >= 0:
                 return np.asarray(self.data.site_xpos[site_id], dtype=np.float32).copy()
 
-        for name in self._EE_NAMES:
+        for name in names:
             body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
             if body_id >= 0:
                 return np.asarray(self.data.xpos[body_id], dtype=np.float32).copy()

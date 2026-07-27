@@ -128,6 +128,11 @@ def _compiled_position_projector():
             _project_position_command_sequence_core,
             fullgraph=True,
             mode="default",
+            # Two-stage MPC exactly projects a final candidate pool whose
+            # batch size can vary between CEM solves.  Treat that dimension as
+            # symbolic instead of creating one graph per pool size; otherwise
+            # long threaded delay calibrations can hit Dynamo's recompile cap.
+            dynamic=True,
         )
     return _COMPILED_POSITION_PROJECTOR
 

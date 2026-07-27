@@ -9,6 +9,7 @@ from torch import nn
 from neural_dynamics.integration import reconstruct_next_state
 from neural_dynamics.normalization import StandardNormalizer
 from neural_dynamics.train_utils import build_model, load_checkpoint
+from mpc.robot_config import RobotSpec, file_sha256
 
 
 @dataclass(frozen=True)
@@ -43,12 +44,25 @@ def load_dynamics_bundle(
     n_joints: int,
     device: str | torch.device,
     history_len: int | None = None,
+    expected_robot_spec: RobotSpec | None = None,
 ) -> DynamicsBundle:
     device = torch.device(device)
     checkpoint = load_checkpoint(Path(checkpoint_path), map_location=device)
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         config = {}
+    config = dict(config)
+    if expected_robot_spec is not None:
+        checkpoint_identity = config.get("robot_identity")
+        if checkpoint_identity is None:
+            digest = file_sha256(checkpoint_path)
+            if not expected_robot_spec.is_legacy_artifact_allowed("checkpoint", digest):
+                raise ValueError(
+                    "Checkpoint is missing robot identity and is not an allowlisted legacy artifact"
+                )
+            config["legacy_identity"] = True
+        elif checkpoint_identity != expected_robot_spec.artifact_identity():
+            raise ValueError("Checkpoint robot identity does not match the active RobotSpec")
 
     state_dim = 2 * int(n_joints)
     action_dim = int(n_joints)
@@ -58,6 +72,11 @@ def load_dynamics_bundle(
         raise ValueError(f"Checkpoint state_dim={checkpoint_state_dim} does not match n_joints={n_joints}")
     if checkpoint_action_dim != action_dim:
         raise ValueError(f"Checkpoint action_dim={checkpoint_action_dim} does not match n_joints={n_joints}")
+    checkpoint_model_type = str(config.get("model_type", model_type))
+    if checkpoint_model_type != model_type:
+        raise ValueError(
+            f"Checkpoint model_type={checkpoint_model_type!r} does not match requested {model_type!r}"
+        )
 
     resolved_history_len = resolve_history_len(model_type, history_len, config)
     output_dim = int(config.get("output_dim", state_dim))
@@ -71,6 +90,27 @@ def load_dynamics_bundle(
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     normalizer = StandardNormalizer.load(Path(normalizer_path), map_location=device)
+    if expected_robot_spec is not None:
+        normalizer_identity = normalizer.metadata.get("robot_identity")
+        if normalizer_identity is None:
+            digest = file_sha256(normalizer_path)
+            if not expected_robot_spec.is_legacy_artifact_allowed("normalizer", digest):
+                raise ValueError(
+                    "Normalizer is missing robot identity and is not an allowlisted legacy artifact"
+                )
+            config["legacy_normalizer_identity"] = True
+        elif normalizer_identity != expected_robot_spec.artifact_identity():
+            raise ValueError("Normalizer robot identity does not match the active RobotSpec")
+        checkpoint_dataset = config.get("dataset_manifest_sha256")
+        normalizer_dataset = normalizer.metadata.get("dataset_manifest_sha256")
+        if checkpoint_dataset is not None and checkpoint_dataset != normalizer_dataset:
+            raise ValueError("Checkpoint and normalizer were produced from different dataset manifests")
+        checkpoint_dt = float(config.get("control_dt", expected_robot_spec.expected_control_dt))
+        if abs(checkpoint_dt - expected_robot_spec.expected_control_dt) > 1e-12:
+            raise ValueError(
+                "Checkpoint control_dt does not match the active RobotSpec: "
+                f"{checkpoint_dt} != {expected_robot_spec.expected_control_dt}"
+            )
 
     return DynamicsBundle(
         model=model,

@@ -36,11 +36,11 @@ from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTa
 from mpc.recovery import residual_recovery_reason
 from mpc.replay_diagnostics import replay_executed_commands
 from mpc.robustness import RobustnessConfig, config_arrays, resolve_robustness_config
+from mpc.robot_config import RobotSpec, load_robot_spec
 from mpc.utils import build_history_tensor
 from mpc.history import commit_command_and_append_placeholder
 
 
-MPC_HOME_Q = np.zeros(6, dtype=np.float32)
 # Conservative MuJoCo command-planning caps, not ABB hardware ratings.
 # Each acceleration cap is five times its matching speed cap, giving a 0.2 s
 # ramp from rest to the cap before reference-specific auto calibration.
@@ -90,9 +90,15 @@ def _robustness_config(args: argparse.Namespace) -> RobustnessConfig:
 
 def _build_control_env(args: argparse.Namespace, *, seed: int | None = None) -> MuJoCoArmEnv:
     config = _robustness_config(args)
+    robot = _robot_spec(args)
     environment_seed = args.seed if seed is None else seed
     return MuJoCoArmEnv(
         str(config.plant_model_xml), n_joints=args.n_joints, seed=environment_seed,
+        frame_skip=robot.frame_skip,
+        home_q=robot.home_q,
+        ee_site_name=robot.ee_site_name,
+        gravity_compensation=robot.gravity_compensation,
+        gravity_compensation_zero_indices=robot.gravity_compensation_zero_indices,
         gravity_compensation_model_xml=str(config.nominal_model_xml),
         actuator_kp_scale=config.actuator_kp_scale,
         actuator_kd_scale=config.actuator_kd_scale,
@@ -112,7 +118,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Run learned CEM-MPC in closed-loop MuJoCo simulation.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument(
+        "--robot_config",
+        default="configs/robots/abb_irb2400.yaml",
+        type=str,
+        help="RobotSpec YAML. ABB remains the default when this option is omitted.",
+    )
     parser.add_argument("--model_xml", default=DEFAULT_MODEL_XML, type=str)
+    parser.add_argument(
+        "--home_q",
+        default=None,
+        type=str,
+        help="Advanced RobotSpec override: n_joints comma-separated home configuration.",
+    )
     parser.add_argument("--payload_level", choices=range(7), default=0, type=int)
     parser.add_argument("--actuator_gain_level", choices=range(7), default=0, type=int)
     parser.add_argument("--force_pulse_level", choices=range(7), default=0, type=int)
@@ -585,6 +603,72 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_arg_parser().parse_args(argv)
 
 
+def _format_joint_vector(values: np.ndarray) -> str:
+    return ",".join(f"{float(value):.9g}" for value in np.asarray(values).reshape(-1))
+
+
+def _resolve_robot_from_args(args: argparse.Namespace) -> RobotSpec:
+    cached = getattr(args, "_robot_spec", None)
+    if isinstance(cached, RobotSpec):
+        return cached
+    robot = load_robot_spec(getattr(args, "robot_config", None))
+    if int(getattr(args, "n_joints", robot.n_joints)) != robot.n_joints:
+        raise ValueError(
+            f"--n_joints={args.n_joints} does not match RobotSpec n_joints={robot.n_joints}"
+        )
+    model_override = None
+    if str(getattr(args, "model_xml", DEFAULT_MODEL_XML)) != DEFAULT_MODEL_XML:
+        model_override = args.model_xml
+    site_override = None
+    if str(getattr(args, "ee_site_name", "ee_site")) != "ee_site":
+        site_override = args.ee_site_name
+    home_override = None
+    if getattr(args, "home_q", None):
+        try:
+            home_override = np.asarray(
+                [float(item) for item in str(args.home_q).split(",")],
+                dtype=np.float32,
+            )
+        except ValueError as exc:
+            raise ValueError("home_q must be comma-separated finite values") from exc
+        if home_override.shape != (robot.n_joints,) or not np.all(np.isfinite(home_override)):
+            raise ValueError(f"home_q must contain {robot.n_joints} finite values")
+    robot = robot.with_runtime_overrides(
+        model_xml=model_override,
+        ee_site_name=site_override,
+        home_q=home_override,
+    )
+    args.model_xml = str(robot.model_xml)
+    args.n_joints = robot.n_joints
+    args.ee_site_name = robot.ee_site_name
+    args.home_q = _format_joint_vector(robot.home_q)
+    default_vectors = {
+        "command_velocity_physical_limit": DEFAULT_JOINT_VELOCITY_LIMIT,
+        "command_acceleration_physical_limit": DEFAULT_JOINT_ACCELERATION_LIMIT,
+        "state_velocity_limit": DEFAULT_JOINT_VELOCITY_LIMIT,
+        "residual_max": DEFAULT_RESIDUAL_MAX,
+        "servo_scale": DEFAULT_SERVO_SCALE,
+    }
+    robot_vectors = {
+        "command_velocity_physical_limit": robot.command_velocity_limit,
+        "command_acceleration_physical_limit": robot.command_acceleration_limit,
+        "state_velocity_limit": robot.state_velocity_limit,
+        "residual_max": robot.residual_max,
+        "servo_scale": robot.servo_scale,
+    }
+    for name, default in default_vectors.items():
+        default_text = ",".join(map(str, default))
+        current = str(getattr(args, name, default_text))
+        if current == default_text:
+            setattr(args, name, _format_joint_vector(robot_vectors[name]))
+    setattr(args, "_robot_spec", robot)
+    return robot
+
+
+def _robot_spec(args: argparse.Namespace) -> RobotSpec:
+    return _resolve_robot_from_args(args)
+
+
 def _parse_stage_one_task_steps(value: str, horizon: int) -> tuple[int, ...]:
     try:
         steps = tuple(int(item.strip()) for item in value.split(",") if item.strip())
@@ -713,6 +797,7 @@ def _load_task_reference(args: argparse.Namespace) -> ReferenceBundle:
     bundle = load_reference_bundle(
         resolve_runtime_path(args.reference_file),
         expected_n_joints=args.n_joints,
+        expected_robot_spec=_robot_spec(args),
     )
     effective_execution_steps = int(bundle.execution_steps)
     if args.max_execution_steps is not None:
@@ -769,7 +854,7 @@ def _reference_for_run(
     """Return the reference arrays and the number of closed-loop control steps."""
     if args.reference_mode == "task":
         bundle = _load_task_reference(args)
-        expected_initial_q = MPC_HOME_Q[: args.n_joints]
+        expected_initial_q = _robot_spec(args).home_q
         if not np.allclose(bundle.q_des[0], expected_initial_q, atol=1e-6, rtol=0.0):
             raise ValueError(
                 "Task reference must start at the fixed MPC home pose "
@@ -824,6 +909,17 @@ def _launch_mujoco_viewer(env: MuJoCoArmEnv) -> Any:
 
 
 def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | None = None) -> dict[str, Any]:
+    robot = _resolve_robot_from_args(args)
+    if robot.robot_id != "abb_irb2400" and any(
+        int(getattr(args, name, 0))
+        for name in (
+            "payload_level",
+            "actuator_gain_level",
+            "force_pulse_level",
+            "observation_noise_level",
+        )
+    ):
+        raise ValueError("Non-ABB RobotSpec profiles support nominal validation only")
     if activation_observer is not None:
         setattr(args, "activation_observer", activation_observer)
     if args.controller_mode == "ik_direct" and args.reference_mode != "task":
@@ -882,6 +978,13 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("two_stage planner projection requires --planner_projection on")
     if using_two_stage_mpc and args.mpc_policy != "residual":
         raise ValueError("two_stage planner projection requires residual MPC")
+    if args.controller_mode != "mpc":
+        # Exact final-pool costs are an MPC-only option.  Direct IK shares the
+        # parser with MPC but does not construct or score a candidate pool.
+        args.exact_task_space_cost = "off"
+        # Multirate planning is also MPC-only.  Canonicalize the shared CLI
+        # default so Direct IK follows its synchronous control path.
+        args.multirate_mode = "synchronous"
     if args.exact_task_space_cost == "on":
         if not using_two_stage_mpc:
             raise ValueError("exact task-space cost requires two-stage MPC")
@@ -1016,6 +1119,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             n_joints=args.n_joints,
             device=device,
             history_len=args.history_len,
+            expected_robot_spec=robot,
         )
     env = _build_control_env(args)
 
@@ -1082,9 +1186,7 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
     viewer: Any | None = None
 
     try:
-        if args.n_joints > MPC_HOME_Q.shape[0]:
-            raise ValueError(f"MPC home pose supports at most {MPC_HOME_Q.shape[0]} joints, got {args.n_joints}")
-        true_state = env.reset_to_configuration(MPC_HOME_Q[: args.n_joints])
+        true_state = env.reset_to_configuration(robot.home_q)
         previous_q_ref = np.asarray(true_state[: args.n_joints], dtype=np.float32).copy()
         previous_q_ref_velocity = np.zeros(args.n_joints, dtype=np.float32)
         previous_residual = np.zeros(args.n_joints, dtype=np.float32)
@@ -1093,7 +1195,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         residual_saturation_streak = 0
         for _ in range(args.settle_steps):
             true_state = env.step(previous_q_ref)
-        state = env.get_observation()
+        state = (
+            env.get_observation()
+            if hasattr(env, "get_observation")
+            else np.asarray(true_state, dtype=np.float32).copy()
+        )
         states_history.append(state.copy())
         q_ref_history.append(previous_q_ref.copy())
 
@@ -1629,7 +1735,10 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
                 ("total_tau", "tau_total"), ("true_gravity_tau", "tau_gravity_true"),
                 ("gravity_mismatch_tau", "tau_gravity_mismatch"),
             ):
-                torque_records[target_key].append(torque[key].astype(np.float32))
+                value = torque.get(key)
+                if value is None:
+                    value = np.zeros(args.n_joints, dtype=np.float32)
+                torque_records[target_key].append(np.asarray(value, dtype=np.float32))
 
             # Commit the command to the current state before advancing the
             # simulator, matching training tokens [x_t, u_t].
@@ -1637,7 +1746,11 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
             external_force = _force_for_step(robustness, step_idx, execution_steps)
             try:
                 true_state = env.step(q_ref_command, external_force_world=external_force)
-                state = env.get_observation()
+                state = (
+                    env.get_observation()
+                    if hasattr(env, "get_observation")
+                    else np.asarray(true_state, dtype=np.float32).copy()
+                )
                 joint_limit_violations.append(0)
             except RuntimeError:
                 joint_limit_violations.append(1)

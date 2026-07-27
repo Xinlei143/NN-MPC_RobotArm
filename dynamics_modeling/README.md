@@ -174,21 +174,22 @@ python dynamics_modeling/scripts/collect_data.py \
 
 ## 7. 使用其他机器人模型
 
-如果要测试 UR5e、UR10e、Franka Panda、KUKA iiwa14 或其他 MJCF 模型，传入 `--model_xml`：
+正式支持的第二平台 UR5e 应通过完整的 `RobotSpec` 采集，不能只替换 XML：
 
 ```bash
 python dynamics_modeling/scripts/collect_data.py \
-  --model_xml path/to/robot.xml \
-  --n_joints 6 \
-  --num_episodes 20 \
-  --episode_len 200 \
-  --num_envs 1 \
-  --save_path dynamics_modeling/outputs/datasets/other_robot_data.npz
+  --robot_config configs/robots/ur5e.yaml \
+  --num_episodes 200 \
+  --episode_len 300 \
+  --num_envs 8 \
+  --save_path dynamics_modeling/outputs/datasets/ur5e_model_a.npz
 ```
 
 注意：
 
-- `--model_xml` 的相对路径由脚本按 `dynamics_modeling/` 解析；数据集和输出参数仍按当前工作目录（仓库根目录）解析，所以示例显式使用 `dynamics_modeling/outputs/...`。
+- 每个数据集旁会生成 `.manifest.json`，记录 RobotSpec/XML 哈希、控制周期、home、重力补偿和实际采集 workspace。
+- `train_dynamics.py` 默认读取数据集旁的 manifest；训练产生的 checkpoint 和 normalizer 绑定同一 robot/dataset identity。ABB 与 UR5e 数据不能混入同一普通 Model A。
+- `--model_xml` 与 `--n_joints` 仅保留为高级兼容覆盖项；新平台应先新增并验证 RobotSpec。
 - XML 中 actuator 数量必须至少等于 `--n_joints`。
 - 当前 `ABB_IRB2400.xml` 使用 MuJoCo `<position>` actuator，动作会写入 `data.ctrl[:n_joints]`，语义是每个关节的目标角 `q_ref`，单位为 rad。
 - actuator 的目标角范围来自 XML 的 `ctrlrange`，并与 6 个 joint 的 `range` 保持一致。

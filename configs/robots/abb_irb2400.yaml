@@ -1,0 +1,39 @@
+robot_id: abb_irb2400
+model_xml: dynamics_modeling/ABB_IRB2400.xml
+n_joints: 6
+joint_names: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6]
+actuator_names:
+  [joint_1_position, joint_2_position, joint_3_position, joint_4_position, joint_5_position, joint_6_position]
+ee_site_name: ee_site
+home_q: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+frame_skip: 5
+expected_control_dt: 0.01
+gravity_compensation: true
+gravity_compensation_zero_indices: [5]
+contact_semantics: disabled
+command_velocity_limit: [1.0, 1.0, 1.0, 2.0, 2.0, 2.5]
+command_acceleration_limit: [5.0, 5.0, 5.0, 10.0, 10.0, 12.5]
+state_velocity_limit: [1.0, 1.0, 1.0, 2.0, 2.0, 2.5]
+residual_max: [0.12, 0.10, 0.12, 0.15, 0.15, 0.20]
+servo_scale: [0.08, 0.07, 0.08, 0.04, 0.025, 0.05]
+data_reset_low_delta: [0.62832, 0.73737, 0.22906, 0.698, 0.41888, 1.39626]
+data_reset_high_delta: [0.62832, 0.09594, 0.20728, 0.698, 0.41888, 1.39626]
+data_target_delta: [1.2, 0.8, 0.5, 1.2, 0.8, 1.5]
+data_joint_limit_margin: 0.05
+legacy_artifacts:
+  checkpoint:
+    [9b7f65384f892bde1b4465e7d0795d1dafc806cf7bcb4bf7fb0ff965165684e5]
+  normalizer:
+    [5738f1e85dd34820a7652aec34cd0eb29195601321b766644fe4c0f59892f7f4]
+  reference:
+    - b01e6cf3559e0542e72974a950560e2f6cdd2a97b65d1faaf7dd2f0ae0578cd0
+    - 6fe5be6b021cb247a240749f25b311f151ac87717433f482d3845974f3fe0808
+    - 196a8da146a99bb47cfa7838e8c0a636ef502063a2905b1f4ee7ea9267a9af77
+    - 38364746ac6165e06ed8f61c39c888f6a0d833f5cd3f1ad62a4636aa833ca540
+    - c15a120662df139ed529a1c7d6ba9b078cca47bc7eb4bbfe9dd74464c976ce23
+    - fc025a1f6ab9fdf644127a3000f4fa2244f35d77ef570ff282c34eafdba01260
+    - a84ffca02433ad64f0319e8491bdfb45dc33c2b92cc508e1e0adeeff8df170e0
+    - 1368b3fd4139e18c4f8cd5601d45c6c91fe9f73751ce15406f842e1274121fed
+    - 5a939963022c9f3731bb0b36095890ab4aecfeae378a849c86afcbc76c665f92
+source:
+  description: Repository ABB IRB2400 paper model

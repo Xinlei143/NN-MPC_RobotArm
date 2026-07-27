@@ -21,6 +21,7 @@ import torch
 
 from mpc.logging import save_mpc_run
 from mpc.reference_pipeline import ReferenceConfig, build_reference, save_reference_bundle
+from mpc.robot_config import load_robot_spec
 from scripts.experiment_utils import (
     environment_snapshot, file_identity, load_completed_rollout, load_json,
     paired_bootstrap_rows, run_fingerprint, write_immutable_json,
@@ -127,6 +128,7 @@ def generate_calibration_reference(output: Path, steps: int, overwrite: bool) ->
     if destination.exists() and not overwrite:
         raise FileExistsError(f"Refusing to overwrite {destination}")
     model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
+    robot = load_robot_spec()
     # This is intentionally distinct from every reported trajectory.  It must
     # nevertheless exercise the exact task-space final-pool scoring path.
     config = ReferenceConfig(
@@ -137,7 +139,9 @@ def generate_calibration_reference(output: Path, steps: int, overwrite: bool) ->
         return_duration=1.0, joint_return_duration=1.0, final_hold_duration=0.5,
         safe_departure_mode="auto",
     )
-    bundle = build_reference(config, model, np.zeros(model.nu), 0.01, 20, 16)
+    bundle = build_reference(
+        config, model, robot.home_q, 0.01, 20, 16, robot_spec=robot
+    )
     if bundle.execution_steps < steps:
         raise RuntimeError("Task-space calibration reference is shorter than requested")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -289,13 +293,22 @@ def generate_references(output: Path, overwrite: bool) -> None:
         raise FileNotFoundError("Run calibrate-delay first")
     delay = int(load_json(delay_path)["anticipation_delay_steps"])
     model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
+    robot = load_robot_spec()
     records: list[dict[str, Any]] = []
     for label, config in _reference_configs().items():
         destination = output / "references" / label
         path = destination / "reference.npz"
         if path.exists() and not overwrite:
             raise FileExistsError(f"Refusing to overwrite {path}")
-        bundle = build_reference(config, model, np.zeros(model.nu), 0.01, 20, max(delay, 8, 4))
+        bundle = build_reference(
+            config,
+            model,
+            robot.home_q,
+            0.01,
+            20,
+            max(delay, 8, 4),
+            robot_spec=robot,
+        )
         saved = save_reference_bundle(bundle, destination)
         records.append({"label": label, "file": file_identity(saved), "config": bundle.metadata["config"]})
     manifest = output / "references" / "manifest.json"

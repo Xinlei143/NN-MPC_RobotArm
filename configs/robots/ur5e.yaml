@@ -1,0 +1,26 @@
+robot_id: ur5e
+model_xml: dynamics_modeling/robots/ur5e/ur5e_project.xml
+n_joints: 6
+joint_names:
+  [shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint]
+actuator_names: [shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3]
+ee_site_name: ee_site
+home_q: [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0]
+frame_skip: 5
+expected_control_dt: 0.01
+gravity_compensation: true
+gravity_compensation_zero_indices: []
+contact_semantics: disabled
+command_velocity_limit: [1.0, 1.0, 1.0, 2.0, 2.0, 2.5]
+command_acceleration_limit: [5.0, 7.0, 10.0, 10.0, 10.0, 12.5]
+state_velocity_limit: [1.0, 1.0, 1.0, 2.0, 2.0, 2.5]
+residual_max: [0.12, 0.10, 0.12, 0.15, 0.15, 0.20]
+servo_scale: [0.08, 0.07, 0.08, 0.04, 0.025, 0.05]
+data_reset_delta: [0.35, 0.30, 0.35, 0.45, 0.45, 0.60]
+data_target_delta: [0.70, 0.55, 0.70, 0.90, 0.90, 1.20]
+data_joint_limit_margin: 0.05
+legacy_artifacts: {}
+source:
+  repository: https://github.com/google-deepmind/mujoco_menagerie
+  commit: 71f066ad0be9cd271f7ed58c030243ef157af9f4
+  license: BSD-3-Clause

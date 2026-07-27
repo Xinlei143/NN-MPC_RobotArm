@@ -8,7 +8,7 @@ from pathlib import Path
 from paper_style import METHOD_STYLES
 
 
-MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", "fig3_threaded_timeline", "fig4_delay_sweep", "fig5_robustness_forest")
+MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", "fig4_delay_sweep", "fig5_robustness_forest")
 
 
 def main() -> None:
@@ -19,11 +19,27 @@ def main() -> None:
     args = parser.parse_args(); paper=args.paper_dir.resolve(); figures=(args.figures_dir or paper/"figures").resolve(); data=(args.figure_data_dir or paper/"figure_data").resolve(); tex=(paper/"main.tex").read_text(encoding="utf-8")
     failures=[]
     for name in MAIN:
-        for suffix in (".pdf", ".svg", ".png", ".source_manifest.json"):
+        suffixes = (".svg", ".png", ".source_manifest.json") if name == "fig1_activation_aligned_architecture" else (".pdf", ".svg", ".png", ".source_manifest.json")
+        for suffix in suffixes:
             if not (figures/f"{name}{suffix}").is_file(): failures.append(f"missing {name}{suffix}")
         if name.startswith("fig2") and not (data/"fig2"/"metadata.json").is_file(): failures.append("missing Fig. 2 source data")
+    if not (figures / "fig2_temporal_alignment_timeline.png").is_file():
+        failures.append("missing temporal-alignment timeline figure")
     if "no_feedback" in tex: failures.append("main.tex still exposes no_feedback rather than Anchor+Reanchor")
     if "Latency [ms]" in tex: failures.append("main.tex contains ambiguous Latency label")
+    forbidden = {
+        "77505a5": "obsolete evidence-only commit",
+        "clean commit": "unverifiable clean-worktree claim",
+        "logical upper bound": "ZeroDelay must be described as a logical reference",
+        "ThreadedASAP": "ambiguous legacy method name",
+    }
+    for phrase, reason in forbidden.items():
+        if phrase in tex:
+            failures.append(f"main.tex contains {phrase!r}: {reason}")
+    required = ("8132559", "tab:configuration", "tab:protocol-semantics", "tab:design-ablation", "fig2_temporal_alignment_timeline")
+    for phrase in required:
+        if phrase not in tex:
+            failures.append(f"main.tex is missing required manuscript marker {phrase!r}")
     for name in MAIN:
         if name not in tex: failures.append(f"main.tex does not reference {name}")
     source=load_json(figures/"fig2_representative_tracking.source_manifest.json")

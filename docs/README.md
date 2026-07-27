@@ -17,6 +17,7 @@
 - [Direct IK 鲁棒性](guides/direct-ik-robustness.md)
 - [Model C 数据闭环](guides/model-c-workflow.md)
 - [Model A replica 训练](guides/model-a-replica-training-5090.md)
+- [UR5e 从采集到 CEM-MPC 全流程](guides/ur5e-end-to-end-workflow.md)
 
 ## 我想查论文实验或结果
 

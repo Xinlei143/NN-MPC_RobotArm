@@ -124,6 +124,9 @@ def execute_open_loop_action_branch(
     branch_env = MuJoCoArmEnv(
         str(parent_env.model_xml), n_joints=parent_env.n_joints,
         gravity_compensation=parent_env.gravity_compensation, frame_skip=parent_env.frame_skip,
+        gravity_compensation_zero_indices=parent_env.gravity_compensation_zero_indices,
+        ee_site_name=parent_env.ee_site_name,
+        home_q=parent_env.home_q,
         gravity_compensation_model_xml=str(parent_env.gravity_compensation_model_xml),
         actuator_kp_scale=parent_env.actuator_kp_scale,
         actuator_kd_scale=parent_env.actuator_kd_scale,

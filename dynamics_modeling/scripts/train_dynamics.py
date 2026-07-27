@@ -8,9 +8,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+DYNAMICS_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = DYNAMICS_ROOT.parent
+for root in (PROJECT_ROOT, DYNAMICS_ROOT):
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
 import torch
 import numpy as np
@@ -30,11 +32,19 @@ from neural_dynamics.train_utils import (
     save_yaml,
     set_seed,
 )
+from mpc.robot_config import file_sha256, load_robot_spec
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train learned MuJoCo dynamics.")
     parser.add_argument("--data_path", required=True, type=str)
+    parser.add_argument("--robot_config", default="configs/robots/abb_irb2400.yaml")
+    parser.add_argument(
+        "--dataset_manifest",
+        default=None,
+        type=str,
+        help="Strict dataset manifest; defaults to data_path with .manifest.json suffix.",
+    )
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer", type=str)
     parser.add_argument("--history_len", default=1, type=int)
     parser.add_argument("--batch_size", default=1024, type=int)
@@ -223,6 +233,40 @@ def validate_q_ref_dataset(data_path: Path, model_type: str) -> None:
         raise ValueError("Current position-control training expects actions == q_ref for every sample.")
     if model_type != "mlp" and "episode_ids" not in data.files:
         raise KeyError("Sequence models require episode_ids so history windows do not cross reset boundaries.")
+
+
+def write_artifact_manifest(
+    save_dir: Path,
+    *,
+    robot_identity: dict,
+    dataset_manifest_path: Path,
+    dataset_manifest_sha256: str,
+) -> None:
+    files = {}
+    for name in (
+        "normalizer.pt",
+        "best_model.pt",
+        "best_rollout_model.pt",
+        "latest_model.pt",
+        "config.yaml",
+    ):
+        path = save_dir / name
+        if path.is_file():
+            files[name] = {"path": name, "sha256": file_sha256(path)}
+    payload = {
+        "schema_version": 1,
+        "kind": "robot_dynamics_training_artifacts",
+        "robot_identity": robot_identity,
+        "dataset_manifest": {
+            "path": str(dataset_manifest_path),
+            "sha256": dataset_manifest_sha256,
+        },
+        "files": files,
+    }
+    (save_dir / "artifact_manifest.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def weighted_delta_loss(
@@ -479,6 +523,24 @@ def run_epoch(
 
 def main() -> None:
     args = parse_args()
+    robot = load_robot_spec(args.robot_config, validate_model=True)
+    data_path = Path(args.data_path).expanduser().resolve()
+    manifest_path = (
+        data_path.with_suffix(".manifest.json")
+        if args.dataset_manifest is None
+        else Path(args.dataset_manifest).expanduser().resolve()
+    )
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Strict robot training requires dataset manifest: {manifest_path}")
+    dataset_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if dataset_manifest.get("robot_identity") != robot.artifact_identity():
+        raise ValueError("Dataset manifest robot identity does not match --robot_config")
+    dataset_record = dataset_manifest.get("dataset", {})
+    if dataset_record.get("sha256") != file_sha256(data_path):
+        raise ValueError("Dataset file hash does not match its manifest")
+    dataset_manifest_sha256 = file_sha256(manifest_path)
+    if not np.isclose(args.control_dt, robot.expected_control_dt, atol=1e-12, rtol=0.0):
+        raise ValueError("--control_dt must match RobotSpec expected_control_dt")
     if args.resume_checkpoint and args.init_from_checkpoint:
         raise ValueError("--resume_checkpoint and --init_from_checkpoint cannot be used together")
     if args.freeze_normalizer and not args.normalizer_path:
@@ -511,21 +573,21 @@ def main() -> None:
         raise ValueError("At least one of q_weight or dq_weight must be positive")
     use_rollout_loss = bool(args.rollout_loss_steps > 1 and args.rollout_loss_weight > 0.0)
     if not args.no_require_q_ref_dataset:
-        validate_q_ref_dataset(Path(args.data_path), args.model_type)
+        validate_q_ref_dataset(data_path, args.model_type)
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"using device: {device}", flush=True)
     if use_rollout_loss:
         dataset = load_rollout_npz_dataset(
-            Path(args.data_path),
+            data_path,
             args.model_type,
             args.history_len,
             target_mode=args.target_mode,
             rollout_steps=args.rollout_loss_steps,
         )
     else:
-        dataset = load_npz_dataset(Path(args.data_path), args.model_type, args.history_len, target_mode=args.target_mode)
+        dataset = load_npz_dataset(data_path, args.model_type, args.history_len, target_mode=args.target_mode)
     q_extra_weights = parse_extra_weights(args.q_extra_weights, dataset.state_dim // 2, "q_extra_weights")
     dq_extra_weights = parse_extra_weights(args.dq_extra_weights, dataset.state_dim // 2, "dq_extra_weights")
     source_weights = parse_source_weights(args.source_weights)
@@ -556,6 +618,10 @@ def main() -> None:
     if args.freeze_normalizer:
         normalizer_source = Path(args.normalizer_path).expanduser().resolve()
         normalizer = StandardNormalizer.load(normalizer_source)
+        if normalizer.metadata.get("robot_identity") != robot.artifact_identity():
+            raise ValueError("Frozen normalizer robot identity does not match RobotSpec")
+        if normalizer.metadata.get("dataset_manifest_sha256") != dataset_manifest_sha256:
+            raise ValueError("Frozen normalizer dataset identity does not match current training data")
         print(f"loaded frozen normalizer: {normalizer_source}", flush=True)
     else:
         print("fitting normalizer", flush=True)
@@ -566,6 +632,11 @@ def main() -> None:
         fit_normalizer_with_progress(normalizer, dataset.states, dataset.actions, deltas)
         del deltas
         print("normalizer ready", flush=True)
+    normalizer.metadata = {
+        "schema_version": 1,
+        "robot_identity": robot.artifact_identity(),
+        "dataset_manifest_sha256": dataset_manifest_sha256,
+    }
 
     model = build_model(
         args.model_type,
@@ -604,6 +675,9 @@ def main() -> None:
         "freeze_normalizer": bool(args.freeze_normalizer),
         "source_weights": source_weights,
         "steps_per_epoch": args.steps_per_epoch,
+        "robot_identity": robot.artifact_identity(),
+        "dataset_manifest_sha256": dataset_manifest_sha256,
+        "dataset_sha256": dataset_record["sha256"],
     }
 
     start_epoch = 1
@@ -778,6 +852,12 @@ def main() -> None:
             optimizer=optimizer,
             scaler=scaler,
             metadata=checkpoint_metadata("latest", epoch, train_loss, val_loss, best_val, args, best_rollout),
+        )
+        write_artifact_manifest(
+            save_dir,
+            robot_identity=robot.artifact_identity(),
+            dataset_manifest_path=manifest_path,
+            dataset_manifest_sha256=dataset_manifest_sha256,
         )
         print(f"  → saved latest checkpoint: {save_dir / 'latest_model.pt'}")
 
