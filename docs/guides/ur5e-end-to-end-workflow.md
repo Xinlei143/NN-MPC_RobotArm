@@ -17,7 +17,7 @@ conda run -n pendulum-rl python --version
 UR_CFG=configs/robots/ur5e.yaml
 DATA=dynamics_modeling/outputs/datasets/ur5e_model_a.npz
 CKPT_ROOT=dynamics_modeling/outputs/checkpoints/ur5e
-EXP=outputs/paper_ur5e_v1
+EXP=outputs/paper_ur5e_v2
 
 printf 'UR_CFG=<%s>\nDATA=<%s>\nCKPT_ROOT=<%s>\nEXP=<%s>\n' \
   "$UR_CFG" "$DATA" "$CKPT_ROOT" "$EXP"
@@ -293,6 +293,13 @@ conda run --no-capture-output -n pendulum-rl python scripts/paper_experiments/ur
 不要把 ABB 的 delay 复制给 UR5e。`preflight/report.json` 必须为 `passed`，且五种方法
 均没有 NaN、joint-limit、command velocity 或 command acceleration violation。
 
+当前 `compiled` command projector 使用一次构建、跨不同 CEM population shape 复用的
+TorchScript 图。旧实现使用 `torch.compile(fullgraph=True)`，长时间标定时可能因 batch
+shape 变化累计超过 256 个 Dynamo graph，最终抛出
+`FailOnRecompileLimitHit: Hard failure due to fullgraph=True`。若在旧 checkout 中看到该
+错误，应更新到包含稳定 projector 的版本；不要通过提高重编译上限或在正式标定中切换
+到 eager 来掩盖问题。
+
 如需手动只跑一个 task-space MPC smoke test，可使用通用 runner：
 
 ```bash
@@ -389,6 +396,9 @@ conda run -n pendulum-rl python scripts/paper_experiments/multi_robot_summary.py
 | `control_dt` mismatch | XML timestep 或 frame skip 被改动 | 恢复 2 ms × 5 = 10 ms，或重新采集、重训和重标定。 |
 | reference IK 失败/首尾不回 home | UR5e home、TCP 或任务尺度不适配 | 先跑 `validate-robot`；降低轨迹尺度或增大 lap duration，保留 RobotSpec home。 |
 | preflight violation | physical caps、reference 导数或模型预测不匹配 | 查看 projection/residual/velocity/acceleration 诊断；先修 reference 或数据覆盖，再有证据地调 UR5e physical limits。 |
+| `Run generate-references first` | 当前 `$EXP` 下缺少阶段 0 产物，或新终端中 `$EXP` 未恢复 | 用 `printf` 和 `test -s` 检查变量及两个 reference 文件；在同一 `$EXP` 下先运行 `generate-references`。 |
+| `replan_interval_steps must not exceed horizon` | 旧版 smoke 参数把 replan interval 设得大于缩短后的 horizon | 使用当前 workflow 的 smoke 配置；任何手动配置都须满足 `replan_interval_steps <= horizon`。 |
+| `FailOnRecompileLimitHit` | 旧版 Dynamo fullgraph projector 为变化的 CEM batch shape 重复编译 | 更新到稳定的可复用 compiled projector；不要把提高 Dynamo 上限作为正式实验修复。 |
 | 20-step rollout 发散 | 训练数据在 MPC 区域不足或 GRU 不足 | 扩展该 workspace/motion mode 的独立 UR5e 数据并重训。 |
 | threaded delay 为空/异常高 | GPU、worker 或 timing 环境不稳定 | 检查 CUDA、planner events 和 deadline metrics；重新做 UR5e delay calibration。 |
 

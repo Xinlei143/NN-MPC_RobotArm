@@ -340,8 +340,8 @@ projection-free residual planning
 
 - `planner_projection=on, planner_projection_strategy=full,
   planner_projection_backend=compiled`：把完全相同的 braking-aware 递推交给
-  `torch.compile(fullgraph=True)` 融合。参数数值检查在进入 compiled core 前完成，
-  执行层投影不变。
+  一次构建并可跨 CEM population shape 复用的 TorchScript 图。参数数值检查在进入
+  compiled core 前完成，执行层投影不变。
 - `planner_projection=on, planner_projection_strategy=two_stage,
   planner_projection_backend=compiled`：两轮 population 使用 cheap joint-clipped
   rollout，随后将 final elites、跨轮 best、mean 和 baseline 去重并组成固定大小
