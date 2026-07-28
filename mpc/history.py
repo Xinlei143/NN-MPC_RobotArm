@@ -76,3 +76,23 @@ def future_history_tokens(
     base_states.append(predicted[-1])
     base_commands.append(actions[-1])
     return history_tokens(base_states, base_commands, history_len)
+
+
+def stale_history_tokens_at_anchor(
+    states: list[np.ndarray] | np.ndarray,
+    commands: list[np.ndarray] | np.ndarray,
+    anchor_state: np.ndarray,
+    history_len: int,
+) -> np.ndarray:
+    """Replace only the newest state in launch-time history by ``x_a``.
+
+    The deliberately mismatched tensor is used solely to isolate recurrent
+    history alignment in an ablation.
+    """
+    tokens = history_tokens(states, commands, history_len)
+    state = np.asarray(anchor_state, dtype=np.float32)
+    if state.ndim != 1 or tokens.shape[1] <= state.shape[0]:
+        raise ValueError("anchor_state must be a vector compatible with history tokens")
+    result = tokens.copy()
+    result[-1, : state.shape[0]] = state
+    return result

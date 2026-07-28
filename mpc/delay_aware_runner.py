@@ -18,7 +18,11 @@ from mpc.constraints import project_nominal_q_ref_sequence
 from mpc.cost_functions import JointSpaceCostConfig
 from mpc.delay_aware import DelayedPlanPacket, corrected_direct_ik_command, feedback_correction, project_executable_command_np
 from mpc.delay_protocol import resolve_delay_protocol
-from mpc.history import commit_command_and_append_placeholder, future_history_tokens
+from mpc.history import (
+    commit_command_and_append_placeholder,
+    future_history_tokens,
+    stale_history_tokens_at_anchor,
+)
 from mpc.model_c.oracle import MuJoCoOraclePlanner
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.preview_nominal import nominal_command, nominal_window
@@ -256,6 +260,10 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
                 future_history = future_history_tokens(
                     states_history, command_history, predicted, actions, bundle.history_len
                 )
+                if not protocol.future_history:
+                    future_history = stale_history_tokens_at_anchor(
+                        states_history, command_history, predicted[-1], bundle.history_len
+                    )
                 anchor_snapshot = None
             else:
                 if oracle_env is None:
