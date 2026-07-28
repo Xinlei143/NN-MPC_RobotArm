@@ -1,0 +1,11 @@
+{
+  "rule": "nominal circle ThreadedASAP seed with TCP RMSE closest to the five-seed median",
+  "runs": {
+    "FullVirtual": "./outputs/robustness/paper_three_ik_l036_s5_v1/mpc_architectures/VirtualDelayAware/nominal/circle_seed_3",
+    "NaiveDelayed": "./outputs/robustness/paper_three_ik_l036_s5_v1/mpc_architectures/NaiveDelayed/nominal/circle_seed_3",
+    "ProjectedDirectIK": "./outputs/robustness/paper_three_ik_l036_s5_v1/physical/nominal/circle_seed_3",
+    "ThreadedASAP": "./outputs/robustness/paper_three_ik_l036_s5_v1/mpc_architectures/ThreadedAsync/nominal/circle_seed_3"
+  },
+  "selected_seed": 3,
+  "threaded_tcp_rmse_m": 0.0282774808984439
+}

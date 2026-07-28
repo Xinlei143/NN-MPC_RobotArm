@@ -1,0 +1,1084 @@
+{
+  "groups": [
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "physical",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "preview",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "circle",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "fast_ellipse",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "figure8",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "actuator_gain_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "force_pulse_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "nominal",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "0",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "observation_noise_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l3",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "3",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    },
+    {
+      "condition": "payload_l6",
+      "deterministic": true,
+      "input_rows": 5,
+      "level": "6",
+      "method": "raw",
+      "output_rows": 1,
+      "trajectory": "rounded_square",
+      "unique_content": 1
+    }
+  ]
+}

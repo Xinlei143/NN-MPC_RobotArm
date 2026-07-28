@@ -1,0 +1,19 @@
+{
+  "noninferiority_margin_fraction": 0.05,
+  "sets": {
+    "common_d": {
+      "mean_absolute_delta_m": -0.003437511044867043,
+      "mean_relative_delta": -0.09914438636322909,
+      "n": 6,
+      "noninferior": true,
+      "one_sided_95_upper_relative_delta": -0.09101456673639145
+    },
+    "deployed": {
+      "mean_absolute_delta_m": -0.0032577043665312877,
+      "mean_relative_delta": -0.09259154080765263,
+      "n": 6,
+      "noninferior": true,
+      "one_sided_95_upper_relative_delta": -0.08237460595376124
+    }
+  }
+}

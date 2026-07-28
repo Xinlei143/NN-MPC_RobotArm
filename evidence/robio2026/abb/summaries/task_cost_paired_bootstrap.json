@@ -1,0 +1,254 @@
+{
+  "TaskSpaceDeployed_minus_JointOnlyDeployed": {
+    "left": "JointOnlyDeployed",
+    "metrics": {
+      "baseline_selection_rate": {
+        "ci95": [
+          -0.04116380456334123,
+          0.007060554161224227
+        ],
+        "mean_delta_right_minus_left": -0.017380114630510812,
+        "n": 6
+      },
+      "e2e_max_s": {
+        "ci95": [
+          -0.03337680175900459,
+          0.07783043198287487
+        ],
+        "mean_delta_right_minus_left": 0.021670808394749958,
+        "n": 6
+      },
+      "e2e_p95_s": {
+        "ci95": [
+          0.006600682406375807,
+          0.007003108256806927
+        ],
+        "mean_delta_right_minus_left": 0.006818015625079472,
+        "n": 6
+      },
+      "exact_final_pool_time_max_s": {
+        "ci95": [
+          -0.031174679003015626,
+          0.08518632350508899
+        ],
+        "mean_delta_right_minus_left": 0.026986582000972703,
+        "n": 6
+      },
+      "exact_final_pool_time_p95_s": {
+        "ci95": [
+          0.006525459239977257,
+          0.00675923786778488
+        ],
+        "mean_delta_right_minus_left": 0.006645404133208407,
+        "n": 6
+      },
+      "exact_pool_candidate_count_mean": {
+        "ci95": [
+          -0.07212608224993566,
+          -0.03716429413641542
+        ],
+        "mean_delta_right_minus_left": -0.05446483690121765,
+        "n": 6
+      },
+      "exact_pool_valid_count_mean": {
+        "ci95": [
+          -0.07212608224993566,
+          -0.03680359155249965
+        ],
+        "mean_delta_right_minus_left": -0.05446483690121765,
+        "n": 6
+      },
+      "exact_selection_changed_rate": {
+        "ci95": [
+          0.1750150637528628,
+          0.2207698213265075
+        ],
+        "mean_delta_right_minus_left": 0.19585250940228094,
+        "n": 6
+      },
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.00034825211582993994,
+          0.0019261303236385568
+        ],
+        "mean_delta_right_minus_left": 0.0005007146423637471,
+        "n": 6
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0051787122896806296,
+          -0.0010333064428009384
+        ],
+        "mean_delta_right_minus_left": -0.003634906524585356,
+        "n": 6
+      },
+      "solve_max_s": {
+        "ci95": [
+          -0.03431899410982927,
+          0.08051439323462542
+        ],
+        "mean_delta_right_minus_left": 0.022682049001256626,
+        "n": 6
+      },
+      "solve_p95_s": {
+        "ci95": [
+          0.006672141514718532,
+          0.007420235189298788
+        ],
+        "mean_delta_right_minus_left": 0.007036211714148521,
+        "n": 6
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.016644276306033136,
+          -0.009857540888090958
+        ],
+        "mean_delta_right_minus_left": -0.013646181734899695,
+        "n": 6
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.004321069170335483,
+          -0.0009640502942539139
+        ],
+        "mean_delta_right_minus_left": -0.003054456121018843,
+        "n": 6
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2"
+    ],
+    "right": "TaskSpaceDeployed"
+  },
+  "TaskSpaceFixedD6_minus_JointOnlyFixedD6": {
+    "left": "JointOnlyFixedD6",
+    "metrics": {
+      "baseline_selection_rate": {
+        "ci95": [
+          -0.035911602209944715,
+          0.01933701657458568
+        ],
+        "mean_delta_right_minus_left": -0.009668508287292784,
+        "n": 6
+      },
+      "e2e_max_s": {
+        "ci95": [
+          NaN,
+          NaN
+        ],
+        "mean_delta_right_minus_left": NaN,
+        "n": 0
+      },
+      "e2e_p95_s": {
+        "ci95": [
+          NaN,
+          NaN
+        ],
+        "mean_delta_right_minus_left": NaN,
+        "n": 0
+      },
+      "exact_final_pool_time_max_s": {
+        "ci95": [
+          0.003570075326327545,
+          0.007131619830033742
+        ],
+        "mean_delta_right_minus_left": 0.005706740329818179,
+        "n": 6
+      },
+      "exact_final_pool_time_p95_s": {
+        "ci95": [
+          0.006351191373202406,
+          0.006488943453829656
+        ],
+        "mean_delta_right_minus_left": 0.0064174388644460114,
+        "n": 6
+      },
+      "exact_pool_candidate_count_mean": {
+        "ci95": [
+          -0.12937384898710866,
+          -0.09208103130755034
+        ],
+        "mean_delta_right_minus_left": -0.10865561694290982,
+        "n": 6
+      },
+      "exact_pool_valid_count_mean": {
+        "ci95": [
+          -0.12937384898710866,
+          -0.09208103130755063
+        ],
+        "mean_delta_right_minus_left": -0.10865561694290982,
+        "n": 6
+      },
+      "exact_selection_changed_rate": {
+        "ci95": [
+          0.17587476979742175,
+          0.2154696132596685
+        ],
+        "mean_delta_right_minus_left": 0.19475138121546962,
+        "n": 6
+      },
+      "joint_rmse_rad": {
+        "ci95": [
+          7.67652554816249e-05,
+          0.0022347246072948637
+        ],
+        "mean_delta_right_minus_left": 0.0010504615376374787,
+        "n": 6
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.004599152070112894,
+          -0.0002565757511628509
+        ],
+        "mean_delta_right_minus_left": -0.0025922160612202806,
+        "n": 6
+      },
+      "solve_max_s": {
+        "ci95": [
+          0.0020228177309036255,
+          0.00944133847951889
+        ],
+        "mean_delta_right_minus_left": 0.005916552618145943,
+        "n": 6
+      },
+      "solve_p95_s": {
+        "ci95": [
+          0.006629973618934551,
+          0.006902580522000789
+        ],
+        "mean_delta_right_minus_left": 0.006760424717019002,
+        "n": 6
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.016797228840490164,
+          -0.009547168078521882
+        ],
+        "mean_delta_right_minus_left": -0.013200436097880191,
+        "n": 6
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.004402740730492102,
+          0.0002445906601663378
+        ],
+        "mean_delta_right_minus_left": -0.0022044586454457154,
+        "n": 6
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2"
+    ],
+    "right": "TaskSpaceFixedD6"
+  }
+}
