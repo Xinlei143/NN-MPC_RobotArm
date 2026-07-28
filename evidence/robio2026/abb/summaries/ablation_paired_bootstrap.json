@@ -1,0 +1,374 @@
+{
+  "NoFeedback_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "acceleration_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "feedback_saturation_rate": {
+        "ci95": [
+          -0.001870172638368301,
+          -0.0005697998897599801
+        ],
+        "mean_delta_right_minus_left": -0.0011562532935215808,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0019541134543532147,
+          0.0006973268919750661
+        ],
+        "mean_delta_right_minus_left": -0.0005479794611715769,
+        "n": 20
+      },
+      "packet_expiration_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "planner_execution_qref_error_rms_rad": {
+        "ci95": [
+          8.728772929898045e-05,
+          0.00032841011134530153
+        ],
+        "mean_delta_right_minus_left": 0.0002071571620698563,
+        "n": 20
+      },
+      "projection_discrepancy_rms_rad": {
+        "ci95": [
+          -0.0033621254606092713,
+          0.000593572284384754
+        ],
+        "mean_delta_right_minus_left": -0.0013275751283603984,
+        "n": 20
+      },
+      "residual_rms_rad": {
+        "ci95": [
+          -0.0029089557815080397,
+          0.0007680169415147553
+        ],
+        "mean_delta_right_minus_left": -0.001035771049497251,
+        "n": 20
+      },
+      "residual_saturation_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.00425484447553755,
+          0.0017276392620988199
+        ],
+        "mean_delta_right_minus_left": -0.0012472659721970616,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.002262592446321651,
+          0.00028995626269442515
+        ],
+        "mean_delta_right_minus_left": -0.0009503105082496124,
+        "n": 20
+      },
+      "velocity_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "NoFeedback"
+  },
+  "NoFutureAlignment_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "acceleration_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "feedback_saturation_rate": {
+        "ci95": [
+          0.03161149096138332,
+          0.04422894046561535
+        ],
+        "mean_delta_right_minus_left": 0.03743181148001818,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          0.0007240284017518127,
+          0.004379270720234128
+        ],
+        "mean_delta_right_minus_left": 0.0024570051338825122,
+        "n": 20
+      },
+      "packet_expiration_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "planner_execution_qref_error_rms_rad": {
+        "ci95": [
+          0.007863986793787843,
+          0.00926552361087108
+        ],
+        "mean_delta_right_minus_left": 0.008540755573088804,
+        "n": 20
+      },
+      "projection_discrepancy_rms_rad": {
+        "ci95": [
+          0.00023763605103468193,
+          0.004813544754054909
+        ],
+        "mean_delta_right_minus_left": 0.0025373737970196117,
+        "n": 20
+      },
+      "residual_rms_rad": {
+        "ci95": [
+          -0.0007163583907746709,
+          0.0033621819890867146
+        ],
+        "mean_delta_right_minus_left": 0.001370381397954028,
+        "n": 20
+      },
+      "residual_saturation_rate": {
+        "ci95": [
+          0.0,
+          9.9535500995355e-05
+        ],
+        "mean_delta_right_minus_left": 3.3178500331785e-05,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          0.0014096118602901606,
+          0.007022346220444866
+        ],
+        "mean_delta_right_minus_left": 0.004167630523443209,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          0.001256213458767624,
+          0.004409159426381974
+        ],
+        "mean_delta_right_minus_left": 0.0028201879317321593,
+        "n": 20
+      },
+      "velocity_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "NoFutureAlignment"
+  },
+  "NoReanchor_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "acceleration_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "failure_rate": {
+        "ci95": [
+          0.45,
+          0.85
+        ],
+        "mean_delta_right_minus_left": 0.65,
+        "n": 20
+      },
+      "feedback_saturation_rate": {
+        "ci95": [
+          0.3498475120164192,
+          0.44299579319750765
+        ],
+        "mean_delta_right_minus_left": 0.39783853178801454,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          1.3718587757241576,
+          1.5982570653200625
+        ],
+        "mean_delta_right_minus_left": 1.4858413079763928,
+        "n": 20
+      },
+      "packet_expiration_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "planner_execution_qref_error_rms_rad": {
+        "ci95": [
+          0.018943199398236507,
+          0.02212483997933436
+        ],
+        "mean_delta_right_minus_left": 0.02057028208503232,
+        "n": 20
+      },
+      "projection_discrepancy_rms_rad": {
+        "ci95": [
+          0.0181470743132184,
+          0.053552535790429824
+        ],
+        "mean_delta_right_minus_left": 0.03386422293446575,
+        "n": 20
+      },
+      "residual_rms_rad": {
+        "ci95": [
+          0.7220302049513492,
+          0.9780018163831881
+        ],
+        "mean_delta_right_minus_left": 0.8452366366304297,
+        "n": 20
+      },
+      "residual_saturation_rate": {
+        "ci95": [
+          0.13084826151635476,
+          0.1703939988226865
+        ],
+        "mean_delta_right_minus_left": 0.15116794931162414,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          1.070758264279924,
+          1.5267085932507178
+        ],
+        "mean_delta_right_minus_left": 1.3094222737476229,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          0.5261949850573537,
+          0.7765802524924699
+        ],
+        "mean_delta_right_minus_left": 0.6545958127002207,
+        "n": 20
+      },
+      "velocity_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "NoReanchor"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "ThreadedASAP_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0018063160634123477,
+          0.0010528525737409013
+        ],
+        "mean_delta_right_minus_left": -0.0004897695794773343,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.0021735029951669214,
+          0.002986732697114343
+        ],
+        "mean_delta_right_minus_left": 0.00037231186404824144,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.0010937141705480307,
+          0.0013028567117691042
+        ],
+        "mean_delta_right_minus_left": 5.408688071130447e-05,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "ThreadedASAP"
+  }
+}

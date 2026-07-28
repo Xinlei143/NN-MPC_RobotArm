@@ -1,0 +1,190 @@
+{
+  "FullVirtual_minus_NaiveDelayed": {
+    "left": "NaiveDelayed",
+    "metrics": {
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.1875554981402022,
+          -0.16734967970057582
+        ],
+        "mean_delta_right_minus_left": -0.17768938776991827,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.08790248684771355,
+          -0.07478020943701266
+        ],
+        "mean_delta_right_minus_left": -0.08149850334972142,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.04204933222230018,
+          -0.03679913931866583
+        ],
+        "mean_delta_right_minus_left": -0.03955380298053566,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "FullVirtual"
+  },
+  "ThreadedASAP_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "lap_tcp_rmse_m": {
+        "ci95": [
+          -0.001752629826949208,
+          0.001909949459838897
+        ],
+        "mean_delta_right_minus_left": -3.933503026840677e-05,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.001834232351026101,
+          0.0010363544332101112
+        ],
+        "mean_delta_right_minus_left": -0.0004897695794773343,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.0021036357209086465,
+          0.00295396741526202
+        ],
+        "mean_delta_right_minus_left": 0.00037231186404824144,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.0010937141705480307,
+          0.0013028567117691042
+        ],
+        "mean_delta_right_minus_left": 5.408688071130447e-05,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "ThreadedASAP"
+  },
+  "ThreadedASAP_minus_NaiveDelayed": {
+    "left": "NaiveDelayed",
+    "metrics": {
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.18835737727389168,
+          -0.16831703273882417
+        ],
+        "mean_delta_right_minus_left": -0.1781791573493956,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.08716426648758349,
+          -0.07498647056566551
+        ],
+        "mean_delta_right_minus_left": -0.08112619148567315,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.04191999363038909,
+          -0.036823327020713
+        ],
+        "mean_delta_right_minus_left": -0.03949971609982435,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "ThreadedASAP"
+  }
+}

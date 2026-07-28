@@ -1,0 +1,56 @@
+{
+  "constraint_violation_runs": 0,
+  "duplicate_cases": 0,
+  "expected_cases": 84,
+  "fingerprint_hash_mismatches": 0,
+  "fingerprint_mismatches": 0,
+  "input_hash_mismatches": [],
+  "malformed_index_entries": [],
+  "manifest": {
+    "path": "./outputs/paper_ur5e_v2/manifests/paper.json",
+    "sha256": "31338ef9a80c9a6415ab3969153fcca8c9d44fdc0df680a6f7687b132b3e852f",
+    "size": 23099
+  },
+  "manifest_commit_exists": true,
+  "manifest_git_commit": "abe107c0110d99966d9eec9834f848048416028a",
+  "manifest_git_dirty": false,
+  "missing_cases": [],
+  "missing_required_rollout_fields": [],
+  "missing_rollouts": 0,
+  "missing_run_artifacts": [],
+  "nonfinite_runs": 0,
+  "observed_cases": 84,
+  "schema_version": 1,
+  "status": "passed",
+  "threaded_timing": {
+    "control_deadline_miss_rate": 0.0003007518796992481,
+    "control_deadline_misses": 8,
+    "control_lateness": {
+      "max_s": 0.07040262967348099,
+      "p99_s": 0.0,
+      "samples": 26600
+    },
+    "control_ticks": 26600,
+    "fallback_duty_cycle": 0.005263157894736842,
+    "late_drop_rate": 0.002494595044071179,
+    "late_packet_drops": 15,
+    "packet_expiration_rate": 0.0,
+    "packet_expirations": 0,
+    "planner_end_to_end_latency": {
+      "max_s": 0.13923004269599915,
+      "p99_s": 0.05653231963515282,
+      "samples": 5992
+    },
+    "planner_publications": 6013,
+    "runs": 20,
+    "wakeup_lateness": {
+      "max_s": 0.07943743467330933,
+      "p99_s": 0.00033938465639948845,
+      "samples": 26600
+    },
+    "worst_single_run_deadline_miss_rate": 0.0056939501779359435,
+    "worst_single_run_late_drop_rate": 0.020242914979757085
+  },
+  "unexpected_cases": [],
+  "wrong_run_directories": []
+}

@@ -1,0 +1,382 @@
+{
+  "actuator_gain": {
+    "left": "VirtualDelayAware",
+    "metrics": {
+      "joint_rmse_rad": {
+        "ci95": [
+          0.0006928738525677069,
+          0.001397237420566233
+        ],
+        "mean_delta_right_minus_left": 0.0010450919691598341,
+        "n": 40
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          0.0017508769721137913,
+          0.0037190356917205514
+        ],
+        "mean_delta_right_minus_left": 0.002715850391363863,
+        "n": 40
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          0.006478511531837284,
+          0.01127257902477867
+        ],
+        "mean_delta_right_minus_left": 0.008818393433466548,
+        "n": 40
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          0.0024030075050803417,
+          0.004050164835046122
+        ],
+        "mean_delta_right_minus_left": 0.0032003585248676246,
+        "n": 40
+      }
+    },
+    "paired_cases": [
+      "circle:actuator_gain_l3:0",
+      "circle:actuator_gain_l3:1",
+      "circle:actuator_gain_l3:2",
+      "circle:actuator_gain_l3:3",
+      "circle:actuator_gain_l3:4",
+      "circle:actuator_gain_l6:0",
+      "circle:actuator_gain_l6:1",
+      "circle:actuator_gain_l6:2",
+      "circle:actuator_gain_l6:3",
+      "circle:actuator_gain_l6:4",
+      "fast_ellipse:actuator_gain_l3:0",
+      "fast_ellipse:actuator_gain_l3:1",
+      "fast_ellipse:actuator_gain_l3:2",
+      "fast_ellipse:actuator_gain_l3:3",
+      "fast_ellipse:actuator_gain_l3:4",
+      "fast_ellipse:actuator_gain_l6:0",
+      "fast_ellipse:actuator_gain_l6:1",
+      "fast_ellipse:actuator_gain_l6:2",
+      "fast_ellipse:actuator_gain_l6:3",
+      "fast_ellipse:actuator_gain_l6:4",
+      "figure8:actuator_gain_l3:0",
+      "figure8:actuator_gain_l3:1",
+      "figure8:actuator_gain_l3:2",
+      "figure8:actuator_gain_l3:3",
+      "figure8:actuator_gain_l3:4",
+      "figure8:actuator_gain_l6:0",
+      "figure8:actuator_gain_l6:1",
+      "figure8:actuator_gain_l6:2",
+      "figure8:actuator_gain_l6:3",
+      "figure8:actuator_gain_l6:4",
+      "rounded_square:actuator_gain_l3:0",
+      "rounded_square:actuator_gain_l3:1",
+      "rounded_square:actuator_gain_l3:2",
+      "rounded_square:actuator_gain_l3:3",
+      "rounded_square:actuator_gain_l3:4",
+      "rounded_square:actuator_gain_l6:0",
+      "rounded_square:actuator_gain_l6:1",
+      "rounded_square:actuator_gain_l6:2",
+      "rounded_square:actuator_gain_l6:3",
+      "rounded_square:actuator_gain_l6:4"
+    ],
+    "right": "ThreadedAsync"
+  },
+  "force_pulse": {
+    "left": "VirtualDelayAware",
+    "metrics": {
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.0005576176287918209,
+          0.000651553899498831
+        ],
+        "mean_delta_right_minus_left": 5.8432460399742695e-05,
+        "n": 40
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0014829054254259873,
+          0.0013692775468801249
+        ],
+        "mean_delta_right_minus_left": -1.4895827042920533e-05,
+        "n": 40
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          0.0006917136451229538,
+          0.006647172731114539
+        ],
+        "mean_delta_right_minus_left": 0.0036137143243104184,
+        "n": 40
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.000600577255864302,
+          0.001960927628747951
+        ],
+        "mean_delta_right_minus_left": 0.0007041185560211551,
+        "n": 40
+      }
+    },
+    "paired_cases": [
+      "circle:force_pulse_l3:0",
+      "circle:force_pulse_l3:1",
+      "circle:force_pulse_l3:2",
+      "circle:force_pulse_l3:3",
+      "circle:force_pulse_l3:4",
+      "circle:force_pulse_l6:0",
+      "circle:force_pulse_l6:1",
+      "circle:force_pulse_l6:2",
+      "circle:force_pulse_l6:3",
+      "circle:force_pulse_l6:4",
+      "fast_ellipse:force_pulse_l3:0",
+      "fast_ellipse:force_pulse_l3:1",
+      "fast_ellipse:force_pulse_l3:2",
+      "fast_ellipse:force_pulse_l3:3",
+      "fast_ellipse:force_pulse_l3:4",
+      "fast_ellipse:force_pulse_l6:0",
+      "fast_ellipse:force_pulse_l6:1",
+      "fast_ellipse:force_pulse_l6:2",
+      "fast_ellipse:force_pulse_l6:3",
+      "fast_ellipse:force_pulse_l6:4",
+      "figure8:force_pulse_l3:0",
+      "figure8:force_pulse_l3:1",
+      "figure8:force_pulse_l3:2",
+      "figure8:force_pulse_l3:3",
+      "figure8:force_pulse_l3:4",
+      "figure8:force_pulse_l6:0",
+      "figure8:force_pulse_l6:1",
+      "figure8:force_pulse_l6:2",
+      "figure8:force_pulse_l6:3",
+      "figure8:force_pulse_l6:4",
+      "rounded_square:force_pulse_l3:0",
+      "rounded_square:force_pulse_l3:1",
+      "rounded_square:force_pulse_l3:2",
+      "rounded_square:force_pulse_l3:3",
+      "rounded_square:force_pulse_l3:4",
+      "rounded_square:force_pulse_l6:0",
+      "rounded_square:force_pulse_l6:1",
+      "rounded_square:force_pulse_l6:2",
+      "rounded_square:force_pulse_l6:3",
+      "rounded_square:force_pulse_l6:4"
+    ],
+    "right": "ThreadedAsync"
+  },
+  "nominal": {
+    "left": "VirtualDelayAware",
+    "metrics": {
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.0006327882247275483,
+          0.0007459026896788183
+        ],
+        "mean_delta_right_minus_left": -1.0551289728557255e-06,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0018065360785847913,
+          0.0009922970153652935
+        ],
+        "mean_delta_right_minus_left": -0.0004897695794773343,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.0021123888082802307,
+          0.002959034122526651
+        ],
+        "mean_delta_right_minus_left": 0.00037231186404824144,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.001113665063228248,
+          0.0013305467299568404
+        ],
+        "mean_delta_right_minus_left": 5.408688071130447e-05,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:nominal:0",
+      "circle:nominal:1",
+      "circle:nominal:2",
+      "circle:nominal:3",
+      "circle:nominal:4",
+      "fast_ellipse:nominal:0",
+      "fast_ellipse:nominal:1",
+      "fast_ellipse:nominal:2",
+      "fast_ellipse:nominal:3",
+      "fast_ellipse:nominal:4",
+      "figure8:nominal:0",
+      "figure8:nominal:1",
+      "figure8:nominal:2",
+      "figure8:nominal:3",
+      "figure8:nominal:4",
+      "rounded_square:nominal:0",
+      "rounded_square:nominal:1",
+      "rounded_square:nominal:2",
+      "rounded_square:nominal:3",
+      "rounded_square:nominal:4"
+    ],
+    "right": "ThreadedAsync"
+  },
+  "observation_noise": {
+    "left": "VirtualDelayAware",
+    "metrics": {
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.0009179521234260131,
+          0.0006769135865863151
+        ],
+        "mean_delta_right_minus_left": -8.802110303690411e-05,
+        "n": 40
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.001780855817514401,
+          0.002057926044755516
+        ],
+        "mean_delta_right_minus_left": 0.00024659575632850927,
+        "n": 40
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.0005785173811018484,
+          0.008855097688036032
+        ],
+        "mean_delta_right_minus_left": 0.0043900468945503165,
+        "n": 40
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.0015825174795392714,
+          0.0023736042419001545
+        ],
+        "mean_delta_right_minus_left": 0.0005184938025466111,
+        "n": 40
+      }
+    },
+    "paired_cases": [
+      "circle:observation_noise_l3:0",
+      "circle:observation_noise_l3:1",
+      "circle:observation_noise_l3:2",
+      "circle:observation_noise_l3:3",
+      "circle:observation_noise_l3:4",
+      "circle:observation_noise_l6:0",
+      "circle:observation_noise_l6:1",
+      "circle:observation_noise_l6:2",
+      "circle:observation_noise_l6:3",
+      "circle:observation_noise_l6:4",
+      "fast_ellipse:observation_noise_l3:0",
+      "fast_ellipse:observation_noise_l3:1",
+      "fast_ellipse:observation_noise_l3:2",
+      "fast_ellipse:observation_noise_l3:3",
+      "fast_ellipse:observation_noise_l3:4",
+      "fast_ellipse:observation_noise_l6:0",
+      "fast_ellipse:observation_noise_l6:1",
+      "fast_ellipse:observation_noise_l6:2",
+      "fast_ellipse:observation_noise_l6:3",
+      "fast_ellipse:observation_noise_l6:4",
+      "figure8:observation_noise_l3:0",
+      "figure8:observation_noise_l3:1",
+      "figure8:observation_noise_l3:2",
+      "figure8:observation_noise_l3:3",
+      "figure8:observation_noise_l3:4",
+      "figure8:observation_noise_l6:0",
+      "figure8:observation_noise_l6:1",
+      "figure8:observation_noise_l6:2",
+      "figure8:observation_noise_l6:3",
+      "figure8:observation_noise_l6:4",
+      "rounded_square:observation_noise_l3:0",
+      "rounded_square:observation_noise_l3:1",
+      "rounded_square:observation_noise_l3:2",
+      "rounded_square:observation_noise_l3:3",
+      "rounded_square:observation_noise_l3:4",
+      "rounded_square:observation_noise_l6:0",
+      "rounded_square:observation_noise_l6:1",
+      "rounded_square:observation_noise_l6:2",
+      "rounded_square:observation_noise_l6:3",
+      "rounded_square:observation_noise_l6:4"
+    ],
+    "right": "ThreadedAsync"
+  },
+  "payload": {
+    "left": "VirtualDelayAware",
+    "metrics": {
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.001278050576044516,
+          0.00026517062644842206
+        ],
+        "mean_delta_right_minus_left": -0.0005114040980713839,
+        "n": 40
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.001803413452105041,
+          0.00254380407777478
+        ],
+        "mean_delta_right_minus_left": 0.00029959885498636685,
+        "n": 40
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.003015550105832525,
+          0.005920015553943791
+        ],
+        "mean_delta_right_minus_left": 0.0014418512210249747,
+        "n": 40
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.001253902320552082,
+          0.00241752251143632
+        ],
+        "mean_delta_right_minus_left": 0.0005280134928680169,
+        "n": 40
+      }
+    },
+    "paired_cases": [
+      "circle:payload_l3:0",
+      "circle:payload_l3:1",
+      "circle:payload_l3:2",
+      "circle:payload_l3:3",
+      "circle:payload_l3:4",
+      "circle:payload_l6:0",
+      "circle:payload_l6:1",
+      "circle:payload_l6:2",
+      "circle:payload_l6:3",
+      "circle:payload_l6:4",
+      "fast_ellipse:payload_l3:0",
+      "fast_ellipse:payload_l3:1",
+      "fast_ellipse:payload_l3:2",
+      "fast_ellipse:payload_l3:3",
+      "fast_ellipse:payload_l3:4",
+      "fast_ellipse:payload_l6:0",
+      "fast_ellipse:payload_l6:1",
+      "fast_ellipse:payload_l6:2",
+      "fast_ellipse:payload_l6:3",
+      "fast_ellipse:payload_l6:4",
+      "figure8:payload_l3:0",
+      "figure8:payload_l3:1",
+      "figure8:payload_l3:2",
+      "figure8:payload_l3:3",
+      "figure8:payload_l3:4",
+      "figure8:payload_l6:0",
+      "figure8:payload_l6:1",
+      "figure8:payload_l6:2",
+      "figure8:payload_l6:3",
+      "figure8:payload_l6:4",
+      "rounded_square:payload_l3:0",
+      "rounded_square:payload_l3:1",
+      "rounded_square:payload_l3:2",
+      "rounded_square:payload_l3:3",
+      "rounded_square:payload_l3:4",
+      "rounded_square:payload_l6:0",
+      "rounded_square:payload_l6:1",
+      "rounded_square:payload_l6:2",
+      "rounded_square:payload_l6:3",
+      "rounded_square:payload_l6:4"
+    ],
+    "right": "ThreadedAsync"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "kind": "paper_core_claim_evidence",
+  "completed_at": "2026-07-28",
+  "base_git_commit": "b4e6f807a9c511e41826c788a3d852135fac1bf2",
+  "implementation_patch_sha256": "df98d7e8e58f1eac4fe965d6c9cf2031c3c9e303910b8af8af0c2f4566772efa",
+  "frozen_manifest": "outputs/paper_delay_aware_two_stage_v2/manifests/paper.json",
+  "frozen_manifest_git_commit": "77505a528459c6d21c44822d1bc6f9ed4cdb8da0",
+  "inputs": {
+    "checkpoint_sha256": "9b7f65384f892bde1b4465e7d0795d1dafc806cf7bcb4bf7fb0ff965165684e5",
+    "normalizer_sha256": "5738f1e85dd34820a7652aec34cd0eb29195601321b766644fe4c0f59892f7f4",
+    "abb_xml_sha256": "fea13013e537f1b8f199ff2096b1718150b28bfd3117307edb6d0f87d212dc92",
+    "references": {
+      "circle": "c15a120662df139ed529a1c7d6ba9b078cca47bc7eb4bbfe9dd74464c976ce23",
+      "figure8": "fc025a1f6ab9fdf644127a3000f4fa2244f35d77ef570ff282c34eafdba01260",
+      "fast_ellipse": "a84ffca02433ad64f0319e8491bdfb45dc33c2b92cc508e1e0adeeff8df170e0"
+    }
+  },
+  "configuration": {
+    "history_len": 16,
+    "horizon": 20,
+    "num_samples": 128,
+    "cem_iterations": 2,
+    "anticipation_delay_steps": 6,
+    "control_dt_s": 0.01,
+    "planner_projection_strategy": "two_stage",
+    "cost_profile": "blackbox",
+    "trajectories": [
+      "circle",
+      "figure8",
+      "fast_ellipse"
+    ]
+  },
+  "completed_evidence": {
+    "history_alignment_cases": 45,
+    "effort_pareto_cases": 54,
+    "candidate_snapshots": 54,
+    "unique_counterfactual_candidates": 149,
+    "unit_tests_passed": 35
+  }
+}

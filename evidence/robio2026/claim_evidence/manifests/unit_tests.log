@@ -1,0 +1,41 @@
+test_commit_pairs_current_state_with_executed_command (mpc.tests.test_history.ActionAlignedHistoryTests) ... ok
+test_future_anchor_has_correct_intermediate_actions_and_placeholder (mpc.tests.test_history.ActionAlignedHistoryTests) ... ok
+test_history_tokens_accept_snapshot_ndarrays (mpc.tests.test_history.ActionAlignedHistoryTests) ... ok
+test_stale_history_replaces_only_newest_state (mpc.tests.test_history.ActionAlignedHistoryTests) ... ok
+test_anchor_only_protocol_semantics (mpc.tests.test_paper_experiments.DelayProtocolTests) ... ok
+test_canonical_protocol_matrix_has_no_duplicate_rows (mpc.tests.test_paper_experiments.DelayProtocolTests) ... ok
+test_naive_packet_age_starts_at_zero_when_delay_expires (mpc.tests.test_paper_experiments.DelayProtocolTests) ... ok
+test_stale_history_is_the_only_history_only_ablation (mpc.tests.test_paper_experiments.DelayProtocolTests) ... ok
+test_zero_delay_plan_is_active_on_the_same_logical_tick (mpc.tests.test_paper_experiments.DelayProtocolTests) ... ok
+test_baseline_deduplication (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_bootstrap_pairs_cases_not_timesteps (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_failure_rate_is_case_level_not_timestep_pseudoreplication (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_final_pool_diagnostics_are_aggregated_by_plan_event (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_grouped_bootstrap_keeps_perturbations_separate (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_latency_recovery_bootstraps_cases (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_perturbation_family_ignores_level (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_threaded_failure_uses_unique_events_not_persistent_status (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_timing_summary_contains_max_values (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
+test_ablation_full_cases_are_exact_main_cache_reuses (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_existing_main_case_cache_compatibility (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_formal_suite_sizes_match_the_registered_protocol (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_four_stage_delay_sweep_size (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_frozen_fullvirtual_selection_has_twenty_unique_cases (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_fullvirtual_replacement_preserves_matched_matrix (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_paper_base_args_freeze_stage_one_off (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_paper_base_args_pin_the_final_gru_two_stage_method (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_paper_base_args_use_full_residual_parameterization (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_projection_suite_freezes_joint_only_cost_and_common_d6 (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_projection_suite_size (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_task_cost_suite_has_fixed_and_deployed_paired_variants (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_gru_action_std_groups_cover_frozen_training_support (mpc.tests.test_paper_experiments.PreviewSelectionTests) ... ok
+test_orientation_guard_selects_best_tcp_among_eligible_candidates (mpc.tests.test_paper_experiments.PreviewSelectionTests) ... ok
+test_rounded_square_is_closed_finite_and_distinct_from_square (mpc.tests.test_paper_experiments.RoundedSquareTests) ... ok
+test_projection_changes_an_infeasible_first_action (mpc.tests.model_c.test_branches.ActivationProjectedBranchTests) ... ok
+test_projection_makes_each_command_rate_feasible (mpc.tests.model_c.test_branches.ActivationProjectedBranchTests) ... ok
+
+----------------------------------------------------------------------
+Ran 35 tests in 0.109s
+
+OK
+

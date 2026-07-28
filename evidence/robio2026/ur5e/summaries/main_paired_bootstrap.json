@@ -1,0 +1,122 @@
+{
+  "FullVirtual_minus_NaiveDelayed": {
+    "left": "NaiveDelayed",
+    "metrics": {
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.013750955087492248,
+          -0.005416744633357734
+        ],
+        "mean_delta_right_minus_left": -0.009518844865735678,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.05354356788913719,
+          -0.04658299344754779
+        ],
+        "mean_delta_right_minus_left": -0.050139901479706164,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.02612340049202236,
+          -0.022625753850950156
+        ],
+        "mean_delta_right_minus_left": -0.02435579147879912,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "FullVirtual"
+  },
+  "ThreadedAsync_minus_FullVirtual": {
+    "left": "FullVirtual",
+    "metrics": {
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 20
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.0026517419670474356,
+          0.00016692333738916335
+        ],
+        "mean_delta_right_minus_left": -0.001260301433610673,
+        "n": 20
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.0006501921017188581,
+          0.0009477571900933979
+        ],
+        "mean_delta_right_minus_left": 0.0001447877380996938,
+        "n": 20
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.00039086851519591,
+          0.0004083836318948742
+        ],
+        "mean_delta_right_minus_left": -7.428409004770192e-06,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "ThreadedAsync"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "command_acceleration_rms_rad_s2": 0.5704582563934703,
+  "n": 3,
+  "tcp_rmse_mm": 40.683598565341946,
+  "torque_rms_nm": 5.898589116506259,
+  "trajectories": [
+    "circle",
+    "figure8",
+    "fast_ellipse"
+  ]
+}
