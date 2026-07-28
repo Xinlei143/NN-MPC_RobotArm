@@ -5,7 +5,12 @@ import unittest
 
 import numpy as np
 
-from mpc.history import commit_command_and_append_placeholder, future_history_tokens, history_tokens
+from mpc.history import (
+    commit_command_and_append_placeholder,
+    future_history_tokens,
+    history_tokens,
+    stale_history_tokens_at_anchor,
+)
 
 
 class ActionAlignedHistoryTests(unittest.TestCase):
@@ -33,6 +38,14 @@ class ActionAlignedHistoryTests(unittest.TestCase):
             history_len=4,
         )
         np.testing.assert_allclose(tokens, [[4.0, 0.1], [5.0, 0.2], [6.0, 0.3], [7.0, 0.3]])
+
+    def test_stale_history_replaces_only_newest_state(self) -> None:
+        states = np.array([[1.0], [2.0], [3.0]], dtype=np.float32)
+        commands = np.array([[0.1], [0.2], [0.3]], dtype=np.float32)
+        launch = history_tokens(states, commands, 3)
+        stale = stale_history_tokens_at_anchor(states, commands, np.array([9.0], dtype=np.float32), 3)
+        np.testing.assert_array_equal(stale[:-1], launch[:-1])
+        np.testing.assert_allclose(stale[-1], [9.0, 0.3])
 
 
 if __name__ == "__main__":

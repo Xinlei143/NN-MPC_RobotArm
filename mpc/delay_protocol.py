@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 PROTOCOL_NAMES = (
     "full",
+    "stale_history",
     "naive_delayed",
     "anchor_only",
     "no_future_alignment",
@@ -19,6 +20,7 @@ PROTOCOL_NAMES = (
 class DelayProtocol:
     name: str
     future_state: bool
+    future_history: bool
     future_reference: bool
     reanchor_residual: bool
     feedback: bool
@@ -29,14 +31,17 @@ class DelayProtocol:
 
 
 _PROTOCOLS = {
-    "full": DelayProtocol("full", True, True, True, True),
-    "naive_delayed": DelayProtocol("naive_delayed", False, False, False, False),
-    "anchor_only": DelayProtocol("anchor_only", True, True, False, False),
+    "full": DelayProtocol("full", True, True, True, True, True),
+    # Isolate recurrent-context alignment while retaining the forecast
+    # activation state and activation-time reference.
+    "stale_history": DelayProtocol("stale_history", True, False, True, True, True),
+    "naive_delayed": DelayProtocol("naive_delayed", False, False, False, False, False),
+    "anchor_only": DelayProtocol("anchor_only", True, True, True, False, False),
     # State forecast and activation-time reference shift are one future-
     # alignment module in the paper.  This variant removes both together.
-    "no_future_alignment": DelayProtocol("no_future_alignment", False, False, True, True),
-    "no_reanchor": DelayProtocol("no_reanchor", True, True, False, True),
-    "no_feedback": DelayProtocol("no_feedback", True, True, True, False),
+    "no_future_alignment": DelayProtocol("no_future_alignment", False, False, False, True, True),
+    "no_reanchor": DelayProtocol("no_reanchor", True, True, True, False, True),
+    "no_feedback": DelayProtocol("no_feedback", True, True, True, True, False),
 }
 
 

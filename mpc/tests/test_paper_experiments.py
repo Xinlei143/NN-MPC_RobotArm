@@ -52,16 +52,32 @@ class DelayProtocolTests(unittest.TestCase):
         rows = []
         for name in PROTOCOL_NAMES:
             protocol = resolve_delay_protocol(name)
-            rows.append((protocol.future_state, protocol.future_reference, protocol.reanchor_residual, protocol.feedback))
+            rows.append((
+                protocol.future_state, protocol.future_history, protocol.future_reference,
+                protocol.reanchor_residual, protocol.feedback,
+            ))
         self.assertEqual(len(rows), len(set(rows)))
-        self.assertEqual(rows[0], (True, True, True, True))
+        self.assertEqual(rows[0], (True, True, True, True, True))
         self.assertEqual(resolve_delay_protocol("no_future_alignment").future_reference, False)
 
     def test_anchor_only_protocol_semantics(self) -> None:
         protocol = resolve_delay_protocol("anchor_only")
         self.assertEqual(
-            (protocol.future_state, protocol.future_reference, protocol.reanchor_residual, protocol.feedback),
-            (True, True, False, False),
+            (
+                protocol.future_state, protocol.future_history, protocol.future_reference,
+                protocol.reanchor_residual, protocol.feedback,
+            ),
+            (True, True, True, False, False),
+        )
+
+    def test_stale_history_is_the_only_history_only_ablation(self) -> None:
+        protocol = resolve_delay_protocol("stale_history")
+        self.assertEqual(
+            (
+                protocol.future_state, protocol.future_history, protocol.future_reference,
+                protocol.reanchor_residual, protocol.feedback,
+            ),
+            (True, False, True, True, True),
         )
 
     def test_zero_delay_plan_is_active_on_the_same_logical_tick(self) -> None:
@@ -322,6 +338,8 @@ class PaperMatrixTests(unittest.TestCase):
         manifest = self._manifest()
         self.assertEqual(len(suite_cases(manifest, "main")), 84)
         self.assertEqual(len(suite_cases(manifest, "ablation")), 80)
+        self.assertEqual(len(suite_cases(manifest, "history_alignment")), 45)
+        self.assertEqual(len(suite_cases(manifest, "effort_pareto")), 54)
         self.assertEqual(len(suite_cases(manifest, "delay_sweep")), 60)
         self.assertEqual(len(suite_cases(manifest, "preview")), 4)
         self.assertEqual(len(suite_cases(manifest, "oracle")), 12)

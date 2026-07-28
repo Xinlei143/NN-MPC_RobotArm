@@ -101,14 +101,14 @@ def parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run")
     run.add_argument("--manifest", default=None)
-    run.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "delay_sweep_components", "projection_choice", "preview", "oracle", "task_cost", "all"], default="main")
+    run.add_argument("--suite", choices=["main", "ablation", "history_alignment", "effort_pareto", "delay_sweep", "delay_sweep_components", "projection_choice", "preview", "oracle", "task_cost", "all"], default="main")
     run.add_argument("--resume", action="store_true")
     run.add_argument("--case-limit", type=int, default=None)
     run.add_argument("--legacy-mpc-root", default=str(LEGACY_MPC_ROOT))
     run.add_argument("--legacy-ik-root", default=str(LEGACY_IK_ROOT))
 
     summary = sub.add_parser("summarize")
-    summary.add_argument("--suite", choices=["main", "ablation", "delay_sweep", "delay_sweep_components", "projection_choice", "preview", "oracle", "task_cost", "smoke", "all"], default="all")
+    summary.add_argument("--suite", choices=["main", "ablation", "history_alignment", "effort_pareto", "delay_sweep", "delay_sweep_components", "projection_choice", "preview", "oracle", "task_cost", "smoke", "all"], default="all")
     summary.add_argument("--bootstrap-samples", type=int, default=10000)
 
     sub.add_parser("smoke")
@@ -527,6 +527,26 @@ def suite_cases(manifest: dict[str, Any], suite: str) -> list[dict[str, Any]]:
         for trajectory in TRAJECTORIES:
             for seed in seeds:
                 cases.extend(_case(label, trajectory, seed, "virtual_asap", protocol, delay) for label, protocol in labels)
+    elif suite == "history_alignment":
+        labels = (
+            ("FullAlignment", "full"),
+            ("StaleHistory", "stale_history"),
+            ("NoAlignment", "no_future_alignment"),
+        )
+        for trajectory in ("circle", "figure8", "fast_ellipse"):
+            for seed in seeds:
+                cases.extend(
+                    _case(label, trajectory, seed, "virtual_asap", protocol, delay)
+                    for label, protocol in labels
+                )
+    elif suite == "effort_pareto":
+        for trajectory in ("circle", "figure8", "fast_ellipse"):
+            for seed in (0, 1, 2):
+                for scale in (0.25, 0.5, 1.0, 2.0, 4.0, 8.0):
+                    cases.append(_case(
+                        f"EffortScale{scale:g}", trajectory, seed,
+                        "virtual_asap", "full", delay, effort_scale=scale,
+                    ))
     elif suite == "delay_sweep":
         for trajectory in ("circle", "fast_ellipse"):
             for seed in manifest["delay_sweep_seeds"]:
@@ -730,6 +750,10 @@ def _run_case(
     ):
         if key in case:
             setattr(args, key, str(case[key]))
+    if "effort_scale" in case:
+        scale = float(case["effort_scale"])
+        for key in ("w_servo", "w_residual_velocity", "w_residual_acceleration", "w_first"):
+            setattr(args, key, float(getattr(args, key)) * scale)
     if args.controller_mode == "ik_direct":
         args.checkpoint = args.normalizer = None
         args.exact_task_space_cost = "off"
@@ -788,7 +812,7 @@ def run_suite(
     if not isinstance(frozen, dict) or any(frozen.get(key) != value for key, value in required_frozen.items()):
         raise ValueError("Formal paper runs require the compiled two-stage frozen method")
     suites = (
-        "main", "ablation", "delay_sweep", "delay_sweep_components",
+        "main", "ablation", "history_alignment", "effort_pareto", "delay_sweep", "delay_sweep_components",
         "projection_choice", "preview", "oracle", "task_cost",
     ) if suite == "all" else (suite,)
     for name in suites:
@@ -804,7 +828,7 @@ def run_suite(
 
 def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
     suites = (
-        "main", "ablation", "delay_sweep", "delay_sweep_components",
+        "main", "ablation", "history_alignment", "effort_pareto", "delay_sweep", "delay_sweep_components",
         "projection_choice", "preview", "oracle", "task_cost", "smoke",
     ) if suite == "all" else (suite,)
     for name in suites:
@@ -820,7 +844,7 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
             events = [json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()] if event_path.is_file() else []
             row = summarize_arrays(str(entry["label"]), arrays, events)
             row.update({key: entry[key] for key in ("trajectory", "seed", "label")})
-            for key in ("evaluation_set", "variant"):
+            for key in ("evaluation_set", "variant", "effort_scale"):
                 if key in entry:
                     row[key] = entry[key]
             row["case_id"] = f"{entry['trajectory']}:{entry['seed']}"
@@ -873,6 +897,19 @@ def summarize(output: Path, suite: str, bootstrap_samples: int) -> None:
                     samples=bootstrap_samples, seed=20260722 + index,
                 )
             write_json(output / "summaries" / "ablation_paired_bootstrap.json", comparisons)
+        elif name == "history_alignment":
+            comparisons = {}
+            for index, variant in enumerate(("StaleHistory", "NoAlignment")):
+                comparisons[f"{variant}_minus_FullAlignment"] = paired_bootstrap_rows(
+                    rows, left="FullAlignment", right=variant,
+                    metrics=(
+                        "tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad",
+                        "joint_rmse_rad", "failure_rate", "residual_saturation_rate",
+                        "velocity_violation_count", "acceleration_violation_count",
+                    ),
+                    samples=bootstrap_samples, seed=20260760 + index,
+                )
+            write_json(output / "summaries" / "history_alignment_paired_bootstrap.json", comparisons)
         elif name == "task_cost":
             comparisons = {}
             for index, (left, right) in enumerate((("JointOnlyFixedD6", "TaskSpaceFixedD6"), ("JointOnlyDeployed", "TaskSpaceDeployed"))):
