@@ -1,0 +1,176 @@
+{
+  "NoAlignment_minus_FullAlignment": {
+    "left": "FullAlignment",
+    "metrics": {
+      "acceleration_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      },
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      },
+      "joint_rmse_rad": {
+        "ci95": [
+          0.0010542028495921928,
+          0.0030595346163553943
+        ],
+        "mean_delta_right_minus_left": 0.0020448832241976864,
+        "n": 15
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          0.0002630540925394457,
+          0.004879748047708513
+        ],
+        "mean_delta_right_minus_left": 0.0024799158690789486,
+        "n": 15
+      },
+      "residual_saturation_rate": {
+        "ci95": [
+          0.0,
+          0.00013271400132714
+        ],
+        "mean_delta_right_minus_left": 4.4238000442380005e-05,
+        "n": 15
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          0.0007877697888761634,
+          0.008094531172265598
+        ],
+        "mean_delta_right_minus_left": 0.004397253220279997,
+        "n": 15
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          0.0008392795972696449,
+          0.004971676261713784
+        ],
+        "mean_delta_right_minus_left": 0.002889508569827586,
+        "n": 15
+      },
+      "velocity_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4"
+    ],
+    "right": "NoAlignment"
+  },
+  "StaleHistory_minus_FullAlignment": {
+    "left": "FullAlignment",
+    "metrics": {
+      "acceleration_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      },
+      "failure_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      },
+      "joint_rmse_rad": {
+        "ci95": [
+          -0.0008726882209097102,
+          0.000172894262154392
+        ],
+        "mean_delta_right_minus_left": -0.00028923904323578583,
+        "n": 15
+      },
+      "orientation_rmse_rad": {
+        "ci95": [
+          -0.002811596860112469,
+          -0.0004700977413789455
+        ],
+        "mean_delta_right_minus_left": -0.001512976165818145,
+        "n": 15
+      },
+      "residual_saturation_rate": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      },
+      "tcp_p95_m": {
+        "ci95": [
+          -0.004737948964660382,
+          0.0009290181032071394
+        ],
+        "mean_delta_right_minus_left": -0.0018648674090703467,
+        "n": 15
+      },
+      "tcp_rmse_m": {
+        "ci95": [
+          -0.0020247626075882296,
+          0.0004468711184274455
+        ],
+        "mean_delta_right_minus_left": -0.0006666956293735214,
+        "n": 15
+      },
+      "velocity_violation_count": {
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "mean_delta_right_minus_left": 0.0,
+        "n": 15
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4"
+    ],
+    "right": "StaleHistory"
+  }
+}

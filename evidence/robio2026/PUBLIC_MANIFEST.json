@@ -1,0 +1,434 @@
+{
+  "artifact_count": 70,
+  "artifacts": [
+    {
+      "bytes": 81073,
+      "path": "abb/summaries/ablation.csv",
+      "sha256": "59eeb755154b2a17834b444577cf6fe90382c937af892aa153479d06068d5808",
+      "source": "outputs/paper_final/summaries/ablation.csv"
+    },
+    {
+      "bytes": 28012,
+      "path": "abb/summaries/ablation_aggregate.csv",
+      "sha256": "8f4ba567c54cf860cc8ab910c6a78da4a7d4a542cefaeb34bb2b3b5ad4342ef4",
+      "source": "outputs/paper_final/summaries/ablation_aggregate.csv"
+    },
+    {
+      "bytes": 766,
+      "path": "abb/summaries/delay_sweep_component_slope_aggregate.csv",
+      "sha256": "0d708e4ed75d24085bfbd2f41c169ee3e9dad213d4c3b7e493a8116dd0337c14",
+      "source": "outputs/paper_final/summaries/delay_sweep_component_slope_aggregate.csv"
+    },
+    {
+      "bytes": 1117,
+      "path": "abb/summaries/delay_sweep_component_slopes.csv",
+      "sha256": "477966d631649966e71988b537c349be9b99de5455617ac73d5e480a6c3fec5b",
+      "source": "outputs/paper_final/summaries/delay_sweep_component_slopes.csv"
+    },
+    {
+      "bytes": 95215,
+      "path": "abb/summaries/delay_sweep_components.csv",
+      "sha256": "34c47898c6a3626e64abddef38a06aa5b4801e7d86f4115add89fa092ecf3848",
+      "source": "outputs/paper_final/summaries/delay_sweep_components.csv"
+    },
+    {
+      "bytes": 51480,
+      "path": "abb/summaries/delay_sweep_components_aggregate.csv",
+      "sha256": "e9b0e0f04df2cfd9aadefc2e150911ee07c21b5498b22341692a737b38e5d9c6",
+      "source": "outputs/paper_final/summaries/delay_sweep_components_aggregate.csv"
+    },
+    {
+      "bytes": 1519,
+      "path": "abb/summaries/delay_sweep_monotonicity.csv",
+      "sha256": "0c0201651a6962e2914b3b1f575886ff33d9d3d8fcb12f46e3bc4b4fdac3fe77",
+      "source": "outputs/paper_final/summaries/delay_sweep_monotonicity.csv"
+    },
+    {
+      "bytes": 88093,
+      "path": "abb/summaries/main.csv",
+      "sha256": "a36b970128275b4f5b48e2f26e5fdc053ebfd69989c92f60feaf25033842c5e5",
+      "source": "outputs/paper_final/summaries/main.csv"
+    },
+    {
+      "bytes": 32685,
+      "path": "abb/summaries/main_aggregate.csv",
+      "sha256": "778b194ee98a311645b410d7d0d9288a015338be6c1cf8cc50dfaff53212a432",
+      "source": "outputs/paper_final/summaries/main_aggregate.csv"
+    },
+    {
+      "bytes": 23009,
+      "path": "abb/summaries/mpc_vs_projected_ik_by_condition.csv",
+      "sha256": "c22ba100f694bb269113aecdd7bf1310e3865828f82d4716bfeeef3086690168",
+      "source": "outputs/paper_final/summaries/mpc_vs_projected_ik_by_condition.csv"
+    },
+    {
+      "bytes": 824852,
+      "path": "abb/summaries/mpc_vs_projected_ik_pairs.csv",
+      "sha256": "015ac9ec356ac44765c4bdb1b89211d3e37bb76574b7ddcd8c2bfe545096f718",
+      "source": "outputs/paper_final/summaries/mpc_vs_projected_ik_pairs.csv"
+    },
+    {
+      "bytes": 478,
+      "path": "abb/summaries/primary_endpoint_by_trajectory.csv",
+      "sha256": "99bb8bf225dc3ed9059e57f3154ba51fe87f8330e5cbb57c64aa7a1944ed3aef",
+      "source": "outputs/paper_final/summaries/primary_endpoint_by_trajectory.csv"
+    },
+    {
+      "bytes": 1299,
+      "path": "abb/summaries/primary_endpoint_worst_seed.csv",
+      "sha256": "adc66a1a8b4e891e166d3cfc14543fdf9e3db2acc565e765d2adb9e374fb9054",
+      "source": "outputs/paper_final/summaries/primary_endpoint_worst_seed.csv"
+    },
+    {
+      "bytes": 41114,
+      "path": "abb/summaries/projection_choice.csv",
+      "sha256": "6ac11bad68d43062508738ba6c2df362b1a4f28afad62b415a0a05d22ce2dabf",
+      "source": "outputs/paper_final/summaries/projection_choice.csv"
+    },
+    {
+      "bytes": 23704,
+      "path": "abb/summaries/projection_choice_aggregate.csv",
+      "sha256": "ab9e00017bfb7bc2db36bca74caaef6f0c58f69e040089602da0bc0fb4b03395",
+      "source": "outputs/paper_final/summaries/projection_choice_aggregate.csv"
+    },
+    {
+      "bytes": 28995,
+      "path": "abb/summaries/task_cost.csv",
+      "sha256": "79e971b3b16ad26dc3d0af7fa413267e57ca56cb522579ae81d6137c5f0e0c72",
+      "source": "outputs/paper_final/summaries/task_cost.csv"
+    },
+    {
+      "bytes": 17936,
+      "path": "abb/summaries/task_cost_aggregate.csv",
+      "sha256": "20303d04731eac76793539905ca3b379373223042824d835053592a192124d4d",
+      "source": "outputs/paper_final/summaries/task_cost_aggregate.csv"
+    },
+    {
+      "bytes": 8684,
+      "path": "abb/summaries/ablation_paired_bootstrap.json",
+      "sha256": "34c4266f75526a51df6979b7292aca810316eec8afb4d9df6b4bfa0759597245",
+      "source": "outputs/paper_final/statistics/ablation_paired_bootstrap.json"
+    },
+    {
+      "bytes": 25062,
+      "path": "abb/summaries/baseline_deduplication_report.json",
+      "sha256": "ae608ea3b5e58e4c0e7534b482540eac4cc269b83776e0e488c25fc419dc1db8",
+      "source": "outputs/paper_final/statistics/baseline_deduplication_report.json"
+    },
+    {
+      "bytes": 562,
+      "path": "abb/summaries/latency_recovery.json",
+      "sha256": "1001fc5fa36c8bad12cc18550d79637c6e98c7928c0afdddc903aa9c2bda4381",
+      "source": "outputs/paper_final/statistics/latency_recovery.json"
+    },
+    {
+      "bytes": 4251,
+      "path": "abb/summaries/main_paired_bootstrap.json",
+      "sha256": "f9f84bb7c78f705c8a0f2e3ec13cc672c6e057304781002c34cca711604642a2",
+      "source": "outputs/paper_final/statistics/main_paired_bootstrap.json"
+    },
+    {
+      "bytes": 11793,
+      "path": "abb/summaries/mpc_vs_projected_ik_bootstrap.json",
+      "sha256": "a464c016391617aeaa2b0f1ca497fd1fac954166d084f3005d4593d4e4a639ea",
+      "source": "outputs/paper_final/statistics/mpc_vs_projected_ik_bootstrap.json"
+    },
+    {
+      "bytes": 190,
+      "path": "abb/summaries/primary_endpoint_pooled.json",
+      "sha256": "0403fafaba4aeb0164383bda9f890656a7cdf136ea0df881b9db020de723d6e0",
+      "source": "outputs/paper_final/statistics/primary_endpoint_pooled.json"
+    },
+    {
+      "bytes": 532,
+      "path": "abb/summaries/projection_noninferiority.json",
+      "sha256": "2f2bc1528e1047843aa152eaa85b13f127176769166d59799bc5d9c5d342b73a",
+      "source": "outputs/paper_final/statistics/projection_noninferiority.json"
+    },
+    {
+      "bytes": 6287,
+      "path": "abb/summaries/task_cost_paired_bootstrap.json",
+      "sha256": "4a06b9a0777b6d8d465551ac1cbd1921dad964b32283c52d416fdda66b9c61f3",
+      "source": "outputs/paper_final/statistics/task_cost_paired_bootstrap.json"
+    },
+    {
+      "bytes": 59667,
+      "path": "abb/model_validation/formal_mpc_replay.csv",
+      "sha256": "66b9b0938b8f859638b6fe98a07e64763dff13e23aaea538a8af165e2081761c",
+      "source": "outputs/paper_final/diagnostics/formal_mpc_replay/formal_mpc_replay.csv"
+    },
+    {
+      "bytes": 6241,
+      "path": "abb/model_validation/formal_mpc_replay_aggregate.csv",
+      "sha256": "8a334933252ee08119b47a9a88dfe586f95cc9e4404c66e3e53c9da17042e60c",
+      "source": "outputs/paper_final/diagnostics/formal_mpc_replay/formal_mpc_replay_aggregate.csv"
+    },
+    {
+      "bytes": 64801,
+      "path": "abb/model_validation/gru_validation_aggregate.csv",
+      "sha256": "d7ebcec643bf597b0c258393da1264c9ffddc158b0a602a252bdc652330a4dd5",
+      "source": "outputs/paper_final/diagnostics/gru_validation/gru_validation_aggregate.csv"
+    },
+    {
+      "bytes": 79007,
+      "path": "abb/model_validation/horizon_metrics.csv",
+      "sha256": "13594ea0ea5ef20ef999634e59ca6b2d1a3a846adc2e4ec4cd7750d61d126f9e",
+      "source": "outputs/paper_final/diagnostics/gru_validation/horizon_metrics.csv"
+    },
+    {
+      "bytes": 22333,
+      "path": "abb/model_validation/teacher_forcing_metrics.csv",
+      "sha256": "f2e02178247587315a2312cd63f7b166a03ce11a9883f31ad0241534f450d209",
+      "source": "outputs/paper_final/diagnostics/gru_validation/teacher_forcing_metrics.csv"
+    },
+    {
+      "bytes": 125179,
+      "path": "abb/model_validation/gru_validation_aggregate.json",
+      "sha256": "c45d364051718a7101dded28907be78f49831eb22e29bed3dbcac025c56f50b8",
+      "source": "outputs/paper_final/diagnostics/gru_validation/gru_validation_aggregate.json"
+    },
+    {
+      "bytes": 5676,
+      "path": "abb/model_validation/validation_manifest.json",
+      "sha256": "9a0cc0ac6967f1f2e5a6fe5fe884773b0c9e6d18148f80f5669a7e5a0eb3b2d6",
+      "source": "outputs/paper_final/diagnostics/gru_validation/validation_manifest.json"
+    },
+    {
+      "bytes": 20602,
+      "path": "abb/figures/delay_sweep.pdf",
+      "sha256": "077267020d99d38159b20771becccc5f85be3f408bc7b87dfdfebaa255fb18c5",
+      "source": "outputs/paper_final/figures/delay_sweep.pdf"
+    },
+    {
+      "bytes": 20077,
+      "path": "abb/figures/planner_timeline.pdf",
+      "sha256": "f84afbc00b982e743a5709da5fe21eb672ad86269b0cf842ca565076893e4d55",
+      "source": "outputs/paper_final/figures/planner_timeline.pdf"
+    },
+    {
+      "bytes": 18035,
+      "path": "abb/figures/projection_tradeoff.pdf",
+      "sha256": "b2a00ce12da629d52d6027838c3ef06e44d745998da192700aa64258c67a0eab",
+      "source": "outputs/paper_final/figures/projection_tradeoff.pdf"
+    },
+    {
+      "bytes": 658,
+      "path": "abb/figures/representative_case_manifest.json",
+      "sha256": "691c1fc1f85e136b396f3f8c061e934a73781749d9fee50e365da3d9d56d5fe7",
+      "source": "outputs/paper_final/figures/representative_case_manifest.json"
+    },
+    {
+      "bytes": 225730,
+      "path": "abb/figures/representative_control.pdf",
+      "sha256": "93f99e73a55dceb1e7cf7e954e21a03784e48a1e5021509c0b54e0a2daa6bbe5",
+      "source": "outputs/paper_final/figures/representative_control.pdf"
+    },
+    {
+      "bytes": 52775,
+      "path": "abb/figures/representative_errors.pdf",
+      "sha256": "a9c0e842644391f1694e67cf15911cb040142213de7b70d5c2b47f54c7669104",
+      "source": "outputs/paper_final/figures/representative_errors.pdf"
+    },
+    {
+      "bytes": 36027,
+      "path": "abb/figures/representative_tracking.pdf",
+      "sha256": "b1faa808b2018bb0f8ca86dc8b926ba4f11712e53b9eae75f669944af0af24e0",
+      "source": "outputs/paper_final/figures/representative_tracking.pdf"
+    },
+    {
+      "bytes": 15906,
+      "path": "abb/manifests/analysis_manifest.json",
+      "sha256": "4292b1c62478de0d57ed1ba0085e853e5b9b69fafd74a565d703d01b9857911c",
+      "source": "outputs/paper_final/manifests/analysis_manifest.json"
+    },
+    {
+      "bytes": 104826,
+      "path": "abb/manifests/control_manifest.json",
+      "sha256": "cfaa635afe5ddd27c18d867f0594acf233c0d06410e7243094adcd081c0920bd",
+      "source": "outputs/paper_final/manifests/control_manifest.json"
+    },
+    {
+      "bytes": 898,
+      "path": "abb/manifests/evidence_inventory.json",
+      "sha256": "9d90c98f352b4170ae9b04af28ba544a2e973d16d56f5a7c2de563936a7fadf4",
+      "source": "outputs/paper_final/manifests/evidence_inventory.json"
+    },
+    {
+      "bytes": 87441,
+      "path": "ur5e/summaries/main.csv",
+      "sha256": "a30542451e399b4623c85bd96c10adfe52a44878ed2f37b5041c77c4999de0c5",
+      "source": "outputs/paper_ur5e_v2/summaries/main.csv"
+    },
+    {
+      "bytes": 32818,
+      "path": "ur5e/summaries/main_aggregate.csv",
+      "sha256": "5b9c8b75fc12cdfa3e94a1ed2b1530680bdf9bfacd5d50d430af8f8a22815202",
+      "source": "outputs/paper_ur5e_v2/summaries/main_aggregate.csv"
+    },
+    {
+      "bytes": 2710,
+      "path": "ur5e/summaries/main_paired_bootstrap.json",
+      "sha256": "76e3a1c270e890092cba88af45dc9cfa891ec837f0604c74c8e4cc74d0f756aa",
+      "source": "outputs/paper_ur5e_v2/summaries/main_paired_bootstrap.json"
+    },
+    {
+      "bytes": 3358,
+      "path": "ur5e/summaries/worst_seed.json",
+      "sha256": "c1a4c3d48cd940184c4306479d8afede5151a65bb342cc4581d63467554c9877",
+      "source": "outputs/paper_ur5e_v2/summaries/worst_seed.json"
+    },
+    {
+      "bytes": 22571,
+      "path": "ur5e/manifests/paper.json",
+      "sha256": "50cc40098ec7fb06f5543f6b32a457069532734ef831fbc4453736fedafea109",
+      "source": "outputs/paper_ur5e_v2/manifests/paper.json"
+    },
+    {
+      "bytes": 1688,
+      "path": "ur5e/manifests/freeze_audit.json",
+      "sha256": "41b31dd283378d77516036929d96b153f6c544d9287aefaa018c48f8e0d4e67a",
+      "source": "outputs/paper_ur5e_v2/freeze_audit.json"
+    },
+    {
+      "bytes": 3029,
+      "path": "claim_evidence/summaries/candidate_ranking.json",
+      "sha256": "0b818b6407442c4765783f894bcafadad53425ed726ce6991509e90802bf5e8a",
+      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking.json"
+    },
+    {
+      "bytes": 15407,
+      "path": "claim_evidence/summaries/candidate_ranking.pdf",
+      "sha256": "a552f3b6becea36576544d0b28890eec9a1e5fc72b9d70dce0895738d262d604",
+      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking.pdf"
+    },
+    {
+      "bytes": 8445,
+      "path": "claim_evidence/summaries/candidate_ranking_groups.csv",
+      "sha256": "aa53e36e77c5d2c5e8f52841dca832351803c430ed29dcde7dcdef7563559d87",
+      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking_groups.csv"
+    },
+    {
+      "bytes": 54864,
+      "path": "claim_evidence/summaries/effort_pareto.csv",
+      "sha256": "ddaf7e645ca960a13bb331984751432f99485c73f3c5e519403deab5bb45eab4",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto.csv"
+    },
+    {
+      "bytes": 1670,
+      "path": "claim_evidence/summaries/effort_pareto_aggregate.csv",
+      "sha256": "47930346fdbc6b588d3965a13a2021b915d605db4dcc8574fa9f9aa7a9b50747",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_aggregate.csv"
+    },
+    {
+      "bytes": 24559,
+      "path": "claim_evidence/summaries/effort_pareto_metrics.csv",
+      "sha256": "a54f1571884237b8d83e32c98d53fbcaf528cf00e12deb2c90153fa39e4e838f",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_metrics.csv"
+    },
+    {
+      "bytes": 218,
+      "path": "claim_evidence/summaries/effort_pareto_projected_ik_baseline.json",
+      "sha256": "c98c06748bf7f7f304ce19bca114db48e3d36848ef3e5eb1c4fa267c65f36038",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_projected_ik_baseline.json"
+    },
+    {
+      "bytes": 2463,
+      "path": "claim_evidence/summaries/effort_peak_aggregate.csv",
+      "sha256": "bc8aaf2da1f0bd7c0d212c699eaa0076ff4c8edf0b3d43fdca456882f6a90e42",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_peak_aggregate.csv"
+    },
+    {
+      "bytes": 37902,
+      "path": "claim_evidence/summaries/effort_peak_metrics.csv",
+      "sha256": "6b10967e4c992638dc04e81c7a52554a8f3291e8cd22f11997291b98daa59f4b",
+      "source": "outputs/paper_claim_evidence_v1/summaries/effort_peak_metrics.csv"
+    },
+    {
+      "bytes": 46283,
+      "path": "claim_evidence/summaries/history_alignment.csv",
+      "sha256": "5b731e7de8dfd8ec55d68b547d3c383b1084031a0e5689c86a674f1dcfd14bdf",
+      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment.csv"
+    },
+    {
+      "bytes": 17038,
+      "path": "claim_evidence/summaries/history_alignment_aggregate.csv",
+      "sha256": "e833b70c44e4201dfbb087c4c3342eaf36920d5990b3ffe1b81b9fbf8355a1a0",
+      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment_aggregate.csv"
+    },
+    {
+      "bytes": 3891,
+      "path": "claim_evidence/summaries/history_alignment_paired_bootstrap.json",
+      "sha256": "d1ec10dca9c05d07a8650528bed488bf76db55ea7d68c8c96459c2564533809e",
+      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment_paired_bootstrap.json"
+    },
+    {
+      "bytes": 15400,
+      "path": "claim_evidence/summaries/pareto_command_acceleration.pdf",
+      "sha256": "9e7296d28b1de2020b103129ca1048afbfbee040a4719ac1ba21680192bf0636",
+      "source": "outputs/paper_claim_evidence_v1/summaries/pareto_command_acceleration.pdf"
+    },
+    {
+      "bytes": 14381,
+      "path": "claim_evidence/summaries/pareto_torque.pdf",
+      "sha256": "59532f7c61ef0e624a6b6628b360715abf34dd36211bd684b428e04c143ad694",
+      "source": "outputs/paper_claim_evidence_v1/summaries/pareto_torque.pdf"
+    },
+    {
+      "bytes": 1543,
+      "path": "claim_evidence/manifests/claim_manifest.json",
+      "sha256": "fb05fa842320cad9293d9c60fda5db1fd0734925d5f00e7d589f8bdc7ee8523d",
+      "source": "outputs/paper_claim_evidence_v1/claim_manifest.json"
+    },
+    {
+      "bytes": 4061,
+      "path": "claim_evidence/manifests/unit_tests.log",
+      "sha256": "2ce1acb83a9620b330fb6fcdfa30e7794f3b415f6ed11f46f148bf755baac777",
+      "source": "outputs/paper_claim_evidence_v1/unit_tests.log"
+    },
+    {
+      "bytes": 3581,
+      "path": "robustness_and_timing/ablation_frozen_matrix.json",
+      "sha256": "5514918e2e0e7cabd49b5fd275f720b94665138bfe207ee76c8f3743571bae43",
+      "source": "outputs/paper_revision_v1/statistics/ablation_frozen_matrix.json"
+    },
+    {
+      "bytes": 1523,
+      "path": "robustness_and_timing/latency_recovery_with_ci.json",
+      "sha256": "cd4fa83bd036fd1840a996765e3e8239cbda31ba774978f962eceb4d7b1da754",
+      "source": "outputs/paper_revision_v1/statistics/latency_recovery_with_ci.json"
+    },
+    {
+      "bytes": 10131,
+      "path": "robustness_and_timing/threaded_realtime_by_perturbation.json",
+      "sha256": "e0a54a5392da5bc8473717e0c07f028d97380f84bca6fd862e0bb66cddd7eba7",
+      "source": "outputs/paper_revision_v1/statistics/threaded_realtime_by_perturbation.json"
+    },
+    {
+      "bytes": 1913,
+      "path": "robustness_and_timing/threaded_realtime_nominal.json",
+      "sha256": "d645c3053dee15d819b037cc924a8128188a4c31aa5650efb758be93ae90a81c",
+      "source": "outputs/paper_revision_v1/statistics/threaded_realtime_nominal.json"
+    },
+    {
+      "bytes": 1209,
+      "path": "robustness_and_timing/threaded_vs_fullvirtual.json",
+      "sha256": "c9c6d28bb448284fbf79187ecb9b535d43b92742871ec24007dcd3c1603d4460",
+      "source": "outputs/paper_revision_v1/statistics/threaded_vs_fullvirtual.json"
+    },
+    {
+      "bytes": 11450,
+      "path": "robustness_and_timing/threaded_vs_fullvirtual_by_perturbation.json",
+      "sha256": "cdcb8923d7fc788aba57f5b7f8de744ebe790b22a49268baf8c9679359d63592",
+      "source": "outputs/paper_revision_v1/statistics/threaded_vs_fullvirtual_by_perturbation.json"
+    }
+  ],
+  "description": "Compact public evidence for the ROBIO 2026 paper",
+  "excluded": [
+    "raw rollouts",
+    "candidate snapshot NPZ files",
+    "runtime caches",
+    "model checkpoints and normalizers",
+    "paper source and PDF"
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,403 @@
+{
+  "analysis_commit": "4d6b6b52f0f0cd6aa7e425663c885aa6756cebf6",
+  "artifacts": [
+    {
+      "path": "./outputs/paper_final/audit/audit_summary.json",
+      "sha256": "aba7a00a7425f870ee2976a26402a6b5943415ffe8ef5a1f60f3277119a12740",
+      "size": 986
+    },
+    {
+      "path": "./outputs/paper_final/audit/configuration_mismatches.csv",
+      "sha256": "7703741f562b3f2c276fc35a9aba6f2de114df21e80f56ebf257cdb5ea03115c",
+      "size": 8
+    },
+    {
+      "path": "./outputs/paper_final/audit/duplicate_cases.csv",
+      "sha256": "7703741f562b3f2c276fc35a9aba6f2de114df21e80f56ebf257cdb5ea03115c",
+      "size": 8
+    },
+    {
+      "path": "./outputs/paper_final/audit/evidence_inventory.csv",
+      "sha256": "189d862334799fdc12fbd9505201ebd04174d7679536971abb1c06ab81bc43de",
+      "size": 755782
+    },
+    {
+      "path": "./outputs/paper_final/audit/missing_cases.csv",
+      "sha256": "7703741f562b3f2c276fc35a9aba6f2de114df21e80f56ebf257cdb5ea03115c",
+      "size": 8
+    },
+    {
+      "path": "./outputs/paper_final/audit/run_issues.csv",
+      "sha256": "7703741f562b3f2c276fc35a9aba6f2de114df21e80f56ebf257cdb5ea03115c",
+      "size": 8
+    },
+    {
+      "path": "./outputs/paper_final/audit/semantics_versions.csv",
+      "sha256": "f954766543e080b9db12cfe5c80c8b8b98540a4ba7aef2c32d19bf4366fac812",
+      "size": 94
+    },
+    {
+      "path": "./outputs/paper_final/calibration/delay_joint_only_full_compiled.json",
+      "sha256": "9b9279c52bcf54a1efb43c479b15cc6d2e333c89806610ad360323cc119c26da",
+      "size": 14229
+    },
+    {
+      "path": "./outputs/paper_final/calibration/delay_joint_only_projection_off.json",
+      "sha256": "cd7571cf6951a1048e83ae622438923b317cb00280df3d2ad4f0867e92907bae",
+      "size": 14236
+    },
+    {
+      "path": "./outputs/paper_final/calibration/delay_joint_only_two_stage.json",
+      "sha256": "310eb2993d6c3a7ba5d595645e283c911bbc85140a7a22c90e76bb1a7a327ae4",
+      "size": 14227
+    },
+    {
+      "path": "./outputs/paper_final/calibration/delay_task_space_two_stage.json",
+      "sha256": "981b98f78b5a0944d4a30e1e59d05de549353d1a03093a2f0354d546c9d69bcd",
+      "size": 14220
+    },
+    {
+      "path": "./outputs/paper_final/calibration/task_space_delay_calibration/reference.npz",
+      "sha256": "519a749658d4e5d9fa6b4d7c6dcb3d9fa636d82d16c8bf16440c90b120e47829",
+      "size": 327948
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/formal_mpc_replay/formal_mpc_replay.csv",
+      "sha256": "87be709d007a46ec2ec6f45376a9f21ef0859dcd142255846d33a7344f58172e",
+      "size": 59988
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/formal_mpc_replay/formal_mpc_replay_aggregate.csv",
+      "sha256": "0b81de514c6b265a188628ba9ca2621c04fb7b355ed69e5617db50e3888d39bf",
+      "size": 6258
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_000.npz",
+      "sha256": "710ba9db2ec192faed578655deee8a06f2d4b1451dfc745dc16631ea0a98e0c4",
+      "size": 21658
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_001.npz",
+      "sha256": "55dd5f7f5316122f079f2763f197c3dda60a168d39b3d8d2311b40df633284b9",
+      "size": 23446
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_002.npz",
+      "sha256": "e94021795d7b37be6e2a632a7db4eefc2e716896948602444d54e5b7a9465cf6",
+      "size": 23644
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_003.npz",
+      "sha256": "f13460c0614aa1d0456f79f1753487d8ef9c3313257dbdbaf16d06b9d349057c",
+      "size": 23551
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_004.npz",
+      "sha256": "2096700b44926e57aa55ddfe6e2ba853e7d7c8d71f9e016df96467a110930064",
+      "size": 23498
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_005.npz",
+      "sha256": "cfb581f6635bdd8189ca4777ca2f3d4fc4e3523d732dc14ab60f874d13aadabd",
+      "size": 23560
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_006.npz",
+      "sha256": "b3abc6a5e3931a20af0f075612a86f3fa747179f775bd1d93780175bab31bea6",
+      "size": 21943
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_007.npz",
+      "sha256": "d3ec317816a06b0b2854aff68efe90cf67837aa5b0b787a0fd4d95ada25497bd",
+      "size": 23615
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_008.npz",
+      "sha256": "83e7491344b2251ef4863f7976723b4988bc1fea28ede57daa2d973648f77e71",
+      "size": 23575
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_009.npz",
+      "sha256": "c42dcaaba41ae466d801787a0b14d861128136a6640ccda615a12208de5d2601",
+      "size": 23492
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_010.npz",
+      "sha256": "c964ba3c45d81cfc3483dd2910fd46ee15e5e3ed28bfde97ea266e6bef8148b7",
+      "size": 23477
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_011.npz",
+      "sha256": "d23d0e94afdb23e606dbe5ba04c3a8eeb509279a519ad340b7de6898efebc1e5",
+      "size": 23382
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_012.npz",
+      "sha256": "2e8328d0ff412288d4386d4ac8e48b8454f8bba62f35840553d157ed6c4bbc4e",
+      "size": 21704
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_013.npz",
+      "sha256": "dbdd01969a9dab288bc5f6724d91fc48e3ba77b826143012919080133c910831",
+      "size": 23467
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_014.npz",
+      "sha256": "f0bf38cf4ad770165c040faba6fa6792f980aa3efd92f1ac1d93dc8107a376e0",
+      "size": 23526
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_015.npz",
+      "sha256": "2acded69eecd3236c1bbd5a3580d01e975045b59f648ff6d8fb11204834f4b52",
+      "size": 23539
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_016.npz",
+      "sha256": "e73d1e757fe2981290e5a3133499f0c5f7c75770a779297f9933a7e484dd9083",
+      "size": 23557
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_017.npz",
+      "sha256": "68a2a7921bec3c2d161a4892c44ac027caeaa4cee1006eca01bac571869958fe",
+      "size": 23440
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_018.npz",
+      "sha256": "0002f215dacd44f3d81e28be364c984231b6b3a5c9447c66f0143cb9be9ad3a4",
+      "size": 21763
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/evaluation_rollout_019.npz",
+      "sha256": "6d396e7be0644ef51a1ceb605371b8735862f67eb0500c8e4632358095023e5d",
+      "size": 23469
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/gru_validation_aggregate.csv",
+      "sha256": "e2bd1425f3d1f54bfdb9c94db4ddb5d5e994ddf223e077b5014b2861ead2d954",
+      "size": 65332
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/gru_validation_aggregate.json",
+      "sha256": "c45d364051718a7101dded28907be78f49831eb22e29bed3dbcac025c56f50b8",
+      "size": 125179
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/horizon_metrics.csv",
+      "sha256": "8f2c995bb51dd0342221ad442a01db9d4c8a88278159a8f48a1868c6aaca8417",
+      "size": 79088
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/teacher_forcing_metrics.csv",
+      "sha256": "33b798dfd5d761b6be3e0a5068123cdf834f3940ebd875526a88fba2767c7587",
+      "size": 22354
+    },
+    {
+      "path": "./outputs/paper_final/diagnostics/gru_validation/validation_manifest.json",
+      "sha256": "9f8ea3529fc903445c6498c344ee8dab32c3b7517f85b89b0040bfb1c4f75e31",
+      "size": 6688
+    },
+    {
+      "path": "./outputs/paper_final/figures/delay_sweep.pdf",
+      "sha256": "077267020d99d38159b20771becccc5f85be3f408bc7b87dfdfebaa255fb18c5",
+      "size": 20602
+    },
+    {
+      "path": "./outputs/paper_final/figures/planner_timeline.pdf",
+      "sha256": "f84afbc00b982e743a5709da5fe21eb672ad86269b0cf842ca565076893e4d55",
+      "size": 20077
+    },
+    {
+      "path": "./outputs/paper_final/figures/projection_tradeoff.pdf",
+      "sha256": "b2a00ce12da629d52d6027838c3ef06e44d745998da192700aa64258c67a0eab",
+      "size": 18035
+    },
+    {
+      "path": "./outputs/paper_final/figures/representative_case_manifest.json",
+      "sha256": "df637385518909aa6e20b8160890ad96e3dc2e4ea846d7a03b52b86996af3efd",
+      "size": 834
+    },
+    {
+      "path": "./outputs/paper_final/figures/representative_control.pdf",
+      "sha256": "93f99e73a55dceb1e7cf7e954e21a03784e48a1e5021509c0b54e0a2daa6bbe5",
+      "size": 225730
+    },
+    {
+      "path": "./outputs/paper_final/figures/representative_errors.pdf",
+      "sha256": "a9c0e842644391f1694e67cf15911cb040142213de7b70d5c2b47f54c7669104",
+      "size": 52775
+    },
+    {
+      "path": "./outputs/paper_final/figures/representative_tracking.pdf",
+      "sha256": "b1faa808b2018bb0f8ca86dc8b926ba4f11712e53b9eae75f669944af0af24e0",
+      "size": 36027
+    },
+    {
+      "path": "./outputs/paper_final/manifests/case_indexes/ablation.json",
+      "sha256": "d941026e27f8b6ff6e9cff1e4b675414a9325351b352fe97c8c3572e4a0acaa1",
+      "size": 44640
+    },
+    {
+      "path": "./outputs/paper_final/manifests/case_indexes/delay_sweep_components.json",
+      "sha256": "e56d0b2b6ba98b96f5e44ec43672fbc950fb4bc316b8530e885002125891a5cc",
+      "size": 51545
+    },
+    {
+      "path": "./outputs/paper_final/manifests/case_indexes/main.json",
+      "sha256": "95421c088163386d3263968304f44b9d92a70df469f80d1b23a8ce4685845ee7",
+      "size": 61891
+    },
+    {
+      "path": "./outputs/paper_final/manifests/case_indexes/projection_choice.json",
+      "sha256": "bc73ebb8b1fadda76cac86060cd9e083ab4c6463bab2a2f1b02afdbda57a589c",
+      "size": 26706
+    },
+    {
+      "path": "./outputs/paper_final/manifests/case_indexes/task_cost.json",
+      "sha256": "adc666716f6585208eb0c450da5ac834987b36a2d3c2d2eefd1e2c1ce41ce45b",
+      "size": 12694
+    },
+    {
+      "path": "./outputs/paper_final/manifests/control_manifest.json",
+      "sha256": "140c0bb77ae4b5377e4e981514b5485e58547de8f214b48d5b487c554025208c",
+      "size": 106102
+    },
+    {
+      "path": "./outputs/paper_final/manifests/evidence_inventory.json",
+      "sha256": "aba7a00a7425f870ee2976a26402a6b5943415ffe8ef5a1f60f3277119a12740",
+      "size": 986
+    },
+    {
+      "path": "./outputs/paper_final/statistics/ablation_paired_bootstrap.json",
+      "sha256": "34c4266f75526a51df6979b7292aca810316eec8afb4d9df6b4bfa0759597245",
+      "size": 8684
+    },
+    {
+      "path": "./outputs/paper_final/statistics/baseline_deduplication_report.json",
+      "sha256": "ae608ea3b5e58e4c0e7534b482540eac4cc269b83776e0e488c25fc419dc1db8",
+      "size": 25062
+    },
+    {
+      "path": "./outputs/paper_final/statistics/latency_recovery.json",
+      "sha256": "1001fc5fa36c8bad12cc18550d79637c6e98c7928c0afdddc903aa9c2bda4381",
+      "size": 562
+    },
+    {
+      "path": "./outputs/paper_final/statistics/main_paired_bootstrap.json",
+      "sha256": "f9f84bb7c78f705c8a0f2e3ec13cc672c6e057304781002c34cca711604642a2",
+      "size": 4251
+    },
+    {
+      "path": "./outputs/paper_final/statistics/mpc_vs_projected_ik_bootstrap.json",
+      "sha256": "a464c016391617aeaa2b0f1ca497fd1fac954166d084f3005d4593d4e4a639ea",
+      "size": 11793
+    },
+    {
+      "path": "./outputs/paper_final/statistics/primary_endpoint_pooled.json",
+      "sha256": "0403fafaba4aeb0164383bda9f890656a7cdf136ea0df881b9db020de723d6e0",
+      "size": 190
+    },
+    {
+      "path": "./outputs/paper_final/statistics/projection_noninferiority.json",
+      "sha256": "2f2bc1528e1047843aa152eaa85b13f127176769166d59799bc5d9c5d342b73a",
+      "size": 532
+    },
+    {
+      "path": "./outputs/paper_final/statistics/task_cost_paired_bootstrap.json",
+      "sha256": "4a06b9a0777b6d8d465551ac1cbd1921dad964b32283c52d416fdda66b9c61f3",
+      "size": 6287
+    },
+    {
+      "path": "./outputs/paper_final/summaries/ablation.csv",
+      "sha256": "74fca4be20efab5e82131e9968a846eb7e03295428904d6ec9f4e4902b49b008",
+      "size": 81154
+    },
+    {
+      "path": "./outputs/paper_final/summaries/ablation_aggregate.csv",
+      "sha256": "3614836a974b2a4e971d7c4e3fb979535c4219d0af9a4c2dd32dd1dc20080f5c",
+      "size": 28029
+    },
+    {
+      "path": "./outputs/paper_final/summaries/delay_sweep_component_slope_aggregate.csv",
+      "sha256": "bd2a3894e3229398056abf50d0cbf430cdd48f3b5bdd7e3becb681f07a69ebd7",
+      "size": 775
+    },
+    {
+      "path": "./outputs/paper_final/summaries/delay_sweep_component_slopes.csv",
+      "sha256": "56c5c861901a17f113c408009d436c1e10981796d4492bda919cdb971b084c17",
+      "size": 1142
+    },
+    {
+      "path": "./outputs/paper_final/summaries/delay_sweep_components.csv",
+      "sha256": "71ef2657ab1b0a25420f70d7b7fbf83c151d563b7565adb1074aae4273a0a3f1",
+      "size": 95312
+    },
+    {
+      "path": "./outputs/paper_final/summaries/delay_sweep_components_aggregate.csv",
+      "sha256": "b501bc9497377ecc074a02ce66656f9039adeccbd9c9241d44654af319fb08af",
+      "size": 51513
+    },
+    {
+      "path": "./outputs/paper_final/summaries/delay_sweep_monotonicity.csv",
+      "sha256": "2b133ff59c3a604867a8df42eaebbe2b298d2b4269b78645e0f26de0a49c80b9",
+      "size": 1544
+    },
+    {
+      "path": "./outputs/paper_final/summaries/main.csv",
+      "sha256": "81ac04b4f12d17d7d7e9e887ae975d0c13b3d29cf1054a9668abfd8e05266bae",
+      "size": 88178
+    },
+    {
+      "path": "./outputs/paper_final/summaries/main_aggregate.csv",
+      "sha256": "56dab38cfcd00c0cd3458b64632f661f4555867b8f883e8eb9a0dcc70805ab1e",
+      "size": 32706
+    },
+    {
+      "path": "./outputs/paper_final/summaries/mpc_vs_projected_ik_by_condition.csv",
+      "sha256": "e8471b1599803920cb087b6efbf0247cc3ccb773fce155f68fdd83b8d7d94569",
+      "size": 23118
+    },
+    {
+      "path": "./outputs/paper_final/summaries/mpc_vs_projected_ik_pairs.csv",
+      "sha256": "1a239eed42461f052bc3a040fb8bfc47f888f3416b0cd7983fd42b29df050cb0",
+      "size": 827013
+    },
+    {
+      "path": "./outputs/paper_final/summaries/primary_endpoint_by_trajectory.csv",
+      "sha256": "e65288f4e410e3b528d0ebaa7b702d8063430cbf2e202621f83e20415e4b9a8f",
+      "size": 483
+    },
+    {
+      "path": "./outputs/paper_final/summaries/primary_endpoint_worst_seed.csv",
+      "sha256": "c63a811aabb11edc47bcf1df79dd6d78ed330c36503dfc4ac3b7b0702b4c8d12",
+      "size": 1312
+    },
+    {
+      "path": "./outputs/paper_final/summaries/projection_choice.csv",
+      "sha256": "a9fc163c1e585e9f66ed856816b48c74cadc8bebdf615498538e1b3fb98fa9ec",
+      "size": 41151
+    },
+    {
+      "path": "./outputs/paper_final/summaries/projection_choice_aggregate.csv",
+      "sha256": "35707f826902ceacda9af776958c7b8705def4dfa9215ede31f2b0fff81d87ec",
+      "size": 23717
+    },
+    {
+      "path": "./outputs/paper_final/summaries/task_cost.csv",
+      "sha256": "496653abea5bfc1fb6a42c6d91b5a08bd25b897c79210a5abf1b7c56d8dab902",
+      "size": 29020
+    },
+    {
+      "path": "./outputs/paper_final/summaries/task_cost_aggregate.csv",
+      "sha256": "b20d7f037e9a152c52b0022ebd208223a6b1743f2ad6188f93e18e0dcca8eeef",
+      "size": 17945
+    }
+  ],
+  "paper_control_commit": "8132559",
+  "report_commit": "0c22ce79c75bb738e49508f34c743920237dee63",
+  "schema_version": 2,
+  "source_paper_manifest": {
+    "path": "./outputs/paper_delay_aware_two_stage_v2/manifests/paper.json",
+    "sha256": "140c0bb77ae4b5377e4e981514b5485e58547de8f214b48d5b487c554025208c",
+    "size": 106102
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "checkpoint": {
+    "path": "./dynamics_modeling/outputs/checkpoints/gru_20260717_182930/best_model.pt",
+    "sha256": "9b7f65384f892bde1b4465e7d0795d1dafc806cf7bcb4bf7fb0ff965165684e5",
+    "size": 3362421
+  },
+  "description": "Post-checkpoint frozen evaluation rollouts; not used for training",
+  "divergence": "nonfinite, q outside joint bounds by >0.05 rad, or |dq|>25 rad/s",
+  "evaluation_action_std_groups": {
+    "0.5": 10,
+    "0.8": 10
+  },
+  "horizons": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "normalizer": {
+    "path": "./dynamics_modeling/outputs/checkpoints/gru_20260717_182930/normalizer.pt",
+    "sha256": "5738f1e85dd34820a7652aec34cd0eb29195601321b766644fe4c0f59892f7f4",
+    "size": 2937
+  },
+  "one_step_name": "ground_truth_history_one_step",
+  "rollouts": [
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_000.npz",
+      "sha256": "710ba9db2ec192faed578655deee8a06f2d4b1451dfc745dc16631ea0a98e0c4",
+      "size": 21658
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_001.npz",
+      "sha256": "55dd5f7f5316122f079f2763f197c3dda60a168d39b3d8d2311b40df633284b9",
+      "size": 23446
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_002.npz",
+      "sha256": "e94021795d7b37be6e2a632a7db4eefc2e716896948602444d54e5b7a9465cf6",
+      "size": 23644
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_003.npz",
+      "sha256": "f13460c0614aa1d0456f79f1753487d8ef9c3313257dbdbaf16d06b9d349057c",
+      "size": 23551
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_004.npz",
+      "sha256": "2096700b44926e57aa55ddfe6e2ba853e7d7c8d71f9e016df96467a110930064",
+      "size": 23498
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_005.npz",
+      "sha256": "cfb581f6635bdd8189ca4777ca2f3d4fc4e3523d732dc14ab60f874d13aadabd",
+      "size": 23560
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_006.npz",
+      "sha256": "b3abc6a5e3931a20af0f075612a86f3fa747179f775bd1d93780175bab31bea6",
+      "size": 21943
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_007.npz",
+      "sha256": "d3ec317816a06b0b2854aff68efe90cf67837aa5b0b787a0fd4d95ada25497bd",
+      "size": 23615
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_008.npz",
+      "sha256": "83e7491344b2251ef4863f7976723b4988bc1fea28ede57daa2d973648f77e71",
+      "size": 23575
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_009.npz",
+      "sha256": "c42dcaaba41ae466d801787a0b14d861128136a6640ccda615a12208de5d2601",
+      "size": 23492
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_010.npz",
+      "sha256": "c964ba3c45d81cfc3483dd2910fd46ee15e5e3ed28bfde97ea266e6bef8148b7",
+      "size": 23477
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_011.npz",
+      "sha256": "d23d0e94afdb23e606dbe5ba04c3a8eeb509279a519ad340b7de6898efebc1e5",
+      "size": 23382
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_012.npz",
+      "sha256": "2e8328d0ff412288d4386d4ac8e48b8454f8bba62f35840553d157ed6c4bbc4e",
+      "size": 21704
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_013.npz",
+      "sha256": "dbdd01969a9dab288bc5f6724d91fc48e3ba77b826143012919080133c910831",
+      "size": 23467
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_014.npz",
+      "sha256": "f0bf38cf4ad770165c040faba6fa6792f980aa3efd92f1ac1d93dc8107a376e0",
+      "size": 23526
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_015.npz",
+      "sha256": "2acded69eecd3236c1bbd5a3580d01e975045b59f648ff6d8fb11204834f4b52",
+      "size": 23539
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_016.npz",
+      "sha256": "e73d1e757fe2981290e5a3133499f0c5f7c75770a779297f9933a7e484dd9083",
+      "size": 23557
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_017.npz",
+      "sha256": "68a2a7921bec3c2d161a4892c44ac027caeaa4cee1006eca01bac571869958fe",
+      "size": 23440
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_018.npz",
+      "sha256": "0002f215dacd44f3d81e28be364c984231b6b3a5c9447c66f0143cb9be9ad3a4",
+      "size": 21763
+    },
+    {
+      "path": "./outputs/paper_delay_aware_two_stage_v2/diagnostics/gru_validation/evaluation_rollout_019.npz",
+      "sha256": "6d396e7be0644ef51a1ceb605371b8735862f67eb0500c8e4632358095023e5d",
+      "size": 23469
+    }
+  ],
+  "seed": 20260730,
+  "training_action_std_normalized_support": [
+    0.5,
+    0.8
+  ],
+  "training_dataset": {
+    "path": "./dynamics_modeling/outputs/datasets/irb2400_parallel_data copy.npz",
+    "sha256": "32c6aba21d6f509f7f4a462b2ecb55c347d86d20b8696a74f296b653f44405c2",
+    "size": 11232091168
+  }
+}

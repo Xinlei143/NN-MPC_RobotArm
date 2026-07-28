@@ -1,0 +1,31 @@
+{
+  "compatibility_policy": "historical cohort; configuration-compatible but clean commit is unverified",
+  "configuration_mismatches": 0,
+  "counts": {
+    "ik": 540,
+    "mpc": 720
+  },
+  "duplicate_conflicting_cases": 0,
+  "missing_formal_cases": 0,
+  "mixed_control_semantics": false,
+  "mixed_projection_semantics": false,
+  "passed": true,
+  "run_issues": 0,
+  "schema_version": 1,
+  "source_roots": {
+    "ik": [
+      {
+        "path": "./outputs/robustness/paper_three_ik_l036_s5_v1/experiment_manifest.json",
+        "sha256": "e624eb20c0d1c144f561fb9363e95aba8969e7dd8b8e20536c66dc356e23ade6",
+        "size": 6740
+      }
+    ],
+    "mpc": [
+      {
+        "path": "./outputs/robustness/paper_three_ik_l036_s5_v1/mpc_architectures/experiment_manifest.json",
+        "sha256": "6dcf500589170d0d2e24a858ebca14afe9a75db63079fff2d0548f07ff81f049",
+        "size": 7860
+      }
+    ]
+  }
+}
