@@ -28,8 +28,10 @@ from mpc.logging import save_mpc_run
 from mpc.reference_pipeline import ReferenceConfig, build_reference, save_reference_bundle
 from mpc.robot_config import file_sha256, load_robot_spec, validate_robot_model_contract
 from scripts.experiment_utils import (
+    canonical_sha256,
     environment_snapshot,
     file_identity,
+    load_completed_rollout,
     paired_bootstrap_rows,
     run_fingerprint,
     write_immutable_json,
@@ -91,6 +93,9 @@ def parser() -> argparse.ArgumentParser:
 
     summary = sub.add_parser("summarize")
     summary.add_argument("--bootstrap-samples", type=int, default=10000)
+
+    audit = sub.add_parser("audit-freeze")
+    audit.add_argument("--manifest", default=None)
     return top
 
 
@@ -540,6 +545,213 @@ def suite_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return cases
 
 
+def _case_fingerprint(manifest: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
+    return run_fingerprint({
+        "kind": "ur5e_nominal_portability",
+        "case": case,
+        "robot_identity": manifest["robot_identity"],
+        "checkpoint": manifest["checkpoint"],
+        "normalizer": manifest["normalizer"],
+        "reference": manifest["references"][str(case["trajectory"])],
+        "base_run_args": manifest["base_run_args"],
+    })
+
+
+def _identity_matches(identity: dict[str, Any]) -> bool:
+    path = identity.get("path")
+    return isinstance(path, str) and file_identity(Path(path)) == identity
+
+
+def audit_freeze(output: Path, manifest_path: Path) -> Path:
+    """Audit the sealed UR5e main matrix without rerunning any controller."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_cases = suite_cases(manifest)
+    expected_by_key = {
+        (str(case["label"]), str(case["trajectory"]), int(case["seed"])): case
+        for case in expected_cases
+    }
+    index_path = output / "runs" / "indexes" / "main.json"
+    entries = json.loads(index_path.read_text(encoding="utf-8")).get("entries", []) if index_path.is_file() else []
+    observed_by_key: dict[tuple[str, str, int], dict[str, Any]] = {}
+    duplicate_cases: list[str] = []
+    malformed_entries: list[str] = []
+    for index, entry in enumerate(entries):
+        try:
+            key = (str(entry["label"]), str(entry["trajectory"]), int(entry["seed"]))
+        except (KeyError, TypeError, ValueError):
+            malformed_entries.append(str(index))
+            continue
+        if key in observed_by_key:
+            duplicate_cases.append(":".join(map(str, key)))
+        else:
+            observed_by_key[key] = entry
+
+    input_identities = {
+        "checkpoint": manifest["checkpoint"],
+        "normalizer": manifest["normalizer"],
+        "dataset_manifest": manifest["dataset_manifest"],
+        "references_manifest": manifest["references_manifest"],
+        **{f"reference:{name}": identity for name, identity in manifest["references"].items()},
+        "delay_checkpoint": manifest["delay_calibration"]["checkpoint"],
+        "delay_normalizer": manifest["delay_calibration"]["normalizer"],
+        "delay_reference": manifest["delay_calibration"]["calibration_reference"],
+    }
+    input_hash_mismatches = [name for name, identity in input_identities.items() if not _identity_matches(identity)]
+
+    missing_cases = sorted(set(expected_by_key).difference(observed_by_key))
+    unexpected_cases = sorted(set(observed_by_key).difference(expected_by_key))
+    missing_files: list[str] = []
+    wrong_run_directories: list[str] = []
+    fingerprint_mismatches: list[str] = []
+    fingerprint_hash_mismatches: list[str] = []
+    nonfinite_runs: list[str] = []
+    missing_required_rollout_fields: list[str] = []
+    constraint_violation_runs: list[str] = []
+    threaded_control_ticks = 0
+    threaded_planner_publications = 0
+    threaded_late_drops = 0
+    threaded_deadline_misses = 0
+    threaded_expirations = 0
+    threaded_fallback_active_steps = 0
+    threaded_late_drop_rates: list[float] = []
+    threaded_deadline_miss_rates: list[float] = []
+    threaded_control_lateness: list[np.ndarray] = []
+    threaded_wakeup_lateness: list[np.ndarray] = []
+    threaded_e2e_latency: list[np.ndarray] = []
+    runs_root = (output / "runs").resolve()
+    required_arrays = (
+        "actual_states", "failure_flags", "joint_limit_violation_flags",
+        "command_velocity_violation_flags", "command_acceleration_violation_flags",
+    )
+    optional_failure_arrays = ("planner_failure_event", "worker_failure")
+    for key, case in expected_by_key.items():
+        text_key = ":".join(map(str, key))
+        entry = observed_by_key.get(key)
+        if entry is None:
+            continue
+        expected_dir = output / "runs" / key[0] / key[1] / f"seed_{key[2]}"
+        run_dir = Path(str(entry.get("run_dir", "")))
+        if run_dir.resolve() != expected_dir.resolve() or not run_dir.resolve().is_relative_to(runs_root):
+            wrong_run_directories.append(text_key)
+            continue
+        rollout = run_dir / "rollout.npz"
+        summary = run_dir / "run_summary.json"
+        fingerprint_path = run_dir / "run_fingerprint.json"
+        for path in (rollout, summary, fingerprint_path):
+            if not path.is_file():
+                missing_files.append(f"{text_key}:{path.name}")
+        if not rollout.is_file() or not fingerprint_path.is_file():
+            continue
+        actual_fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+        if actual_fingerprint.get("sha256") != canonical_sha256(actual_fingerprint.get("payload", {})):
+            fingerprint_hash_mismatches.append(text_key)
+        if actual_fingerprint != _case_fingerprint(manifest, case):
+            fingerprint_mismatches.append(text_key)
+        with np.load(rollout, allow_pickle=False) as archive:
+            names = (*required_arrays, *optional_failure_arrays)
+            if key[0] == "ThreadedAsync":
+                names = (*names, "planner_solve_count", "packet_late_dropped",
+                         "control_deadline_miss", "packet_expired_event", "fallback_active",
+                         "control_lateness_s", "control_wakeup_lateness_s",
+                         "planner_end_to_end_latency_s")
+            arrays = {
+                name: np.asarray(archive[name])
+                for name in names
+                if name in archive.files
+            }
+        if "actual_states" not in arrays or not np.all(np.isfinite(arrays["actual_states"])):
+            nonfinite_runs.append(text_key)
+        if any(name not in arrays for name in required_arrays):
+            missing_required_rollout_fields.append(text_key)
+        elif any(np.any(arrays[name]) for name in (*required_arrays[1:], *optional_failure_arrays) if name in arrays):
+            constraint_violation_runs.append(text_key)
+        if key[0] == "ThreadedAsync":
+            ticks = int(arrays["actual_states"].shape[0])
+            publications = int(np.max(arrays["planner_solve_count"]))
+            late_drops = int(np.sum(arrays["packet_late_dropped"]))
+            deadline_misses = int(np.sum(arrays["control_deadline_miss"]))
+            threaded_control_ticks += ticks
+            threaded_planner_publications += publications
+            threaded_late_drops += late_drops
+            threaded_deadline_misses += deadline_misses
+            threaded_expirations += int(np.sum(arrays["packet_expired_event"]))
+            threaded_fallback_active_steps += int(np.sum(arrays["fallback_active"]))
+            threaded_late_drop_rates.append(late_drops / publications if publications else 0.0)
+            threaded_deadline_miss_rates.append(deadline_misses / ticks if ticks else 0.0)
+            threaded_control_lateness.append(np.ravel(arrays["control_lateness_s"]))
+            threaded_wakeup_lateness.append(np.ravel(arrays["control_wakeup_lateness_s"]))
+            threaded_e2e_latency.append(np.ravel(arrays["planner_end_to_end_latency_s"]))
+
+    environment = manifest.get("environment", {})
+    git_commit = str(environment.get("git_commit", ""))
+    commit_exists = bool(git_commit) and subprocess.run(
+        ["git", "cat-file", "-e", f"{git_commit}^{{commit}}"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+    def _timing_quantiles(values: list[np.ndarray]) -> dict[str, float]:
+        merged = np.concatenate(values) if values else np.empty(0, dtype=np.float64)
+        merged = merged[np.isfinite(merged)]
+        if not merged.size:
+            return {"samples": 0, "p99_s": float("nan"), "max_s": float("nan")}
+        return {
+            "samples": int(merged.size),
+            "p99_s": float(np.percentile(merged, 99)),
+            "max_s": float(np.max(merged)),
+        }
+    status = "passed" if not any((
+        duplicate_cases, malformed_entries, missing_cases, unexpected_cases, missing_files,
+        wrong_run_directories, fingerprint_mismatches, fingerprint_hash_mismatches,
+        nonfinite_runs, missing_required_rollout_fields, constraint_violation_runs,
+        input_hash_mismatches,
+    )) and environment.get("git_dirty") is False and commit_exists else "failed"
+    report = {
+        "schema_version": 1,
+        "status": status,
+        "manifest": file_identity(manifest_path),
+        "manifest_git_commit": git_commit,
+        "manifest_git_dirty": environment.get("git_dirty"),
+        "manifest_commit_exists": commit_exists,
+        "expected_cases": len(expected_cases),
+        "observed_cases": len(observed_by_key),
+        "duplicate_cases": len(duplicate_cases),
+        "missing_rollouts": sum(item.endswith(":rollout.npz") for item in missing_files),
+        "missing_run_artifacts": missing_files,
+        "malformed_index_entries": malformed_entries,
+        "missing_cases": [":".join(map(str, key)) for key in missing_cases],
+        "unexpected_cases": [":".join(map(str, key)) for key in unexpected_cases],
+        "wrong_run_directories": wrong_run_directories,
+        "fingerprint_mismatches": len(fingerprint_mismatches),
+        "fingerprint_hash_mismatches": len(fingerprint_hash_mismatches),
+        "input_hash_mismatches": input_hash_mismatches,
+        "nonfinite_runs": len(nonfinite_runs),
+        "missing_required_rollout_fields": missing_required_rollout_fields,
+        "constraint_violation_runs": len(constraint_violation_runs),
+        "threaded_timing": {
+            "runs": sum(key[0] == "ThreadedAsync" for key in expected_by_key),
+            "control_ticks": threaded_control_ticks,
+            "planner_publications": threaded_planner_publications,
+            "late_packet_drops": threaded_late_drops,
+            "late_drop_rate": threaded_late_drops / threaded_planner_publications if threaded_planner_publications else float("nan"),
+            "worst_single_run_late_drop_rate": max(threaded_late_drop_rates, default=float("nan")),
+            "control_deadline_misses": threaded_deadline_misses,
+            "control_deadline_miss_rate": threaded_deadline_misses / threaded_control_ticks if threaded_control_ticks else float("nan"),
+            "worst_single_run_deadline_miss_rate": max(threaded_deadline_miss_rates, default=float("nan")),
+            "packet_expirations": threaded_expirations,
+            "packet_expiration_rate": threaded_expirations / threaded_planner_publications if threaded_planner_publications else float("nan"),
+            "fallback_duty_cycle": threaded_fallback_active_steps / threaded_control_ticks if threaded_control_ticks else float("nan"),
+            "control_lateness": _timing_quantiles(threaded_control_lateness),
+            "wakeup_lateness": _timing_quantiles(threaded_wakeup_lateness),
+            "planner_end_to_end_latency": _timing_quantiles(threaded_e2e_latency),
+        },
+    }
+    path = output / "freeze_audit.json"
+    write_json(path, report)
+    return path
+
+
 def run_suite(
     output: Path,
     manifest_path: Path,
@@ -559,8 +771,8 @@ def run_suite(
         trajectory = case["trajectory"]
         seed = int(case["seed"])
         run_dir = output / "runs" / label / trajectory / f"seed_{seed}"
-        rollout_path = run_dir / "rollout.npz"
-        if not (resume and rollout_path.is_file()):
+        fingerprint = _case_fingerprint(manifest, case)
+        if not (resume and load_completed_rollout(run_dir, fingerprint) is not None):
             args = _case_args(
                 base,
                 label=label,
@@ -569,15 +781,6 @@ def run_suite(
                 delay=int(case["delay_steps"]),
             )
             args.reference_file = manifest["references"][trajectory]["path"]
-            fingerprint = run_fingerprint({
-                "kind": "ur5e_nominal_portability",
-                "case": case,
-                "robot_identity": manifest["robot_identity"],
-                "checkpoint": manifest["checkpoint"],
-                "normalizer": manifest["normalizer"],
-                "reference": manifest["references"][trajectory],
-                "base_run_args": manifest["base_run_args"],
-            })
             result = RUNNER.run_closed_loop_mpc(args)
             save_mpc_run(run_dir, result["arrays"], result["rows"], result.get("planner_events"))
             write_json(run_dir / "run_fingerprint.json", fingerprint)
@@ -586,20 +789,6 @@ def run_suite(
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json(path, {"suite": "main", "entries": entries})
     return path
-
-
-def _expanded_projected_rows(rows: list[dict[str, Any]], seeds: list[int]) -> list[dict[str, Any]]:
-    output = list(rows)
-    projected = {
-        str(row["trajectory"]): row for row in rows
-        if row["label"] == "ProjectedDirectIK"
-    }
-    for trajectory, row in projected.items():
-        for seed in seeds:
-            if seed == int(row["seed"]):
-                continue
-            output.append({**row, "seed": seed, "case_id": f"{trajectory}:{seed}"})
-    return output
 
 
 def summarize(output: Path, bootstrap_samples: int) -> Path:
@@ -629,23 +818,16 @@ def summarize(output: Path, bootstrap_samples: int) -> Path:
         output / "summaries" / "main_aggregate.csv",
         aggregate_rows(rows, ("label", "trajectory")),
     )
-    seeds = [0, 1, 2, 3, 4]
-    comparison_rows = _expanded_projected_rows(rows, seeds)
     comparisons = {
         "FullVirtual_minus_NaiveDelayed": paired_bootstrap_rows(
-            comparison_rows, left="NaiveDelayed", right="FullVirtual",
+            rows, left="NaiveDelayed", right="FullVirtual",
             metrics=("tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad", "failure_rate"),
             samples=bootstrap_samples, seed=20260722,
         ),
         "ThreadedAsync_minus_FullVirtual": paired_bootstrap_rows(
-            comparison_rows, left="FullVirtual", right="ThreadedAsync",
+            rows, left="FullVirtual", right="ThreadedAsync",
             metrics=("tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad", "failure_rate"),
             samples=bootstrap_samples, seed=20260724,
-        ),
-        "ThreadedAsync_minus_ProjectedDirectIK": paired_bootstrap_rows(
-            comparison_rows, left="ProjectedDirectIK", right="ThreadedAsync",
-            metrics=("tcp_rmse_m", "tcp_p95_m", "orientation_rmse_rad", "failure_rate"),
-            samples=bootstrap_samples, seed=20260725,
         ),
     }
     write_json(output / "summaries" / "main_paired_bootstrap.json", comparisons)
@@ -693,6 +875,9 @@ def main(argv: list[str] | None = None) -> None:
         print(run_suite(output, manifest, args.resume, args.case_limit))
     elif args.command == "summarize":
         print(summarize(output, args.bootstrap_samples))
+    elif args.command == "audit-freeze":
+        manifest = resolve(args.manifest or output / "manifests" / "paper.json")
+        print(audit_freeze(output, manifest))
 
 
 if __name__ == "__main__":

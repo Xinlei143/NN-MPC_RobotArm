@@ -29,10 +29,9 @@ METHOD_MAP = {
     "ThreadedASAP": "ThreadedAsync",
     "ThreadedAsync": "ThreadedAsync",
 }
-COMPARISONS = (
+INFERENTIAL_COMPARISONS = (
     ("FullVirtual − NaiveDelayed", "NaiveDelayed", "FullVirtual"),
     ("ThreadedAsync − FullVirtual", "FullVirtual", "ThreadedAsync"),
-    ("ThreadedAsync − Projected IK", "ProjectedDirectIK", "ThreadedAsync"),
 )
 
 
@@ -82,14 +81,6 @@ def _index(rows: list[dict], label: str) -> dict[tuple[str, int], dict]:
 def paired_differences(rows: list[dict], left: str, right: str) -> np.ndarray:
     right_rows = _index(rows, right)
     left_rows = _index(rows, left)
-    if left == "ProjectedDirectIK":
-        by_trajectory = {
-            str(row["trajectory"]): row for row in rows if row["label"] == left
-        }
-        left_rows = {
-            key: by_trajectory[key[0]] for key in right_rows
-            if key[0] in by_trajectory
-        }
     common = sorted(set(left_rows).intersection(right_rows))
     if not common:
         raise ValueError(f"No matched rows for {right} − {left}")
@@ -162,6 +153,37 @@ def tracking_rows(robot_rows: dict[str, list[dict]]) -> list[dict]:
     return output
 
 
+def direct_ik_descriptive_rows(robot_rows: dict[str, list[dict]]) -> list[dict]:
+    output = []
+    for robot, rows in robot_rows.items():
+        direct = {
+            str(row["trajectory"]): float(row["tcp_rmse_m"])
+            for row in rows if row["label"] == "ProjectedDirectIK"
+        }
+        threaded: dict[str, list[float]] = {}
+        for row in rows:
+            if row["label"] == "ThreadedAsync":
+                threaded.setdefault(str(row["trajectory"]), []).append(float(row["tcp_rmse_m"]))
+        common = sorted(set(direct).intersection(threaded))
+        if not common:
+            continue
+        direct_values = np.asarray([direct[name] for name in common], dtype=np.float64)
+        threaded_values = np.asarray([np.mean(threaded[name]) for name in common], dtype=np.float64)
+        delta = threaded_values - direct_values
+        output.append({
+            "robot": robot,
+            "comparison": "ThreadedAsync − ProjectedDirectIK",
+            "trajectory_cases": len(common),
+            "threaded_tcp_rmse_mm": 1000.0 * float(np.mean(threaded_values)),
+            "projected_direct_ik_tcp_rmse_mm": 1000.0 * float(np.mean(direct_values)),
+            "mean_delta_tcp_rmse_mm": 1000.0 * float(np.mean(delta)),
+            "relative_improvement_pct": 100.0 * float(-np.mean(delta) / np.mean(direct_values)),
+            "all_trajectory_deltas_favor_threaded": bool(np.all(delta < 0.0)),
+            "inference_scope": "descriptive four-trajectory comparison; no seed-paired bootstrap",
+        })
+    return output
+
+
 def main() -> None:
     args = parser().parse_args()
     output = Path(args.output_dir)
@@ -171,10 +193,12 @@ def main() -> None:
     }
     write_csv(output / "platforms.csv", platform_rows())
     write_csv(output / "tracking_table.csv", tracking_rows(robot_rows))
+    direct_ik_descriptive = direct_ik_descriptive_rows(robot_rows)
+    write_csv(output / "direct_ik_descriptive.csv", direct_ik_descriptive)
 
     effects = []
     for robot_index, (robot, rows) in enumerate(robot_rows.items()):
-        for comparison_index, (name, left, right) in enumerate(COMPARISONS):
+        for comparison_index, (name, left, right) in enumerate(INFERENTIAL_COMPARISONS):
             values = paired_differences(rows, left, right)
             mean, low, high = bootstrap(
                 values,
@@ -197,6 +221,7 @@ def main() -> None:
             "bootstrap_samples": args.bootstrap_samples,
             "bootstrap_seed": args.bootstrap_seed,
             "effects": effects,
+            "direct_ik_descriptive": direct_ik_descriptive,
             "cross_robot_inference": (
                 "descriptive direction/effect-size comparison only; no pooled significance test"
             ),
@@ -204,10 +229,10 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    figure, axes = plt.subplots(1, 3, figsize=(10.5, 3.3), sharey=True)
+    figure, axes = plt.subplots(1, len(INFERENTIAL_COMPARISONS), figsize=(7.0, 3.3), sharey=True)
     robots = ("ABB IRB2400", "UR5e")
     colors = ("#0072B2", "#D55E00")
-    for axis, (comparison, _, _) in zip(axes, COMPARISONS, strict=True):
+    for axis, (comparison, _, _) in zip(axes, INFERENTIAL_COMPARISONS, strict=True):
         members = [row for row in effects if row["comparison"] == comparison]
         for y, (robot, color) in enumerate(zip(robots, colors, strict=True)):
             row = next(value for value in members if value["robot"] == robot)

@@ -353,6 +353,14 @@ conda run --no-capture-output -n pendulum-rl python scripts/paper_experiments/ur
   --output-root "$EXP" summarize --bootstrap-samples 10000
 ```
 
+正式结果冻结前，再做一次只读完整性审计。它核验 84 个 case、每个输入 artifact 的 hash、
+run fingerprint、状态有限性及约束标志，不会重新运行控制器：
+
+```bash
+conda run --no-capture-output -n pendulum-rl python scripts/paper_experiments/ur5e_workflow.py \
+  --output-root "$EXP" audit-freeze --manifest "$EXP/manifests/paper.json"
+```
+
 主要输出：
 
 ```text
@@ -363,6 +371,7 @@ $EXP/summaries/main.csv
 $EXP/summaries/main_aggregate.csv
 $EXP/summaries/main_paired_bootstrap.json
 $EXP/summaries/worst_seed.json
+$EXP/freeze_audit.json
 ```
 
 每次检查 `run_summary.json`、projection activity、requested/executed residual RMS、

@@ -30,6 +30,29 @@ UR5e 通过 500 个有效 planner sample 做独立延迟标定：
 
 延迟按 `ceil((P95 + guard) / control_dt)` 计算。不能把 ABB 的 D=6 直接复制给 UR5e。
 
+## UR5e GRU 多步验证
+
+正式模型验证已在控制矩阵之前完成，结果位于
+`outputs/paper_ur5e_v2/diagnostics/gru_validation/`。验证使用与正式控制数据隔离的
+20 条 open-loop rollout，每条长度为 200；action standard deviation 为 0.5 和 0.8 的
+两组各含 10 条 rollout，随机种子为 20260730。以下数值是每个 action group 内 10 条
+rollout 的平均值；所有 horizon 的 divergence rate 均为 0。
+
+| action std | horizon | q RMSE | dq RMSE |
+| ---: | ---: | ---: | ---: |
+| 0.5 | 1 | 0.00127 rad | 0.12659 rad/s |
+| 0.5 | 5 | 0.00393 rad | 0.11049 rad/s |
+| 0.5 | 10 | 0.00635 rad | 0.09245 rad/s |
+| 0.5 | 20 | 0.00956 rad | 0.06916 rad/s |
+| 0.8 | 1 | 0.00138 rad | 0.13613 rad/s |
+| 0.8 | 5 | 0.00433 rad | 0.11967 rad/s |
+| 0.8 | 10 | 0.00707 rad | 0.10023 rad/s |
+| 0.8 | 20 | 0.01057 rad | 0.07509 rad/s |
+
+这里的 q RMSE 随 horizon 增长，符合多步预测误差累积的预期。`horizon_metrics.csv` 还保留
+逐 rollout、逐关节的误差、NMSE、R² 和 amplitude-ratio；本文不将这项验证与闭环 tracking
+error 混合统计。
+
 ## 覆盖范围与工程检查
 
 正式矩阵包括四条轨迹、四个 MPC variant、每种 5 个 seed，以及每条轨迹一个确定性的
@@ -37,8 +60,9 @@ Projected Direct IK baseline，共 `4 + 4 × 4 × 5 = 84` 个 case。MPC variant
 IdealZeroDelay、NaiveDelayed、FullVirtual 和 ThreadedAsync。
 
 在正式运行前，Projected Direct IK 与四个 MPC variant 的短闭环 preflight 全部通过。
-84 个 run 均有 `rollout.npz`、`run_fingerprint.json` 和 `run_summary.json`；实际状态数组
-没有 NaN。汇总后的 safety 计数为：
+84 个 run 均有 `rollout.npz`、`run_fingerprint.json` 和 `run_summary.json`。正式冻结审计
+重新计算了每个 fingerprint，并重新核验 checkpoint、normalizer、dataset manifest、reference
+和 delay calibration 的文件 SHA-256；实际状态数组没有 NaN。汇总后的 safety 计数为：
 
 | 检查项 | 结果 |
 | --- | ---: |
@@ -47,10 +71,18 @@ IdealZeroDelay、NaiveDelayed、FullVirtual 和 ThreadedAsync。
 | command velocity violation | 0 |
 | command acceleration violation | 0 |
 
-ThreadedAsync 在长序列中记录到 15 次 late packet drop 与 8 次 control deadline miss。
-它们是时序诊断事件，不是安全违例：本轮没有触发规划失败，也没有产生超出关节、速度或
-加速度限制的执行命令。后续部署到真机前，仍应在目标硬件上重新标定 D，并把这些时序指标
-作为持续监控项。
+冻结审计输出为 `status="passed"`：84 个预期 case 和 84 个观察 case 一一对应，没有
+重复、缺失、早期目录复用、fingerprint mismatch、input hash mismatch、非有限状态或约束
+违例。manifest 记录的正式运行 commit 为 `abe107c`，且运行时 worktree 为 clean。
+
+ThreadedAsync 在 20 条正式 run 中共有 6,013 次 planner publication 和 26,600 个 control
+tick。late packet drop 为 `15 / 6013 = 0.249%`，最坏单条 run 为 `5 / 247 = 2.024%`；control
+deadline miss 为 `8 / 26600 = 0.030%`，最坏单条 run 为 `8 / 1405 = 0.569%`。packet expiration
+为 0，fallback duty 为 `0.526%`。所有 control tick 上的 control-lateness P99 为 0 ms、max
+为 70.40 ms；wakeup-lateness P99 为 0.339 ms、max 为 79.44 ms。有限的 5,992 个 planner
+E2E latency sample 的 P99 为 56.53 ms、max 为 139.23 ms。这些事件没有触发规划失败，也
+没有产生超出关节、速度或加速度限制的执行命令。部署到真机前，仍应在目标硬件上重新标定
+D，并持续监控这些时序指标。
 
 ## UR5e 跟踪结果
 
@@ -69,13 +101,20 @@ IdealZeroDelay 是没有真实异步延迟的诊断上界，不能当作部署�
 NaiveDelayed、FullVirtual 和 ThreadedAsync：延迟感知的 FullVirtual 将平均 TCP RMSE
 从 34.78 mm 降到 10.43 mm。ThreadedAsync 的均值为 10.42 mm，与 FullVirtual 基本相同。
 
+Projected Direct IK 每条轨迹只有一个确定性 run，不能将其复制为五个 seed 后做 20-case
+paired bootstrap。ThreadedAsync 相对 Projected Direct IK 只作描述性报告：平均 TCP RMSE
+为 10.42 mm 对 15.06 mm，平均差为 -4.64 mm，即按总体均值计算低 30.81%。circle、figure8、
+fast_ellipse 和 rounded_square 四条轨迹的差值方向均有利于 ThreadedAsync。该比较不提供
+seed-paired 显著性结论。
+
 ThreadedAsync 的每 case 平均 timing 汇总为 E2E P50 49.12 ms、E2E P95 54.43 ms，planner
 rate 22.58 Hz。这些值来自本次 GPU 与系统负载；它们不是 UR5e 控制器的固定属性。
 
 ## 平台内配对统计与 ABB 对照
 
-`multi_robot_summary.py` 对每台机器人分别按 trajectory-seed 配对，并进行 10,000 次
-bootstrap。它没有将 ABB 与 UR5e 的绝对误差合并为一个显著性检验。结果如下：
+`multi_robot_summary.py` 对随机化 MPC method 在每台机器人内分别按 trajectory-seed 配对，
+并进行 10,000 次 bootstrap。它没有将 ABB 与 UR5e 的绝对误差合并为一个显著性检验，也不对
+只有四条确定性轨迹的 Projected Direct IK 生成伪 seed 配对。结果如下：
 
 | 机器人 | 比较 | 匹配 case | 平均 TCP RMSE 差 | 95% CI |
 | --- | --- | ---: | ---: | --- |
@@ -97,13 +136,20 @@ UR5e 标定曾暴露出两个实现问题：旧的 preflight 读取了过期的 
 中达到 Dynamo 的 256 次重编译上限。正式结果使用修复后的状态接口和可复用的 TorchScript
 投影图。指南已在 `docs/guides/ur5e-end-to-end-workflow.md` 中记录恢复方式。
 
+本轮封口工作还修复了两个统计和复现接口：`--resume` 现在会校验 `run_fingerprint.json`，不再
+只因 `rollout.npz` 存在而跳过 case；`summarize` 和跨机器人汇总不再对 Projected Direct IK
+制造重复 seed。`audit-freeze` 不运行控制器，只核验冻结矩阵及其输入身份。
+
 ## 可追溯产物
 
 - UR5e manifest：`outputs/paper_ur5e_v2/manifests/paper.json`
+- GRU 多步验证：`outputs/paper_ur5e_v2/diagnostics/gru_validation/`
 - 延迟标定：`outputs/paper_ur5e_v2/calibration/delay.json`
 - preflight：`outputs/paper_ur5e_v2/preflight/report.json`
+- 冻结完整性审计：`outputs/paper_ur5e_v2/freeze_audit.json`
 - case index：`outputs/paper_ur5e_v2/runs/indexes/main.json`
 - UR5e case-level summary：`outputs/paper_ur5e_v2/summaries/main.csv`
 - UR5e aggregate 与 bootstrap：`outputs/paper_ur5e_v2/summaries/`
-- ABB/UR5e effect sizes：`outputs/multi_robot_summary_ur5e_v2/effect_sizes.csv`
-- ABB/UR5e 图：`outputs/multi_robot_summary_ur5e_v2/multi_robot_effect_sizes.png`
+- ABB/UR5e inferential effect sizes：`outputs/multi_robot_summary_ur5e_v3/effect_sizes.csv`
+- ABB/UR5e Direct IK 描述性比较：`outputs/multi_robot_summary_ur5e_v3/direct_ik_descriptive.csv`
+- ABB/UR5e 图：`outputs/multi_robot_summary_ur5e_v3/multi_robot_effect_sizes.png`
