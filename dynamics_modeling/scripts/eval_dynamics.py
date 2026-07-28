@@ -5,9 +5,11 @@ import csv
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+DYNAMICS_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = DYNAMICS_ROOT.parent
+for root in (PROJECT_ROOT, DYNAMICS_ROOT):
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,9 +23,10 @@ from neural_dynamics.parallel_collector import (
     parse_action_std,
     reset_safe_workspace,
 )
-from neural_dynamics.paths import DEFAULT_MODEL_XML, resolve_project_path
-from neural_dynamics.train_utils import build_model, load_checkpoint, set_seed
+from neural_dynamics.train_utils import set_seed
 from neural_dynamics.integration import reconstruct_next_state
+from neural_dynamics.rollout import load_dynamics_bundle
+from mpc.robot_config import load_robot_spec
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -31,11 +34,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Evaluate learned dynamics against MuJoCo rollouts.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--model_xml", default=DEFAULT_MODEL_XML, type=str, help="MuJoCo XML/MJCF model path")
+    parser.add_argument("--robot_config", default="configs/robots/abb_irb2400.yaml")
+    parser.add_argument("--model_xml", default=None, type=str, help="Advanced RobotSpec XML override")
     parser.add_argument("--checkpoint", required=True, type=str)
     parser.add_argument("--normalizer", required=True, type=str)
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], required=True)
-    parser.add_argument("--n_joints", default=6, type=int)
+    parser.add_argument("--n_joints", default=None, type=int)
     parser.add_argument("--history_len", default=1, type=int)
     parser.add_argument("--rollout_len", default=200, type=int)
     parser.add_argument("--num_rollouts", default=3, type=int)
@@ -307,6 +311,7 @@ def collect_truth_rollout_with_torque(
     action_std: float | np.ndarray,
     settle_steps: int = 50,
     mode_id: int = 0,
+    workspace: dict[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     if settle_steps < 0:
         raise ValueError(f"settle_steps must be non-negative, got {settle_steps}")
@@ -318,7 +323,13 @@ def collect_truth_rollout_with_torque(
         "actuator_tau": [],
         "gravity_tau": [],
     }
-    state = reset_safe_workspace(env, rng, n_joints)
+    state = reset_safe_workspace(
+        env,
+        rng,
+        n_joints,
+        None if workspace is None else workspace["reset_low"],
+        None if workspace is None else workspace["reset_high"],
+    )
     q_ref = np.asarray(state[:n_joints], dtype=np.float32).copy()
     for _ in range(settle_steps):
         state = env.step(q_ref)
@@ -330,6 +341,8 @@ def collect_truth_rollout_with_torque(
         total_steps,
         action_std_array(action_std, n_joints),
         mode_id % len(MOTION_MODE_NAMES),
+        None if workspace is None else workspace["target_low"],
+        None if workspace is None else workspace["target_high"],
     )
     for q_ref in q_ref_sequence:
         torque = env.compute_torque_components(q_ref)
@@ -421,6 +434,12 @@ def predict_teacher_forcing(
 
 def main() -> None:
     args = parse_args()
+    robot = load_robot_spec(args.robot_config, validate_model=True)
+    robot = robot.with_runtime_overrides(model_xml=args.model_xml)
+    if args.n_joints is not None and args.n_joints != robot.n_joints:
+        raise ValueError("--n_joints must match RobotSpec")
+    args.n_joints = robot.n_joints
+    args.model_xml = str(robot.model_xml)
     if args.model_type == "mlp":
         args.history_len = 1
     if args.rollout_len <= 0 or args.num_rollouts <= 0:
@@ -438,20 +457,32 @@ def main() -> None:
     state_dim = 2 * args.n_joints
     action_dim = args.n_joints
 
-    checkpoint = load_checkpoint(Path(args.checkpoint), map_location=device)
-    config = checkpoint.get("config", {})
-    if config and int(config.get("state_dim", state_dim)) != state_dim:
-        raise ValueError(f"Checkpoint state_dim={config.get('state_dim')} does not match n_joints={args.n_joints}")
-    target_mode = str(config.get("target_mode", "delta_state")) if isinstance(config, dict) else "delta_state"
-    output_dim = int(config.get("output_dim", state_dim)) if isinstance(config, dict) else state_dim
-    control_dt = float(config.get("control_dt", 0.01)) if isinstance(config, dict) else 0.01
-    args.history_len = resolve_history_len(args.model_type, args.history_len, config if isinstance(config, dict) else {})
-    model = build_model(args.model_type, state_dim, action_dim, args.history_len, output_dim=output_dim).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-    normalizer = StandardNormalizer.load(Path(args.normalizer), map_location=device)
+    bundle = load_dynamics_bundle(
+        args.checkpoint,
+        args.normalizer,
+        args.model_type,
+        args.n_joints,
+        device,
+        args.history_len,
+        expected_robot_spec=robot,
+    )
+    model = bundle.model
+    normalizer = bundle.normalizer
+    args.history_len = bundle.history_len
+    target_mode = bundle.target_mode
+    control_dt = bundle.control_dt
 
-    env = MuJoCoArmEnv(str(resolve_project_path(args.model_xml, ROOT)), n_joints=args.n_joints, seed=args.seed)
+    env = MuJoCoArmEnv(
+        str(robot.model_xml),
+        n_joints=args.n_joints,
+        seed=args.seed,
+        frame_skip=robot.frame_skip,
+        home_q=robot.home_q,
+        ee_site_name=robot.ee_site_name,
+        gravity_compensation=robot.gravity_compensation,
+        gravity_compensation_zero_indices=robot.gravity_compensation_zero_indices,
+    )
+    workspace = robot.collection_bounds(env.joint_low, env.joint_high)
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     labels = state_labels(args.n_joints)
@@ -469,6 +500,7 @@ def main() -> None:
                 rollout_action_std,
                 settle_steps=args.settle_steps,
                 mode_id=rollout_idx,
+                workspace=workspace,
             )
             true_states = true_states_all[args.warmup_steps : args.warmup_steps + args.rollout_len]
             np.savez_compressed(

@@ -317,8 +317,10 @@ D6 的 publication deadline 为 55 ms，而 E2E P95 达到 74.19 ms，所有 pac
 planner_projection_backend = eager | compiled
 ```
 
-`compiled` 使用 `torch.compile(fullgraph=True)`，数学计算与 eager full projection
-保持一致，仅优化执行图。真实 threaded、500-plan E2E 标定结果为：
+该实验最初使用 `torch.compile(fullgraph=True)`；当前实现改为一次构建、可跨 CEM
+population shape 复用的 TorchScript 图，避免长时间运行因 shape 变化触发 Dynamo
+重编译上限。数学计算仍与 eager full projection 保持一致，仅优化执行图。真实
+threaded、500-plan E2E 标定结果为：
 
 | Variant | E2E P95 | 标定 D |
 |---|---:|---:|

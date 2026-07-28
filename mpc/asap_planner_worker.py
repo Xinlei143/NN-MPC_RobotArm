@@ -262,7 +262,15 @@ class ASAPPlannerWorker(threading.Thread):
             if device.type != "cuda":
                 raise ValueError("threaded_asap requires a CUDA device so the worker exclusively owns GPU operations")
             self.api["set_seed"](self.args.seed)
-            bundle = self.api["load_dynamics_bundle"](checkpoint_path=self.api["resolve_runtime_path"](self.args.checkpoint), normalizer_path=self.api["resolve_runtime_path"](self.args.normalizer), model_type=self.args.model_type, n_joints=self.args.n_joints, device=device, history_len=self.args.history_len)
+            bundle = self.api["load_dynamics_bundle"](
+                checkpoint_path=self.api["resolve_runtime_path"](self.args.checkpoint),
+                normalizer_path=self.api["resolve_runtime_path"](self.args.normalizer),
+                model_type=self.args.model_type,
+                n_joints=self.args.n_joints,
+                device=device,
+                history_len=self.args.history_len,
+                expected_robot_spec=self.api["_robot_spec"](self.args),
+            )
             ensemble = None
             supervisor = None
             if self.args.uncertainty_mode != "off":

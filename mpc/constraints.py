@@ -124,10 +124,13 @@ _COMPILED_POSITION_PROJECTOR = None
 def _compiled_position_projector():
     global _COMPILED_POSITION_PROJECTOR
     if _COMPILED_POSITION_PROJECTOR is None:
-        _COMPILED_POSITION_PROJECTOR = torch.compile(
-            _project_position_command_sequence_core,
-            fullgraph=True,
-            mode="default",
+        # This core is a fixed tensor loop and scripts without graph breaks.
+        # TorchScript gives the compiled backend one reusable graph across
+        # planner workers and candidate-pool sizes.  Dynamo fullgraph compiled
+        # the same mathematics but accumulated a fresh specialization on every
+        # long-running threaded UR5e solve until its 256-graph hard limit.
+        _COMPILED_POSITION_PROJECTOR = torch.jit.script(
+            _project_position_command_sequence_core
         )
     return _COMPILED_POSITION_PROJECTOR
 

@@ -17,6 +17,7 @@ import numpy as np
 
 from mpc.ik_solver import IKConfig, MujocoDLSIKSolver, TrajectoryIKResult
 from mpc.kinematics_utils import MujocoKinematics, orientation_error, wrap_to_pi
+from mpc.robot_config import RobotSpec, file_sha256
 from mpc.task_space_reference import (
     SEGMENT_FINAL_HOLD,
     SEGMENT_HORIZON_PADDING,
@@ -36,12 +37,12 @@ from mpc.task_space_reference import (
 
 TASK_SEGMENT_IDS = frozenset({SEGMENT_TASK_APPROACH, SEGMENT_SHAPE_LOOP, SEGMENT_TASK_RETURN})
 REFERENCE_FILE_NAME = "reference.npz"
-REFERENCE_FORMAT_VERSION = 1
+REFERENCE_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
 class ReferenceConfig:
-    """Configuration for one complete zero-pose -> shape -> zero-pose episode."""
+    """Configuration for one complete home -> shape -> home episode."""
 
     shape_name: str = "circle"
     repeat_count: int = 3
@@ -427,25 +428,35 @@ def build_reference(
     control_dt: float,
     horizon: int,
     lookahead_steps: int = 0,
+    robot_spec: RobotSpec | None = None,
 ) -> ReferenceBundle:
     """Generate, solve, validate, and pad an offline task-space reference.
 
-    ``initial_q`` is intentionally checked to be zero in this project version:
-    each MPC episode starts from the verified ABB zero configuration.  A caller
-    that needs arbitrary starts should make that a deliberate future API change,
-    rather than accidentally mixing task references with a different reset pose.
+    The episode starts from the configured robot home and returns to it.
     """
 
     if horizon < 0 or lookahead_steps < 0:
         raise ValueError(f"horizon must be non-negative, got {horizon}")
     if control_dt <= 0.0:
         raise ValueError(f"control_dt must be positive, got {control_dt}")
-    kinematics = MujocoKinematics(model=model, ee_site_name=config.ee_site_name, n_joints=model.nu)
+    initial = np.asarray(initial_q)
+    if initial.ndim != 1 or initial.size <= 0:
+        raise ValueError("initial_q must be a non-empty rank-1 vector")
+    kinematics = MujocoKinematics(
+        model=model,
+        ee_site_name=config.ee_site_name,
+        n_joints=int(initial.size),
+    )
     q0 = _normalize_q(initial_q, kinematics.n_joints, "initial_q")
-    if not np.allclose(q0, 0.0, atol=1e-12):
-        raise ValueError("Task-space reference generation requires the fixed zero initial_q in this project version")
     if np.any(q0 < kinematics.joint_low) or np.any(q0 > kinematics.joint_high):
-        raise ValueError("zero initial_q is outside the model joint limits")
+        raise ValueError("initial_q is outside the model joint limits")
+    if robot_spec is not None:
+        if robot_spec.n_joints != kinematics.n_joints:
+            raise ValueError("RobotSpec n_joints does not match initial_q")
+        if config.ee_site_name != robot_spec.ee_site_name:
+            raise ValueError("ReferenceConfig ee_site_name does not match RobotSpec")
+        if not np.allclose(q0, robot_spec.home_q, atol=1e-6, rtol=0.0):
+            raise ValueError("initial_q does not match the configured robot home")
 
     departure_q, uses_safe_departure, safe_result = _select_departure_pose(config, kinematics, q0)
     initial_position, initial_rotation = kinematics.forward(q0)
@@ -523,7 +534,7 @@ def build_reference(
 
     # The fixed task return should arrive very close to departure_q.  The joint
     # return starts from the actual final IK solution so there is never a hidden
-    # discontinuity before returning exactly to the zero configuration.
+    # discontinuity before returning exactly to the configured home.
     if not config.collection_only and (uses_safe_departure or return_error > config.final_return_tolerance):
         joint_return = _joint_quintic_segment(task_q[-1], q0, config.joint_return_duration, control_dt)
         q_parts.append(joint_return)
@@ -603,6 +614,8 @@ def build_reference(
         # would be misleading.  This explicit flag is persisted with the ref.
         "self_collision_check": "not_available",
     }
+    if robot_spec is not None:
+        metadata["robot_identity"] = robot_spec.artifact_identity()
     bundle = ReferenceBundle(
         time=time,
         q_des=q_des,
@@ -632,7 +645,7 @@ def validate_reference_bundle(
 ) -> dict[str, Any]:
     """Recompute all offline validation metrics and raise on a hard failure.
 
-    The initial zero pose is intentionally a wrist singularity in this model.
+    A configured home pose can be close to a wrist singularity.
     Singularity rejection is therefore applied to IK-controlled task segments,
     while all segments are still recorded and warned about in the diagnostics.
     """
@@ -715,16 +728,24 @@ def validate_reference_bundle(
         )
     warning_indices = np.flatnonzero(sigma_min < config.singularity_warning)
 
-    final_q_error = float(np.max(np.abs(wrap_to_pi(q[bundle.execution_steps - 1] - np.zeros(bundle.n_joints)))))
+    configured_home = np.asarray(
+        bundle.metadata.get("initial_q", q[0]),
+        dtype=np.float64,
+    )
+    if configured_home.shape != (bundle.n_joints,):
+        raise ValueError("Reference metadata initial_q has an invalid shape")
+    final_q_error = float(
+        np.max(np.abs(wrap_to_pi(q[bundle.execution_steps - 1] - configured_home)))
+    )
     final_dq_error = float(np.max(np.abs(bundle.dq_des[bundle.execution_steps - 1])))
     if not config.collection_only and final_q_error > config.final_return_tolerance:
         raise RuntimeError(
-            "Reference does not return to zero joint pose: "
+            "Reference does not return to the configured home joint pose: "
             f"max wrapped error={final_q_error:.6g} rad"
         )
     if not config.collection_only and final_dq_error > config.final_return_tolerance:
         raise RuntimeError(
-            "Reference does not settle at zero joint velocity: "
+            "Reference does not settle at zero joint velocity at home: "
             f"max error={final_dq_error:.6g} rad/s"
         )
     if not np.allclose(q[bundle.execution_steps :], q[bundle.execution_steps - 1], atol=config.final_return_tolerance):
@@ -837,6 +858,7 @@ def load_reference_bundle(
     *,
     expected_n_joints: int | None = None,
     min_horizon: int | None = None,
+    expected_robot_spec: RobotSpec | None = None,
 ) -> ReferenceBundle:
     """Load a saved bundle and verify it can supply every MPC future window."""
 
@@ -885,6 +907,34 @@ def load_reference_bundle(
         raise ValueError(
             f"Reference has {bundle.n_joints} joints but expected_n_joints={expected_n_joints}"
         )
+    if expected_robot_spec is not None:
+        identity = bundle.metadata.get("robot_identity")
+        if not isinstance(identity, dict):
+            digest = file_sha256(input_path)
+            if not expected_robot_spec.is_legacy_artifact_allowed("reference", digest):
+                raise ValueError(
+                    "Reference is missing robot identity and is not an allowlisted legacy artifact"
+                )
+            bundle.metadata["legacy_identity"] = True
+        else:
+            expected = expected_robot_spec.artifact_identity()
+            for key in (
+                "robot_id",
+                "robot_spec_sha256",
+                "model_xml_sha256",
+                "n_joints",
+                "joint_names",
+                "ee_site_name",
+                "home_q",
+                "gravity_compensation",
+                "gravity_compensation_zero_indices",
+                "contact_semantics",
+            ):
+                if identity.get(key) != expected.get(key):
+                    raise ValueError(
+                        f"Reference robot identity mismatch for {key}: "
+                        f"{identity.get(key)!r} != {expected.get(key)!r}"
+                    )
     if min_horizon is not None:
         if min_horizon < 0:
             raise ValueError("min_horizon must be non-negative")

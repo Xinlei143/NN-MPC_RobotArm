@@ -9,6 +9,7 @@ import torch
 class StandardNormalizer:
     def __init__(self, eps: float = 1e-8) -> None:
         self.eps = eps
+        self.metadata: dict[str, Any] = {}
         self.state_mean: torch.Tensor | None = None
         self.state_std: torch.Tensor | None = None
         self.action_mean: torch.Tensor | None = None
@@ -71,10 +72,15 @@ class StandardNormalizer:
             "action_std": self._require("action_std").cpu(),
             "delta_mean": self._require("delta_mean").cpu(),
             "delta_std": self._require("delta_std").cpu(),
+            "metadata": dict(self.metadata),
         }
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.eps = float(state.get("eps", self.eps))
+        metadata = state.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise ValueError("Normalizer metadata must be a mapping")
+        self.metadata = dict(metadata)
         for key in ("state_mean", "state_std", "action_mean", "action_std", "delta_mean", "delta_std"):
             if key not in state:
                 raise KeyError(f"Normalizer checkpoint is missing key: {key}")

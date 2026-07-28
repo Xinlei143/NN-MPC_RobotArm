@@ -24,6 +24,7 @@ from mpc.reference_pipeline import (
     save_reference_bundle,
 )
 from mpc.task_space_reference import SEGMENT_NAMES
+from mpc.robot_config import load_robot_spec
 
 
 def resolve_runtime_path(value: str) -> Path:
@@ -35,17 +36,18 @@ def resolve_runtime_path(value: str) -> Path:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate a validated ABB IRB2400 task-space reference.",
+        description="Generate a validated robot-specific task-space reference.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--model_xml", default="dynamics_modeling/ABB_IRB2400.xml")
+    parser.add_argument("--robot_config", default="configs/robots/abb_irb2400.yaml")
+    parser.add_argument("--model_xml", default=None, help="Advanced RobotSpec XML override.")
     parser.add_argument("--save_dir", required=True)
     parser.add_argument("--shape", choices=["circle", "ellipse", "figure8", "square", "rounded_square"], default="circle")
     parser.add_argument("--repeat_count", type=int, default=3)
     parser.add_argument("--control_dt", type=float, default=0.01)
     parser.add_argument("--horizon", type=int, default=20)
     parser.add_argument("--lookahead_steps", type=int, default=0, help="Additional delayed-MPC reference padding steps.")
-    parser.add_argument("--ee_site_name", default="ee_site")
+    parser.add_argument("--ee_site_name", default=None, help="Advanced RobotSpec TCP-site override.")
 
     parser.add_argument("--start_hold_duration", type=float, default=0.5)
     parser.add_argument("--joint_departure_duration", type=float, default=2.0)
@@ -220,17 +222,32 @@ def plot_reference_diagnostics(save_dir: Path, bundle) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+    robot = load_robot_spec(args.robot_config)
+    robot = robot.with_runtime_overrides(
+        model_xml=args.model_xml,
+        ee_site_name=args.ee_site_name,
+    )
+    args.model_xml = str(robot.model_xml)
+    args.ee_site_name = robot.ee_site_name
     config = _reference_config_from_args(args)
+    config = ReferenceConfig(**{
+        **config.__dict__,
+        "max_joint_velocity": tuple(float(value) for value in robot.command_velocity_limit),
+        "max_joint_acceleration": tuple(
+            float(value) for value in robot.command_acceleration_limit
+        ),
+    })
     model_path = resolve_runtime_path(args.model_xml)
     save_dir = resolve_runtime_path(args.save_dir)
     model = mujoco.MjModel.from_xml_path(str(model_path))
     bundle = build_reference(
         config=config,
         model=model,
-        initial_q=np.zeros(model.nu, dtype=np.float64),
+        initial_q=robot.home_q,
         control_dt=args.control_dt,
         horizon=args.horizon,
         lookahead_steps=args.lookahead_steps,
+        robot_spec=robot,
     )
     save_dir.mkdir(parents=True, exist_ok=True)
     reference_path = save_reference_bundle(bundle, save_dir)

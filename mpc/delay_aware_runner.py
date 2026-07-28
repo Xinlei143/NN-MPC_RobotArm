@@ -49,6 +49,7 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         bundle = api["load_dynamics_bundle"](
             checkpoint_path=api["resolve_runtime_path"](args.checkpoint), normalizer_path=api["resolve_runtime_path"](args.normalizer),
             model_type=args.model_type, n_joints=args.n_joints, device=device, history_len=args.history_len,
+            expected_robot_spec=api["_robot_spec"](args),
         )
     robustness = api["_robustness_config"](args)
     env = api["_build_control_env"](args)
@@ -63,7 +64,8 @@ def run(args: Any, api: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("activation_observer data collection requires learned dynamics, not mujoco_oracle")
     stack = api["_stack_records"]
     try:
-        true_state = env.reset_to_configuration(api["MPC_HOME_Q"][: args.n_joints])
+        robot = api["_robot_spec"](args)
+        true_state = env.reset_to_configuration(robot.home_q)
         previous_command = np.asarray(true_state[: args.n_joints], dtype=np.float32).copy()
         previous_velocity = np.zeros(args.n_joints, dtype=np.float32)
         for _ in range(args.settle_steps):

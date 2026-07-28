@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 
 from neural_dynamics.mujoco_env import MuJoCoArmEnv
+from mpc.robot_config import RobotSpec
 
 REQUIRED_DATASET_ARRAYS = ("states", "actions", "next_states")
 MOTION_MODE_NAMES = ("hold", "step", "smooth_random", "sine", "delta_ref_random", "mpc_correlated_random")
@@ -121,10 +122,23 @@ def _target_workspace_bounds(action_std: np.ndarray) -> tuple[np.ndarray, np.nda
     return low, high
 
 
-def reset_safe_workspace(env: MuJoCoArmEnv, rng: np.random.Generator, n_joints: int) -> np.ndarray:
-    low_norm, high_norm = _safe_workspace_bounds(n_joints)
-    q_norm = rng.uniform(low_norm, high_norm)
-    qpos = _normalized_to_action(q_norm, env.joint_low, env.joint_high)
+def reset_safe_workspace(
+    env: MuJoCoArmEnv,
+    rng: np.random.Generator,
+    n_joints: int,
+    reset_low: np.ndarray | None = None,
+    reset_high: np.ndarray | None = None,
+) -> np.ndarray:
+    if reset_low is None or reset_high is None:
+        low_norm, high_norm = _safe_workspace_bounds(n_joints)
+        q_norm = rng.uniform(low_norm, high_norm)
+        qpos = _normalized_to_action(q_norm, env.joint_low, env.joint_high)
+    else:
+        low = np.asarray(reset_low, dtype=np.float64)
+        high = np.asarray(reset_high, dtype=np.float64)
+        if low.shape != (n_joints,) or high.shape != (n_joints,) or np.any(low >= high):
+            raise ValueError("reset workspace bounds are invalid")
+        qpos = rng.uniform(low, high).astype(np.float32)
 
     import mujoco
 
@@ -159,9 +173,21 @@ def generate_q_ref_sequence(
     episode_len: int,
     action_std: np.ndarray,
     mode_id: int,
+    workspace_low: np.ndarray | None = None,
+    workspace_high: np.ndarray | None = None,
 ) -> np.ndarray:
     n_joints = len(start_q_ref)
-    low_norm, high_norm = _target_workspace_bounds(action_std)
+    if workspace_low is None or workspace_high is None:
+        low_norm, high_norm = _target_workspace_bounds(action_std)
+    else:
+        low_norm = _action_to_normalized(workspace_low, action_low, action_high)
+        high_norm = _action_to_normalized(workspace_high, action_low, action_high)
+        if (
+            low_norm.shape != (n_joints,)
+            or high_norm.shape != (n_joints,)
+            or np.any(low_norm >= high_norm)
+        ):
+            raise ValueError("target workspace bounds are invalid")
     start_norm = np.clip(_action_to_normalized(start_q_ref, action_low, action_high), low_norm, high_norm)
     mode = MOTION_MODE_NAMES[mode_id % len(MOTION_MODE_NAMES)]
 
@@ -251,6 +277,7 @@ def collect_rollouts_detailed(
     worker_id: int = 0,
     episode_id_offset: int = 0,
     settle_steps: int = 50,
+    robot_spec: RobotSpec | None = None,
 ) -> dict[str, np.ndarray]:
     if num_episodes <= 0:
         raise ValueError(f"num_episodes must be positive, got {num_episodes}")
@@ -261,7 +288,17 @@ def collect_rollouts_detailed(
 
     action_std_array = _action_std_array(action_std, n_joints)
     rng = np.random.default_rng(seed)
-    env = MuJoCoArmEnv(model_xml=model_xml, n_joints=n_joints, seed=seed)
+    env_kwargs = {}
+    if robot_spec is not None:
+        env_kwargs = {
+            "frame_skip": robot_spec.frame_skip,
+            "home_q": robot_spec.home_q,
+            "ee_site_name": robot_spec.ee_site_name,
+            "gravity_compensation": robot_spec.gravity_compensation,
+            "gravity_compensation_zero_indices": robot_spec.gravity_compensation_zero_indices,
+        }
+    env = MuJoCoArmEnv(model_xml=model_xml, n_joints=n_joints, seed=seed, **env_kwargs)
+    bounds = None if robot_spec is None else robot_spec.collection_bounds(env.joint_low, env.joint_high)
 
     records: dict[str, list[np.ndarray | int]] = {
         "states": [],
@@ -283,7 +320,13 @@ def collect_rollouts_detailed(
         if worker_id == 0 and num_episodes > 1:
             iterator = tqdm(iterator, desc="collect", unit="episode")
         for episode_idx in iterator:
-            state = reset_safe_workspace(env, rng, n_joints)
+            state = reset_safe_workspace(
+                env,
+                rng,
+                n_joints,
+                None if bounds is None else bounds["reset_low"],
+                None if bounds is None else bounds["reset_high"],
+            )
             q_ref = np.asarray(state[:n_joints], dtype=np.float32).copy()
             for _ in range(settle_steps):
                 state = env.step(q_ref)
@@ -297,6 +340,8 @@ def collect_rollouts_detailed(
                 episode_len,
                 action_std_array,
                 mode_id,
+                None if bounds is None else bounds["target_low"],
+                None if bounds is None else bounds["target_high"],
             )
             previous_q_ref = q_ref.copy()
             for step_idx in range(episode_len):
@@ -435,6 +480,7 @@ def collect_worker_detailed(
     seed: int,
     episode_id_offset: int,
     settle_steps: int,
+    robot_spec: RobotSpec | None = None,
 ) -> tuple[int, dict[str, np.ndarray]]:
     worker_seed = seed + 1009 * worker_id
     data = collect_rollouts_detailed(
@@ -447,6 +493,7 @@ def collect_worker_detailed(
         worker_id=worker_id,
         episode_id_offset=episode_id_offset,
         settle_steps=settle_steps,
+        robot_spec=robot_spec,
     )
     return worker_id, data
 
@@ -571,6 +618,7 @@ def collect_parallel_detailed(
     seed: int,
     num_envs: int,
     settle_steps: int = 50,
+    robot_spec: RobotSpec | None = None,
 ) -> dict[str, np.ndarray]:
     counts = split_episode_counts(num_episodes, num_envs)
     offsets = np.cumsum([0, *counts[:-1]], dtype=np.int64)
@@ -592,6 +640,7 @@ def collect_parallel_detailed(
                 seed,
                 episode_id_offset,
                 settle_steps,
+                robot_spec,
             )
             for worker_id, count, episode_id_offset in jobs
         ]
