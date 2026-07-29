@@ -90,13 +90,14 @@ not a competitive controller comparison. The implementation is in
 
 \section{Artifacts, references, and calibration}
 The manifests record robot contracts, XML/source hashes, command limits, model,
-data, and reference hashes, and activation delays. For UR5e, legacy base-run
-arguments retain pre-resolution workflow values for fingerprint compatibility;
-separate fields record the resolved robot contract and formal per-case delays.
-The guard-adjusted 95th-percentile calibration gives ABB $D=6$ and UR5e $D=7$.
-Checkpoint and normalizer SHA-256 digests are recorded in the manifests;
-artifacts themselves are not committed to avoid distributing large learned
-model files through Git.
+data, and reference hashes, and activation delays. The public calibration
+payloads in \url{abb/calibration} and \url{ur5e/calibration} record the
+guard-adjusted 95th-percentile rule that gives ABB $D=6$ and UR5e $D=7$. For
+UR5e, \url{ur5e/contracts} additionally exposes the robot and reference
+contracts. Legacy base-run arguments retain pre-resolution workflow values for
+fingerprint compatibility; separate manifest fields record the resolved robot
+contract and formal per-case delays. Checkpoint and normalizer SHA-256 digests
+are recorded, but the learned artifacts themselves are not committed.
 
 \section{Full diagnostics}
 \begin{table}[h]
@@ -150,10 +151,11 @@ be compared directly with the broader random-excitation validation.
 \paragraph{Robustness and timing.}
 ABB robustness applies L3/L6 single-factor payload, actuator-gain, TCP-force,
 and observation-noise perturbations. Per-condition/bootstrap results, timing,
-packet behavior, and projection activity are in \url{robustness_and_timing} and
-\url{abb/summaries}. Primary experiments had no planner failure or imposed
-joint, command-velocity, or command-acceleration violation; this does not imply
-a physical actuator limit.
+packet behavior, projection activity, and paired Projected/Preview-IK
+comparisons are in \url{robustness_and_timing}; cohort completeness and
+configuration audits are in \url{abb/audit}. Primary experiments had no planner
+failure or imposed joint, command-velocity, or command-acceleration violation;
+this does not imply a physical actuator limit.
 
 \paragraph{Mechanism isolation.}
 The frozen 20-case ABB matrix gives $+2.82$ mm for removing future alignment

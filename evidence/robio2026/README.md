@@ -14,12 +14,19 @@ caches to Git history.
   startup diagnostics retained for audit, and formal MPC replay diagnostics.
 - `abb/figures`: compact diagnostic and representative-result figures.
 - `abb/manifests`: frozen analysis/control manifests and evidence inventory.
+- `abb/calibration`: the selected ABB latency calibration that fixes $D=6$.
+- `abb/audit`: frozen-cohort completeness, duplicate, configuration, and run
+  audits; the empty issue tables correspond to the zero counts in the summary.
 - `ur5e`: nominal robot-specific replication, complete-history model-validation
   summaries, paired bootstrap results, configuration manifest, and freeze audit.
+- `ur5e/calibration`: the selected UR5e latency calibration that fixes $D=7$.
+- `ur5e/contracts`: machine-readable UR5e robot contract and four-reference
+  generation manifest.
 - `claim_evidence`: recurrent-history isolation, tracking--effort Pareto,
   candidate-ranking/realized-regret, peak-effort summaries, and test log.
 - `robustness_and_timing`: single-factor perturbation, threaded-versus-virtual,
-  and wall-clock timing statistics.
+  wall-clock timing, and `ik_baselines` paired statistics versus Projected and
+  Preview IK.
 - `PUBLIC_MANIFEST.json`: source path, byte size, and SHA-256 for every public
   artifact in this bundle.
 
@@ -51,6 +58,13 @@ commit identifiers are otherwise unchanged.
   delays are in `resolved_robot_contract` and `formal_case_delay_steps`.
 - The history-only ablation does not establish an independent nominal tracking
   gain from advancing recurrent history.
+- The public calibration payloads record the guard-adjusted latency rule,
+  samples, selected delay, and input hashes. The UR5e contract/reference files
+  are explicit audit aids; the resolved contract in the frozen paper manifest
+  remains the authoritative formal-case record.
+- The baseline robustness files are aggregate and paired statistics, not raw
+  rollouts. They support claim checking under the stated perturbations but do
+  not add a new robustness guarantee.
 - Table I model errors are an offline reanalysis of saved held-out rollouts.
   Every reported window begins after 16 ground-truth recurrent tokens; no data
   collection, training, MuJoCo rollout, or closed-loop controller result was

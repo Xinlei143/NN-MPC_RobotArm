@@ -1,0 +1,697 @@
+{
+  "references": [
+    {
+      "config": {
+        "approach_duration": 2.0,
+        "center_mode": "relative",
+        "center_offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "circle_radius": 0.05,
+        "collection_only": false,
+        "ee_site_name": "ee_site",
+        "ellipse_axis_a": 0.04,
+        "ellipse_axis_b": 0.025,
+        "figure8_axis_a": 0.035,
+        "figure8_axis_b": 0.02,
+        "final_hold_duration": 0.5,
+        "final_return_tolerance": 0.001,
+        "fixed_orientation": "safe",
+        "ik_config": {
+          "damping": 0.01,
+          "joint_limit_margin": 0.05,
+          "max_backtracking_steps": 8,
+          "max_iterations": 100,
+          "max_joint_step": 0.05,
+          "orientation_tolerance": 0.001,
+          "orientation_weight": 0.3,
+          "position_tolerance": 0.0001,
+          "sigma_warning": 0.02,
+          "step_gain": 0.5
+        },
+        "joint_departure_duration": 2.0,
+        "joint_return_duration": 2.0,
+        "lap_duration": 3.0,
+        "lap_joint_closure_tolerance": 0.05,
+        "lap_position_closure_tolerance": 0.001,
+        "max_joint_acceleration": [
+          5.0,
+          7.0,
+          10.0,
+          10.0,
+          10.0,
+          12.5
+        ],
+        "max_joint_jump": 0.15,
+        "max_joint_velocity": [
+          1.0,
+          1.0,
+          1.0,
+          2.0,
+          2.0,
+          2.5
+        ],
+        "plane_axis_u": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "plane_axis_v": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "repeat_count": 3,
+        "return_duration": 2.0,
+        "rounded_square_corner_radius": 0.006,
+        "safe_departure_mode": "auto",
+        "safe_joint_limit_margin": 0.05,
+        "safe_q": null,
+        "safe_search_samples": 2048,
+        "safe_search_seed": 0,
+        "safe_sigma_threshold": 0.1,
+        "shape_end_hold_duration": 0.2,
+        "shape_name": "circle",
+        "singularity_reject": 0.005,
+        "singularity_warning": 0.02,
+        "small_return_tolerance": 0.05,
+        "square_half_side": 0.025,
+        "start_hold_duration": 0.5
+      },
+      "file": {
+        "path": "./outputs/paper_ur5e_v2/references/circle/reference.npz",
+        "sha256": "11ca64bd2e069c35e44f7561d1b21e5960e6a566d56fe6e8812c4de141e97799",
+        "size": 120685
+      },
+      "label": "circle",
+      "validation": {
+        "final_dq_error": 0.0,
+        "final_q_error": 0.0,
+        "ik_success": true,
+        "lap_closure": [
+          {
+            "joint_closure": 0.00022828347058112541,
+            "lap_id": 0,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 1,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 2,
+            "position_closure": 0.0
+          }
+        ],
+        "max_fk_orientation_error": 1.8066529596973674e-06,
+        "max_fk_position_error": 9.995316121445449e-05,
+        "max_joint_acceleration": [
+          0.00029393214417972047,
+          2.057110193137701,
+          2.5716277553511357,
+          1.8161774161951083,
+          0.0001506063707079619,
+          0.00029391799056209175
+        ],
+        "max_joint_jump": 0.006615648025562582,
+        "max_joint_velocity": [
+          4.709003187386429e-06,
+          0.41499904637708473,
+          0.661554702989009,
+          0.5042452462521885,
+          2.9116893007774536e-06,
+          4.708794270505804e-06
+        ],
+        "min_joint_limit_margin": 1.4039271963599635,
+        "min_sigma_min": 0.20306853281951712,
+        "min_task_sigma_min": 0.20306853281951712,
+        "self_collision_check": "not_available",
+        "singularity_warning_indices": []
+      }
+    },
+    {
+      "config": {
+        "approach_duration": 2.0,
+        "center_mode": "relative",
+        "center_offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "circle_radius": 0.03,
+        "collection_only": false,
+        "ee_site_name": "ee_site",
+        "ellipse_axis_a": 0.04,
+        "ellipse_axis_b": 0.025,
+        "figure8_axis_a": 0.05,
+        "figure8_axis_b": 0.03,
+        "final_hold_duration": 0.5,
+        "final_return_tolerance": 0.001,
+        "fixed_orientation": "safe",
+        "ik_config": {
+          "damping": 0.01,
+          "joint_limit_margin": 0.05,
+          "max_backtracking_steps": 8,
+          "max_iterations": 100,
+          "max_joint_step": 0.05,
+          "orientation_tolerance": 0.001,
+          "orientation_weight": 0.3,
+          "position_tolerance": 0.0001,
+          "sigma_warning": 0.02,
+          "step_gain": 0.5
+        },
+        "joint_departure_duration": 2.0,
+        "joint_return_duration": 2.0,
+        "lap_duration": 3.0,
+        "lap_joint_closure_tolerance": 0.05,
+        "lap_position_closure_tolerance": 0.001,
+        "max_joint_acceleration": [
+          5.0,
+          7.0,
+          10.0,
+          10.0,
+          10.0,
+          12.5
+        ],
+        "max_joint_jump": 0.15,
+        "max_joint_velocity": [
+          1.0,
+          1.0,
+          1.0,
+          2.0,
+          2.0,
+          2.5
+        ],
+        "plane_axis_u": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "plane_axis_v": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "repeat_count": 3,
+        "return_duration": 2.0,
+        "rounded_square_corner_radius": 0.006,
+        "safe_departure_mode": "auto",
+        "safe_joint_limit_margin": 0.05,
+        "safe_q": null,
+        "safe_search_samples": 2048,
+        "safe_search_seed": 0,
+        "safe_sigma_threshold": 0.1,
+        "shape_end_hold_duration": 0.2,
+        "shape_name": "figure8",
+        "singularity_reject": 0.005,
+        "singularity_warning": 0.02,
+        "small_return_tolerance": 0.05,
+        "square_half_side": 0.025,
+        "start_hold_duration": 0.5
+      },
+      "file": {
+        "path": "./outputs/paper_ur5e_v2/references/figure8/reference.npz",
+        "sha256": "c01d22a3baed4ee6e8468c1a3eaf0069276ccf45e8a3bcbd4c45b7104911b711",
+        "size": 121123
+      },
+      "label": "figure8",
+      "validation": {
+        "final_dq_error": 0.0,
+        "final_q_error": 0.0,
+        "ik_success": true,
+        "lap_closure": [
+          {
+            "joint_closure": 0.0004934417829893789,
+            "lap_id": 0,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 1,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 2,
+            "position_closure": 0.0
+          }
+        ],
+        "max_fk_orientation_error": 1.7152382881383195e-06,
+        "max_fk_position_error": 9.985016311307253e-05,
+        "max_joint_acceleration": [
+          0.0003628093125929155,
+          1.9070643436031043,
+          3.3910175949369847,
+          2.226303994269374,
+          0.0001788028580751444,
+          0.00036288977447501887
+        ],
+        "max_joint_jump": 0.006492613705824546,
+        "max_joint_velocity": [
+          6.86937531302334e-06,
+          0.39833190780691474,
+          0.6488267686121096,
+          0.3013324019753072,
+          3.0766106329238596e-06,
+          6.86956459225344e-06
+        ],
+        "min_joint_limit_margin": 1.4409505166077132,
+        "min_sigma_min": 0.20744625882633028,
+        "min_task_sigma_min": 0.20744625882633028,
+        "self_collision_check": "not_available",
+        "singularity_warning_indices": []
+      }
+    },
+    {
+      "config": {
+        "approach_duration": 2.0,
+        "center_mode": "relative",
+        "center_offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "circle_radius": 0.03,
+        "collection_only": false,
+        "ee_site_name": "ee_site",
+        "ellipse_axis_a": 0.055,
+        "ellipse_axis_b": 0.03,
+        "figure8_axis_a": 0.035,
+        "figure8_axis_b": 0.02,
+        "final_hold_duration": 0.5,
+        "final_return_tolerance": 0.001,
+        "fixed_orientation": "safe",
+        "ik_config": {
+          "damping": 0.01,
+          "joint_limit_margin": 0.05,
+          "max_backtracking_steps": 8,
+          "max_iterations": 100,
+          "max_joint_step": 0.05,
+          "orientation_tolerance": 0.001,
+          "orientation_weight": 0.3,
+          "position_tolerance": 0.0001,
+          "sigma_warning": 0.02,
+          "step_gain": 0.5
+        },
+        "joint_departure_duration": 2.0,
+        "joint_return_duration": 2.0,
+        "lap_duration": 2.0,
+        "lap_joint_closure_tolerance": 0.05,
+        "lap_position_closure_tolerance": 0.001,
+        "max_joint_acceleration": [
+          5.0,
+          7.0,
+          10.0,
+          10.0,
+          10.0,
+          12.5
+        ],
+        "max_joint_jump": 0.15,
+        "max_joint_velocity": [
+          1.0,
+          1.0,
+          1.0,
+          2.0,
+          2.0,
+          2.5
+        ],
+        "plane_axis_u": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "plane_axis_v": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "repeat_count": 3,
+        "return_duration": 2.0,
+        "rounded_square_corner_radius": 0.006,
+        "safe_departure_mode": "auto",
+        "safe_joint_limit_margin": 0.05,
+        "safe_q": null,
+        "safe_search_samples": 2048,
+        "safe_search_seed": 0,
+        "safe_sigma_threshold": 0.1,
+        "shape_end_hold_duration": 0.2,
+        "shape_name": "ellipse",
+        "singularity_reject": 0.005,
+        "singularity_warning": 0.02,
+        "small_return_tolerance": 0.05,
+        "square_half_side": 0.025,
+        "start_hold_duration": 0.5
+      },
+      "file": {
+        "path": "./outputs/paper_ur5e_v2/references/fast_ellipse/reference.npz",
+        "sha256": "2f1b68486c641251a486268ae5369e632cdbc416901d07e7cdcd878f6a23a963",
+        "size": 103342
+      },
+      "label": "fast_ellipse",
+      "validation": {
+        "final_dq_error": 0.0,
+        "final_q_error": 0.0,
+        "ik_success": true,
+        "lap_closure": [
+          {
+            "joint_closure": 0.00015490066409640235,
+            "lap_id": 0,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 1,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 2,
+            "position_closure": 0.0
+          }
+        ],
+        "max_fk_orientation_error": 1.9628315372010945e-06,
+        "max_fk_position_error": 9.996764519750239e-05,
+        "max_joint_acceleration": [
+          0.00033428395218582097,
+          4.701827002692727,
+          4.893841286320866,
+          2.6524791105025924,
+          0.00018081828090377172,
+          0.0003343395972858695
+        ],
+        "max_joint_jump": 0.008015341145821031,
+        "max_joint_velocity": [
+          4.6690499910795324e-06,
+          0.6688750560632339,
+          0.8011001554965924,
+          0.4615695360659089,
+          2.937046428286294e-06,
+          4.6693473081309144e-06
+        ],
+        "min_joint_limit_margin": 1.427194581360314,
+        "min_sigma_min": 0.20572624981619278,
+        "min_task_sigma_min": 0.20572624981619278,
+        "self_collision_check": "not_available",
+        "singularity_warning_indices": []
+      }
+    },
+    {
+      "config": {
+        "approach_duration": 2.0,
+        "center_mode": "relative",
+        "center_offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "circle_radius": 0.03,
+        "collection_only": false,
+        "ee_site_name": "ee_site",
+        "ellipse_axis_a": 0.04,
+        "ellipse_axis_b": 0.025,
+        "figure8_axis_a": 0.035,
+        "figure8_axis_b": 0.02,
+        "final_hold_duration": 0.5,
+        "final_return_tolerance": 0.001,
+        "fixed_orientation": "safe",
+        "ik_config": {
+          "damping": 0.01,
+          "joint_limit_margin": 0.05,
+          "max_backtracking_steps": 8,
+          "max_iterations": 100,
+          "max_joint_step": 0.05,
+          "orientation_tolerance": 0.001,
+          "orientation_weight": 0.3,
+          "position_tolerance": 0.0001,
+          "sigma_warning": 0.02,
+          "step_gain": 0.5
+        },
+        "joint_departure_duration": 2.0,
+        "joint_return_duration": 2.0,
+        "lap_duration": 3.0,
+        "lap_joint_closure_tolerance": 0.05,
+        "lap_position_closure_tolerance": 0.001,
+        "max_joint_acceleration": [
+          5.0,
+          7.0,
+          10.0,
+          10.0,
+          10.0,
+          12.5
+        ],
+        "max_joint_jump": 0.15,
+        "max_joint_velocity": [
+          1.0,
+          1.0,
+          1.0,
+          2.0,
+          2.0,
+          2.5
+        ],
+        "plane_axis_u": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "plane_axis_v": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "repeat_count": 3,
+        "return_duration": 2.0,
+        "rounded_square_corner_radius": 0.008,
+        "safe_departure_mode": "auto",
+        "safe_joint_limit_margin": 0.05,
+        "safe_q": null,
+        "safe_search_samples": 2048,
+        "safe_search_seed": 0,
+        "safe_sigma_threshold": 0.1,
+        "shape_end_hold_duration": 0.2,
+        "shape_name": "rounded_square",
+        "singularity_reject": 0.005,
+        "singularity_warning": 0.02,
+        "small_return_tolerance": 0.05,
+        "square_half_side": 0.03,
+        "start_hold_duration": 0.5
+      },
+      "file": {
+        "path": "./outputs/paper_ur5e_v2/references/rounded_square/reference.npz",
+        "sha256": "57507eec8af25fafba13beb4fad96d72d30a51f71d67f8dcf9ba3dce486bf325",
+        "size": 122494
+      },
+      "label": "rounded_square",
+      "validation": {
+        "final_dq_error": 0.0,
+        "final_q_error": 0.0,
+        "ik_success": true,
+        "lap_closure": [
+          {
+            "joint_closure": 0.0005741544513018226,
+            "lap_id": 0,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 1,
+            "position_closure": 0.0
+          },
+          {
+            "joint_closure": 0.0,
+            "lap_id": 2,
+            "position_closure": 0.0
+          }
+        ],
+        "max_fk_orientation_error": 1.9018816667357406e-06,
+        "max_fk_position_error": 9.998995755282426e-05,
+        "max_joint_acceleration": [
+          0.0002705095947241887,
+          5.437946901816204,
+          8.156470683612914,
+          5.8952001021050915,
+          0.00013693494949063023,
+          0.00027021950029388676
+        ],
+        "max_joint_jump": 0.004320108503101716,
+        "max_joint_velocity": [
+          5.0242502158681646e-06,
+          0.33438730904985503,
+          0.43060300614722324,
+          0.36013983165982255,
+          2.586517322544779e-06,
+          5.029012256641257e-06
+        ],
+        "min_joint_limit_margin": 1.4392985314476243,
+        "min_sigma_min": 0.20767740421280576,
+        "min_task_sigma_min": 0.20767740421280576,
+        "self_collision_check": "not_available",
+        "singularity_warning_indices": []
+      }
+    },
+    {
+      "config": {
+        "approach_duration": 1.0,
+        "center_mode": "relative",
+        "center_offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "circle_radius": 0.03,
+        "collection_only": false,
+        "ee_site_name": "ee_site",
+        "ellipse_axis_a": 0.022,
+        "ellipse_axis_b": 0.014,
+        "figure8_axis_a": 0.035,
+        "figure8_axis_b": 0.02,
+        "final_hold_duration": 0.5,
+        "final_return_tolerance": 0.001,
+        "fixed_orientation": "safe",
+        "ik_config": {
+          "damping": 0.01,
+          "joint_limit_margin": 0.05,
+          "max_backtracking_steps": 8,
+          "max_iterations": 100,
+          "max_joint_step": 0.05,
+          "orientation_tolerance": 0.001,
+          "orientation_weight": 0.3,
+          "position_tolerance": 0.0001,
+          "sigma_warning": 0.02,
+          "step_gain": 0.5
+        },
+        "joint_departure_duration": 1.0,
+        "joint_return_duration": 1.0,
+        "lap_duration": 21.0,
+        "lap_joint_closure_tolerance": 0.05,
+        "lap_position_closure_tolerance": 0.001,
+        "max_joint_acceleration": [
+          5.0,
+          7.0,
+          10.0,
+          10.0,
+          10.0,
+          12.5
+        ],
+        "max_joint_jump": 0.15,
+        "max_joint_velocity": [
+          1.0,
+          1.0,
+          1.0,
+          2.0,
+          2.0,
+          2.5
+        ],
+        "plane_axis_u": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "plane_axis_v": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "repeat_count": 1,
+        "return_duration": 1.0,
+        "rounded_square_corner_radius": 0.006,
+        "safe_departure_mode": "auto",
+        "safe_joint_limit_margin": 0.05,
+        "safe_q": null,
+        "safe_search_samples": 2048,
+        "safe_search_seed": 0,
+        "safe_sigma_threshold": 0.1,
+        "shape_end_hold_duration": 0.2,
+        "shape_name": "ellipse",
+        "singularity_reject": 0.005,
+        "singularity_warning": 0.02,
+        "small_return_tolerance": 0.05,
+        "square_half_side": 0.025,
+        "start_hold_duration": 0.5
+      },
+      "file": {
+        "path": "./outputs/paper_ur5e_v2/references/delay_calibration/reference.npz",
+        "sha256": "788fd53163f06ab16749b530be56751ad31811636f84cf5e694e1c0f981ff1c8",
+        "size": 289359
+      },
+      "label": "delay_calibration",
+      "validation": {
+        "final_dq_error": 0.0,
+        "final_q_error": 0.0,
+        "ik_success": true,
+        "lap_closure": [
+          {
+            "joint_closure": 0.00020769864199454702,
+            "lap_id": 0,
+            "position_closure": 0.0
+          }
+        ],
+        "max_fk_orientation_error": 8.047453973417129e-07,
+        "max_fk_position_error": 9.997607076363063e-05,
+        "max_joint_acceleration": [
+          0.6552106896218213,
+          0.2063222155779254,
+          0.4703811708384187,
+          0.3881025216179168,
+          0.00030267655104498914,
+          0.6546797630221729
+        ],
+        "max_joint_jump": 0.0008429497391728713,
+        "max_joint_velocity": [
+          0.0842818463119066,
+          0.024472541296804984,
+          0.024305789873713124,
+          0.020035148231978273,
+          6.053531020899783e-06,
+          0.0842817973932028
+        ],
+        "min_joint_limit_margin": 1.532961195092098,
+        "min_sigma_min": 0.21835482790517372,
+        "min_task_sigma_min": 0.21835482790517372,
+        "self_collision_check": "not_available",
+        "singularity_warning_indices": []
+      }
+    }
+  ],
+  "robot_identity": {
+    "actuator_names": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow",
+      "wrist_1",
+      "wrist_2",
+      "wrist_3"
+    ],
+    "contact_semantics": "disabled",
+    "ee_site_name": "ee_site",
+    "expected_control_dt": 0.01,
+    "frame_skip": 5,
+    "gravity_compensation": true,
+    "gravity_compensation_zero_indices": [],
+    "home_q": [
+      -1.5707999467849731,
+      -1.5707999467849731,
+      1.5707999467849731,
+      -1.5707999467849731,
+      -1.5707999467849731,
+      0.0
+    ],
+    "joint_names": [
+      "shoulder_pan_joint",
+      "shoulder_lift_joint",
+      "elbow_joint",
+      "wrist_1_joint",
+      "wrist_2_joint",
+      "wrist_3_joint"
+    ],
+    "model_xml": "dynamics_modeling/robots/ur5e/ur5e_project.xml",
+    "model_xml_sha256": "29b12c1b526b6c88d8267941db05c9f3197884c62745661f79a4e8569fc3ff27",
+    "n_joints": 6,
+    "robot_id": "ur5e",
+    "robot_spec_sha256": "769bf2045193d7ef7d33f1c1ba50b805349b0a40c482e5b43696ade1a1b9c3b9"
+  },
+  "schema_version": 2
+}

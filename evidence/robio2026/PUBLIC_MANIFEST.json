@@ -1,5 +1,5 @@
 {
-  "artifact_count": 82,
+  "artifact_count": 97,
   "artifacts": [
     {
       "bytes": 81073,
@@ -278,6 +278,48 @@
       "source": "outputs/paper_final/manifests/evidence_inventory.json"
     },
     {
+      "bytes": 14088,
+      "path": "abb/calibration/delay_task_space_two_stage.json",
+      "sha256": "c49e641a5722c3d850312fa3a8a5fb8bd9351d338081d6e9c6162902e031522e",
+      "source": "outputs/paper_final/calibration/delay_task_space_two_stage.json"
+    },
+    {
+      "bytes": 898,
+      "path": "abb/audit/audit_summary.json",
+      "sha256": "9d90c98f352b4170ae9b04af28ba544a2e973d16d56f5a7c2de563936a7fadf4",
+      "source": "outputs/paper_final/audit/audit_summary.json"
+    },
+    {
+      "bytes": 7,
+      "path": "abb/audit/configuration_mismatches.csv",
+      "sha256": "410f0d9cd0f7d301a94ed7fe486e60b5ee007fca5b7fc1e6bda3dc8475e7525c",
+      "source": "outputs/paper_final/audit/configuration_mismatches.csv"
+    },
+    {
+      "bytes": 7,
+      "path": "abb/audit/duplicate_cases.csv",
+      "sha256": "410f0d9cd0f7d301a94ed7fe486e60b5ee007fca5b7fc1e6bda3dc8475e7525c",
+      "source": "outputs/paper_final/audit/duplicate_cases.csv"
+    },
+    {
+      "bytes": 7,
+      "path": "abb/audit/missing_cases.csv",
+      "sha256": "410f0d9cd0f7d301a94ed7fe486e60b5ee007fca5b7fc1e6bda3dc8475e7525c",
+      "source": "outputs/paper_final/audit/missing_cases.csv"
+    },
+    {
+      "bytes": 7,
+      "path": "abb/audit/run_issues.csv",
+      "sha256": "410f0d9cd0f7d301a94ed7fe486e60b5ee007fca5b7fc1e6bda3dc8475e7525c",
+      "source": "outputs/paper_final/audit/run_issues.csv"
+    },
+    {
+      "bytes": 91,
+      "path": "abb/audit/semantics_versions.csv",
+      "sha256": "cb31ff094d84ca6c2705f38d8dbf74541078200a313e7fbaaddae7294e5b51c1",
+      "source": "outputs/paper_final/audit/semantics_versions.csv"
+    },
+    {
       "bytes": 87441,
       "path": "ur5e/summaries/main.csv",
       "sha256": "a30542451e399b4623c85bd96c10adfe52a44878ed2f37b5041c77c4999de0c5",
@@ -336,6 +378,24 @@
       "path": "ur5e/manifests/freeze_audit.json",
       "sha256": "424971d89f9b795ad9c75f766483632f939d8f2797a3cc19a07c2c7ff068a0b8",
       "source": "outputs/paper_ur5e_v2/freeze_audit.json"
+    },
+    {
+      "bytes": 13531,
+      "path": "ur5e/calibration/delay.json",
+      "sha256": "bc896da95f8b6b9630525c84e2709bc117056c93f8ce9c20b90c49859a883822",
+      "source": "outputs/paper_ur5e_v2/calibration/delay.json"
+    },
+    {
+      "bytes": 816,
+      "path": "ur5e/contracts/robot_contract.json",
+      "sha256": "f24631e8b1d512774c962b87c3df774e75b89347497188d6998ab55c28ba1ff6",
+      "source": "outputs/paper_ur5e_v2/diagnostics/robot_contract.json"
+    },
+    {
+      "bytes": 19859,
+      "path": "ur5e/contracts/manifest.json",
+      "sha256": "e7103926ecd54cc6521fc6f865ae1de44b3410e7832ff79f6c0517b571640478",
+      "source": "outputs/paper_ur5e_v2/references/manifest.json"
     },
     {
       "bytes": 3029,
@@ -482,15 +542,45 @@
       "source": "outputs/paper_revision_v1/statistics/threaded_vs_fullvirtual_by_perturbation.json"
     },
     {
-      "bytes": 8389,
+      "bytes": 25062,
+      "path": "robustness_and_timing/ik_baselines/baseline_deduplication_report.json",
+      "sha256": "ae608ea3b5e58e4c0e7534b482540eac4cc269b83776e0e488c25fc419dc1db8",
+      "source": "outputs/paper_revision_v1/statistics/ik/baseline_deduplication_report.json"
+    },
+    {
+      "bytes": 11793,
+      "path": "robustness_and_timing/ik_baselines/mpc_vs_projected_ik_bootstrap.json",
+      "sha256": "a464c016391617aeaa2b0f1ca497fd1fac954166d084f3005d4593d4e4a639ea",
+      "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_bootstrap.json"
+    },
+    {
+      "bytes": 23009,
+      "path": "robustness_and_timing/ik_baselines/mpc_vs_projected_ik_by_condition.csv",
+      "sha256": "c22ba100f694bb269113aecdd7bf1310e3865828f82d4716bfeeef3086690168",
+      "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_condition.csv"
+    },
+    {
+      "bytes": 122105,
+      "path": "robustness_and_timing/ik_baselines/mpc_vs_projected_ik_by_level.json",
+      "sha256": "76defe3c518d9d1878bd37ff38baaf8629ffadc9c932bdaa650e4f5c40b134db",
+      "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_level.json"
+    },
+    {
+      "bytes": 67863,
+      "path": "robustness_and_timing/ik_baselines/mpc_vs_projected_ik_by_perturbation.json",
+      "sha256": "0277ea6a2a946b3f58f2110762b4f24ce97f0947a5cc11defa50fd833f7be4ed",
+      "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_perturbation.json"
+    },
+    {
+      "bytes": 8589,
       "path": "technical_supplement.tex",
-      "sha256": "e3f9ec9dad92a9be6c1b46210b7d9ac0a1e8a47ea3434f6d496ea67ba14f472f",
+      "sha256": "1b055d3131e1fc44dda463073a41e6bb15e04a029ffe0ee813ac1223a50765a5",
       "source": "repository-maintained technical supplement"
     },
     {
-      "bytes": 210894,
+      "bytes": 211357,
       "path": "technical_supplement.pdf",
-      "sha256": "bbe40d0c513ccc01e7930947f52a9f435d1a88e6db45a62e6526c08679ff9bfe",
+      "sha256": "e761bea3199e8340a26542535d69eb113e876f76a6d212e615893067c90d5b84",
       "source": "repository-maintained technical supplement"
     }
   ],

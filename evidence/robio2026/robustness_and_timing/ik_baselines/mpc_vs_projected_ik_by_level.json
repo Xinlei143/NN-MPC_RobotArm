@@ -1,0 +1,4164 @@
+{
+  "groups": {
+    "actuator_gain_l3": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.005391677394107712,
+              -0.004462716991599244
+            ],
+            "mean_delta_mpc_minus_ik": -0.004914795273477839,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.015883837555078585,
+              -0.01345041300657029
+            ],
+            "mean_delta_mpc_minus_ik": -0.014637699905112619,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.0435135132120922,
+              -0.0372825378528796
+            ],
+            "mean_delta_mpc_minus_ik": -0.040589513424783924,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.015799470073699192,
+              -0.013870215649169874
+            ],
+            "mean_delta_mpc_minus_ik": -0.014807135459683231,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.001850280538211181,
+              -0.0008975011193986507
+            ],
+            "mean_delta_mpc_minus_ik": -0.0013958272413611677,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.015180877982457952,
+              -0.012750744471810859
+            ],
+            "mean_delta_mpc_minus_ik": -0.013938769157748518,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02928015994140877,
+              -0.022798984467517575
+            ],
+            "mean_delta_mpc_minus_ik": -0.026252773385494938,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.009429932248985534,
+              -0.007584873904209546
+            ],
+            "mean_delta_mpc_minus_ik": -0.0085600780414084,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.005392204712065601,
+              -0.00446741457002572
+            ],
+            "mean_delta_mpc_minus_ik": -0.004914795273477839,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01589826119134413,
+              -0.013450800283516228
+            ],
+            "mean_delta_mpc_minus_ik": -0.014637699905112619,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.043570441384799735,
+              -0.03727913646493107
+            ],
+            "mean_delta_mpc_minus_ik": -0.040589513424783924,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01577254727326295,
+              -0.013878861837553384
+            ],
+            "mean_delta_mpc_minus_ik": -0.014807135459683231,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06833625016586942,
+              0.08006289896252941
+            ],
+            "mean_delta_mpc_minus_ik": 0.07466234638731925,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.14647778907290668,
+              0.17412109722942287
+            ],
+            "mean_delta_mpc_minus_ik": 0.16105182184219619,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.03627793676592411,
+              0.04916982356086373
+            ],
+            "mean_delta_mpc_minus_ik": 0.04291836071759464,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.022921428456063823,
+              0.028576100932459884
+            ],
+            "mean_delta_mpc_minus_ik": 0.02565703237798727,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07205579217989881,
+              0.08379243559201155
+            ],
+            "mean_delta_mpc_minus_ik": 0.07818131441943595,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.14751128776757108,
+              0.17487437503962047
+            ],
+            "mean_delta_mpc_minus_ik": 0.16175075258956034,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.05054933320637795,
+              0.06346702948119488
+            ],
+            "mean_delta_mpc_minus_ik": 0.057255100756883615,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.029033520341058442,
+              0.034892665223003064
+            ],
+            "mean_delta_mpc_minus_ik": 0.03190408979626211,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06835311090333639,
+              0.0801257231425783
+            ],
+            "mean_delta_mpc_minus_ik": 0.07466234638731925,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.14618895202151638,
+              0.17454832648446866
+            ],
+            "mean_delta_mpc_minus_ik": 0.16105182184219619,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.03627066236175599,
+              0.04902545047458257
+            ],
+            "mean_delta_mpc_minus_ik": 0.04291836071759464,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.022910915745476445,
+              0.02853082568532982
+            ],
+            "mean_delta_mpc_minus_ik": 0.02565703237798727,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0030527518727003064,
+              -0.0022786300087539353
+            ],
+            "mean_delta_mpc_minus_ik": -0.002634153585751163,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.00919355968089156,
+              -0.006334934940436035
+            ],
+            "mean_delta_mpc_minus_ik": -0.007796721190270471,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02619471348915246,
+              -0.020753553306683884
+            ],
+            "mean_delta_mpc_minus_ik": -0.023364107310771928,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.009628744915336648,
+              -0.007448016554419334
+            ],
+            "mean_delta_mpc_minus_ik": -0.008468081949876796,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0005663890656156701,
+              0.0012186328962554395
+            ],
+            "mean_delta_mpc_minus_ik": 0.0008848144463655088,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.008514798023154106,
+              -0.005668587483278195
+            ],
+            "mean_delta_mpc_minus_ik": -0.007097790442906366,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.011895705175586057,
+              -0.006365557382814586
+            ],
+            "mean_delta_mpc_minus_ik": -0.009027367271482945,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.0031853639678636973,
+              -0.0012933856743857998
+            ],
+            "mean_delta_mpc_minus_ik": -0.0022210245316019667,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003060588724673321,
+              -0.002271990667231785
+            ],
+            "mean_delta_mpc_minus_ik": -0.002634153585751163,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.009201239515701221,
+              -0.006382911513946935
+            ],
+            "mean_delta_mpc_minus_ik": -0.007796721190270471,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02614564688783137,
+              -0.020724894449114784
+            ],
+            "mean_delta_mpc_minus_ik": -0.023364107310771928,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.009620080090436904,
+              -0.007449586817069376
+            ],
+            "mean_delta_mpc_minus_ik": -0.008468081949876796,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.004952391407450179,
+              -0.003991901858093016
+            ],
+            "mean_delta_mpc_minus_ik": -0.004460290831574221,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.013788180526074575,
+              -0.011613346327923208
+            ],
+            "mean_delta_mpc_minus_ik": -0.0125785403811387,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03876229213271287,
+              -0.0336387231638655
+            ],
+            "mean_delta_mpc_minus_ik": -0.03610963204875587,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.014587612828882171,
+              -0.01246695216653145
+            ],
+            "mean_delta_mpc_minus_ik": -0.01340751094387633,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0013599434078303647,
+              -0.0005758341857848016
+            ],
+            "mean_delta_mpc_minus_ik": -0.0009413227994575498,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.013109920785606351,
+              -0.010885056558615687
+            ],
+            "mean_delta_mpc_minus_ik": -0.011879609633774596,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.024498886820860197,
+              -0.019260010573081666
+            ],
+            "mean_delta_mpc_minus_ik": -0.021772892009466884,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.008196904701706418,
+              -0.006264197815145324
+            ],
+            "mean_delta_mpc_minus_ik": -0.007160453525601502,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.004959862603924979,
+              -0.003987678095427219
+            ],
+            "mean_delta_mpc_minus_ik": -0.004460290831574221,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.013746946121664565,
+              -0.01161380364625359
+            ],
+            "mean_delta_mpc_minus_ik": -0.0125785403811387,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03882295745518057,
+              -0.0336703369896859
+            ],
+            "mean_delta_mpc_minus_ik": -0.03610963204875587,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.014597904495852135,
+              -0.01247750086952959
+            ],
+            "mean_delta_mpc_minus_ik": -0.01340751094387633,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260922
+    },
+    "actuator_gain_l6": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.00718702691173444,
+              -0.006587090578858006
+            ],
+            "mean_delta_mpc_minus_ik": -0.006887495718660823,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.021884225128932316,
+              -0.018420313540739645
+            ],
+            "mean_delta_mpc_minus_ik": -0.020216890827569074,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.05199989782180638,
+              -0.04441698212083433
+            ],
+            "mean_delta_mpc_minus_ik": -0.04820130120962859,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.018509459185649606,
+              -0.016075845048487875
+            ],
+            "mean_delta_mpc_minus_ik": -0.017436677938939736,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0025389674654834426,
+              -0.0013895498664569586
+            ],
+            "mean_delta_mpc_minus_ik": -0.0020668575611742382,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.017944277082291397,
+              -0.014224043966197954
+            ],
+            "mean_delta_mpc_minus_ik": -0.016180501057352536,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03996903878077862,
+              -0.032164592309854925
+            ],
+            "mean_delta_mpc_minus_ik": -0.03608576346188783,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.013329058047382426,
+              -0.010782668273689063
+            ],
+            "mean_delta_mpc_minus_ik": -0.012225000346407295,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.007194248439620208,
+              -0.006585708574608028
+            ],
+            "mean_delta_mpc_minus_ik": -0.006887495718660823,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.021886175850804112,
+              -0.018394645259866248
+            ],
+            "mean_delta_mpc_minus_ik": -0.020216890827569074,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.051981034206226476,
+              -0.04439628651645037
+            ],
+            "mean_delta_mpc_minus_ik": -0.04820130120962859,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.018506530334849548,
+              -0.016032204534084944
+            ],
+            "mean_delta_mpc_minus_ik": -0.017436677938939736,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06326606919296278,
+              0.07415989020920069
+            ],
+            "mean_delta_mpc_minus_ik": 0.0689726902948012,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.1295450823285416,
+              0.15684107763844451
+            ],
+            "mean_delta_mpc_minus_ik": 0.14333483684631018,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.02257552567124363,
+              0.03069354986771935
+            ],
+            "mean_delta_mpc_minus_ik": 0.026443519815802546,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.01716075944741311,
+              0.02287063710248985
+            ],
+            "mean_delta_mpc_minus_ik": 0.019757459246144072,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06782278226477352,
+              0.0791718243210148
+            ],
+            "mean_delta_mpc_minus_ik": 0.07379332845228777,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.1338384277797602,
+              0.1605331063790828
+            ],
+            "mean_delta_mpc_minus_ik": 0.14737122661652668,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.03461078320816157,
+              0.042646974902600034
+            ],
+            "mean_delta_mpc_minus_ik": 0.038559057563543296,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.02215778348865905,
+              0.028291337947356467
+            ],
+            "mean_delta_mpc_minus_ik": 0.024969136838676513,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06320408936765304,
+              0.07411620883400197
+            ],
+            "mean_delta_mpc_minus_ik": 0.0689726902948012,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.12951911213750816,
+              0.1567363220519287
+            ],
+            "mean_delta_mpc_minus_ik": 0.14333483684631018,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.022654766669496867,
+              0.030816093424335087
+            ],
+            "mean_delta_mpc_minus_ik": 0.026443519815802546,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.017121304451845426,
+              0.022925674417260074
+            ],
+            "mean_delta_mpc_minus_ik": 0.019757459246144072,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.006326523848356405,
+              -0.005571247978956073
+            ],
+            "mean_delta_mpc_minus_ik": -0.005912280801537344,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.017853349620554976,
+              -0.015740505767873517
+            ],
+            "mean_delta_mpc_minus_ik": -0.016754208444295753,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03881403626129033,
+              -0.03349837724864485
+            ],
+            "mean_delta_mpc_minus_ik": -0.03642706263810399,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.014483285674272196,
+              -0.012958479054891604
+            ],
+            "mean_delta_mpc_minus_ik": -0.013792985985894329,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0014442082685509777,
+              -0.0007410720504272166
+            ],
+            "mean_delta_mpc_minus_ik": -0.0010916426440507599,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.013777806098031364,
+              -0.011742509050811215
+            ],
+            "mean_delta_mpc_minus_ik": -0.012717818674079218,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02668957504164429,
+              -0.021443175347521912
+            ],
+            "mean_delta_mpc_minus_ik": -0.02431152489036323,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.009426770420852095,
+              -0.007610616320442011
+            ],
+            "mean_delta_mpc_minus_ik": -0.008581308393361891,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.006317249536500146,
+              -0.005573091253884102
+            ],
+            "mean_delta_mpc_minus_ik": -0.005912280801537344,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.017876959451041827,
+              -0.0157288342416082
+            ],
+            "mean_delta_mpc_minus_ik": -0.016754208444295753,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03880017436109485,
+              -0.03347359060123568
+            ],
+            "mean_delta_mpc_minus_ik": -0.03642706263810399,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.014488168659735021,
+              -0.012942097210365523
+            ],
+            "mean_delta_mpc_minus_ik": -0.013792985985894329,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.006542258505089708,
+              -0.005865842712100791
+            ],
+            "mean_delta_mpc_minus_ik": -0.006176327494033955,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01852896198532245,
+              -0.016289394830870427
+            ],
+            "mean_delta_mpc_minus_ik": -0.01740409003615525,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.04289071694295857,
+              -0.03974303469434383
+            ],
+            "mean_delta_mpc_minus_ik": -0.04131832476705315,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01607876408166267,
+              -0.014426521577065556
+            ],
+            "mean_delta_mpc_minus_ik": -0.015254274041630045,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0017994671203170908,
+              -0.0007136505363834091
+            ],
+            "mean_delta_mpc_minus_ik": -0.0013556893365473696,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01466812431573146,
+              -0.012147921759888457
+            ],
+            "mean_delta_mpc_minus_ik": -0.013367700265938708,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.030781587200239303,
+              -0.027617421928793174
+            ],
+            "mean_delta_mpc_minus_ik": -0.029202787019312382,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01081271767956528,
+              -0.009129822218310218
+            ],
+            "mean_delta_mpc_minus_ik": -0.010042596449097602,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.006542465356634338,
+              -0.005860624884479232
+            ],
+            "mean_delta_mpc_minus_ik": -0.006176327494033954,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01847904572938669,
+              -0.016282364874337592
+            ],
+            "mean_delta_mpc_minus_ik": -0.01740409003615525,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.042944994410499954,
+              -0.03968826245330274
+            ],
+            "mean_delta_mpc_minus_ik": -0.04131832476705315,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.016067039623169334,
+              -0.014409359032439398
+            ],
+            "mean_delta_mpc_minus_ik": -0.015254274041630045,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260923
+    },
+    "force_pulse_l3": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.00392319445951404,
+              -0.002324636356871601
+            ],
+            "mean_delta_mpc_minus_ik": -0.0032063846648811346,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.012294524528915288,
+              -0.008252996286310153
+            ],
+            "mean_delta_mpc_minus_ik": -0.010557552282678507,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03704668609937654,
+              -0.026186166075523945
+            ],
+            "mean_delta_mpc_minus_ik": -0.03269857425242662,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012841539861813661,
+              -0.009051563523409753
+            ],
+            "mean_delta_mpc_minus_ik": -0.011204714033038413,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0010402355373371143,
+              0.0005950696485369012
+            ],
+            "mean_delta_mpc_minus_ik": -0.0003812656303924418,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.012681471741522234,
+              -0.008681945943270424
+            ],
+            "mean_delta_mpc_minus_ik": -0.010999427648779295,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.022210309783462452,
+              -0.011012644638773059
+            ],
+            "mean_delta_mpc_minus_ik": -0.017815569750964662,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.00618712524241278,
+              -0.002221146592336881
+            ],
+            "mean_delta_mpc_minus_ik": -0.004602937960898933,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.00393668832453658,
+              -0.002331180248119702
+            ],
+            "mean_delta_mpc_minus_ik": -0.003206384664881135,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.012299066701250413,
+              -0.00828327697941843
+            ],
+            "mean_delta_mpc_minus_ik": -0.010557552282678507,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03694778338074684,
+              -0.0260877751209773
+            ],
+            "mean_delta_mpc_minus_ik": -0.03269857425242662,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012895623898519283,
+              -0.009083225467680887
+            ],
+            "mean_delta_mpc_minus_ik": -0.011204714033038413,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0705617803678132,
+              0.08506141458347771
+            ],
+            "mean_delta_mpc_minus_ik": 0.07749897234882915,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15505109487450117,
+              0.18693117791960756
+            ],
+            "mean_delta_mpc_minus_ik": 0.1717965121920714,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.04552106072288005,
+              0.0610567097608
+            ],
+            "mean_delta_mpc_minus_ik": 0.05299135945737361,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.02678060840498756,
+              0.03298481442133392
+            ],
+            "mean_delta_mpc_minus_ik": 0.02997984932673311,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07308732234773414,
+              0.08808866830073554
+            ],
+            "mean_delta_mpc_minus_ik": 0.08032409138331784,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15504844716032654,
+              0.18617503894597887
+            ],
+            "mean_delta_mpc_minus_ik": 0.17135463682597063,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.06037476746272292,
+              0.07605810620915142
+            ],
+            "mean_delta_mpc_minus_ik": 0.06787436395883557,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.033137827927928395,
+              0.039947243534280044
+            ],
+            "mean_delta_mpc_minus_ik": 0.036581625398872594,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07062045202048149,
+              0.0850636813903876
+            ],
+            "mean_delta_mpc_minus_ik": 0.07749897234882915,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15549813630691992,
+              0.1868559175194831
+            ],
+            "mean_delta_mpc_minus_ik": 0.1717965121920714,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.045587016380392004,
+              0.061027158299461
+            ],
+            "mean_delta_mpc_minus_ik": 0.05299135945737361,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.026768481428106346,
+              0.03301435430823009
+            ],
+            "mean_delta_mpc_minus_ik": 0.02997984932673311,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.00385342726234484,
+              -0.0026668881752809986
+            ],
+            "mean_delta_mpc_minus_ik": -0.0032262216156001846,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011329161549488754,
+              -0.008673348865461696
+            ],
+            "mean_delta_mpc_minus_ik": -0.010016256443869293,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.033266280339099466,
+              -0.027674733151681726
+            ],
+            "mean_delta_mpc_minus_ik": -0.03048302549868822,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012043316294519074,
+              -0.009622834345465039
+            ],
+            "mean_delta_mpc_minus_ik": -0.010831527482471895,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0008804134774250584,
+              9.84142254478107e-05
+            ],
+            "mean_delta_mpc_minus_ik": -0.00040110258111149266,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01172248834995759,
+              -0.009061967111110729
+            ],
+            "mean_delta_mpc_minus_ik": -0.01045813180997008,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.01842564573092388,
+              -0.012844949794933223
+            ],
+            "mean_delta_mpc_minus_ik": -0.015600020997226256,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005242597260520307,
+              -0.003049225607072299
+            ],
+            "mean_delta_mpc_minus_ik": -0.004229751410332416,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003838843511987579,
+              -0.002675659393564438
+            ],
+            "mean_delta_mpc_minus_ik": -0.003226221615600186,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011326231738557327,
+              -0.008671320807192963
+            ],
+            "mean_delta_mpc_minus_ik": -0.010016256443869293,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.033191155930981035,
+              -0.027749061783775685
+            ],
+            "mean_delta_mpc_minus_ik": -0.03048302549868822,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01203446163706507,
+              -0.009622641031056976
+            ],
+            "mean_delta_mpc_minus_ik": -0.010831527482471895,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0037749538487164094,
+              -0.0025775456765315717
+            ],
+            "mean_delta_mpc_minus_ik": -0.003255171745766218,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01089401144060972,
+              -0.008314635598890908
+            ],
+            "mean_delta_mpc_minus_ik": -0.009668566190072574,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03580612723110244,
+              -0.028643209780100716
+            ],
+            "mean_delta_mpc_minus_ik": -0.03227576866745949,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012033393556756942,
+              -0.009950896729885198
+            ],
+            "mean_delta_mpc_minus_ik": -0.011118584503677763,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0009589812355013169,
+              0.0002796858233916448
+            ],
+            "mean_delta_mpc_minus_ik": -0.0004300527112775259,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01141049252517915,
+              -0.008688817117351921
+            ],
+            "mean_delta_mpc_minus_ik": -0.010110441556173362,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02103291445039216,
+              -0.013712220329325652
+            ],
+            "mean_delta_mpc_minus_ik": -0.01739276416599752,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005622030516308941,
+              -0.003291795965139836
+            ],
+            "mean_delta_mpc_minus_ik": -0.004516808431538286,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0037613735580166877,
+              -0.0025681604840113157
+            ],
+            "mean_delta_mpc_minus_ik": -0.0032551717457662195,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010873357127310518,
+              -0.008335988222131921
+            ],
+            "mean_delta_mpc_minus_ik": -0.009668566190072574,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03591786755388604,
+              -0.028637164832092804
+            ],
+            "mean_delta_mpc_minus_ik": -0.03227576866745949,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012040315011205715,
+              -0.009972846650292163
+            ],
+            "mean_delta_mpc_minus_ik": -0.011118584503677763,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260924
+    },
+    "force_pulse_l6": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0037138686437402945,
+              -0.0023952077412526234
+            ],
+            "mean_delta_mpc_minus_ik": -0.003038901412662436,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011776660438000271,
+              -0.008766881439281532
+            ],
+            "mean_delta_mpc_minus_ik": -0.010425509629214277,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03543298788135867,
+              -0.026664429429452845
+            ],
+            "mean_delta_mpc_minus_ik": -0.03190764576196669,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012362673679438888,
+              -0.00917903652634344
+            ],
+            "mean_delta_mpc_minus_ik": -0.010789868106576748,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0010008360814025713,
+              0.00034710198753406526
+            ],
+            "mean_delta_mpc_minus_ik": -0.00039999824650145384,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011944129755614725,
+              -0.008815134787071426
+            ],
+            "mean_delta_mpc_minus_ik": -0.01055829962170778,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.021102192310616358,
+              -0.01188155328016729
+            ],
+            "mean_delta_mpc_minus_ik": -0.017356124296784396,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.006106458312320887,
+              -0.002786885577575172
+            ],
+            "mean_delta_mpc_minus_ik": -0.004615262279890166,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0037004788446617118,
+              -0.002389838829416889
+            ],
+            "mean_delta_mpc_minus_ik": -0.003038901412662435,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011791338079431054,
+              -0.008779020751304873
+            ],
+            "mean_delta_mpc_minus_ik": -0.010425509629214277,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03542454672837627,
+              -0.026611476897262017
+            ],
+            "mean_delta_mpc_minus_ik": -0.03190764576196669,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012330774357408255,
+              -0.009196179121660101
+            ],
+            "mean_delta_mpc_minus_ik": -0.010789868106576748,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06827905901114698,
+              0.08242564179852228
+            ],
+            "mean_delta_mpc_minus_ik": 0.07527716741901744,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.1514074638588953,
+              0.17654320196959603
+            ],
+            "mean_delta_mpc_minus_ik": 0.1645506458222299,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.043689728624187414,
+              0.05734099307842551
+            ],
+            "mean_delta_mpc_minus_ik": 0.050611971803009505,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.026386129818337177,
+              0.03275630137366886
+            ],
+            "mean_delta_mpc_minus_ik": 0.02953598911965678,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07097245452373027,
+              0.08510849285653944
+            ],
+            "mean_delta_mpc_minus_ik": 0.07791607058517841,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15175475117136003,
+              0.1762967856568727
+            ],
+            "mean_delta_mpc_minus_ik": 0.16441785582973636,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.05815367898810653,
+              0.07190525320358575
+            ],
+            "mean_delta_mpc_minus_ik": 0.0651634932681918,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.0323226467074194,
+              0.03934996678989564
+            ],
+            "mean_delta_mpc_minus_ik": 0.03571059494634337,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06842965101805402,
+              0.08235544094322479
+            ],
+            "mean_delta_mpc_minus_ik": 0.07527716741901744,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15168077058293772,
+              0.17657208099681465
+            ],
+            "mean_delta_mpc_minus_ik": 0.1645506458222299,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.04366421884018927,
+              0.05723741673305631
+            ],
+            "mean_delta_mpc_minus_ik": 0.050611971803009505,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.026409051663868383,
+              0.03280263538034693
+            ],
+            "mean_delta_mpc_minus_ik": 0.02953598911965678,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0037999815708760973,
+              -0.0017744074284490698
+            ],
+            "mean_delta_mpc_minus_ik": -0.0028598316074480634,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01158900951593874,
+              -0.005921748033240878
+            ],
+            "mean_delta_mpc_minus_ik": -0.008896994605265458,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03318037569895381,
+              -0.016658372878097003
+            ],
+            "mean_delta_mpc_minus_ik": -0.02520327053964136,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011924298665927837,
+              -0.006507533772055482
+            ],
+            "mean_delta_mpc_minus_ik": -0.00944112503598811,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0011076141252672684,
+              0.000680647913456315
+            ],
+            "mean_delta_mpc_minus_ik": -0.00022092844128708094,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011625009576497834,
+              -0.0063128902171426474
+            ],
+            "mean_delta_mpc_minus_ik": -0.009029784597758956,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.018496468615718183,
+              -0.0023884362708777116
+            ],
+            "mean_delta_mpc_minus_ik": -0.010651749074459075,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005638042126716521,
+              -0.0006944827776480928
+            ],
+            "mean_delta_mpc_minus_ik": -0.003266519209301525,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0038040672728508252,
+              -0.0017881330412595933
+            ],
+            "mean_delta_mpc_minus_ik": -0.0028598316074480625,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01162877924236473,
+              -0.005791289245392592
+            ],
+            "mean_delta_mpc_minus_ik": -0.008896994605265458,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03316723019396881,
+              -0.016894338374957463
+            ],
+            "mean_delta_mpc_minus_ik": -0.02520327053964136,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011917737875762061,
+              -0.006546053674201716
+            ],
+            "mean_delta_mpc_minus_ik": -0.00944112503598811,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0039025007430189087,
+              -0.0018242796602321182
+            ],
+            "mean_delta_mpc_minus_ik": -0.0029477463980815146,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010807766220580875,
+              -0.007000864834724773
+            ],
+            "mean_delta_mpc_minus_ik": -0.00921489320497633,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03275973217980934,
+              -0.028091231435537312
+            ],
+            "mean_delta_mpc_minus_ik": -0.03063795601949093,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012150563970096322,
+              -0.008506741565424785
+            ],
+            "mean_delta_mpc_minus_ik": -0.010562305126824552,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0011274833114824523,
+              0.0008128074783823561
+            ],
+            "mean_delta_mpc_minus_ik": -0.00030884323192053307,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010926836177438313,
+              -0.007153242749492777
+            ],
+            "mean_delta_mpc_minus_ik": -0.009347683197469833,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.01838676445977761,
+              -0.013285114787984633
+            ],
+            "mean_delta_mpc_minus_ik": -0.016086434554308648,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.00580926343869784,
+              -0.00222147850701359
+            ],
+            "mean_delta_mpc_minus_ik": -0.004387699300137967,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0038947071895342497,
+              -0.001879345714603552
+            ],
+            "mean_delta_mpc_minus_ik": -0.0029477463980815146,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010781070312499582,
+              -0.007028891353010955
+            ],
+            "mean_delta_mpc_minus_ik": -0.00921489320497633,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03278167194686827,
+              -0.02809301476553083
+            ],
+            "mean_delta_mpc_minus_ik": -0.03063795601949093,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012163792925673487,
+              -0.008432393160447735
+            ],
+            "mean_delta_mpc_minus_ik": -0.010562305126824552,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260925
+    },
+    "nominal": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003848729690481382,
+              -0.002212658297800099
+            ],
+            "mean_delta_mpc_minus_ik": -0.0031283310420197135,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011988958727366508,
+              -0.007919973541440943
+            ],
+            "mean_delta_mpc_minus_ik": -0.01023781530257961,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.037028961035888645,
+              -0.0253162613674067
+            ],
+            "mean_delta_mpc_minus_ik": -0.03239278085529803,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01264778213544773,
+              -0.008988155762657622
+            ],
+            "mean_delta_mpc_minus_ik": -0.011111760318005908,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0009851972526391086,
+              0.0006978838219433737
+            ],
+            "mean_delta_mpc_minus_ik": -0.0002931827110951546,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.012595360794934621,
+              -0.008552939516603771
+            ],
+            "mean_delta_mpc_minus_ik": -0.010878329728701598,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.022337752219289554,
+              -0.010099624876864263
+            ],
+            "mean_delta_mpc_minus_ik": -0.017509776353836076,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.006030748404175414,
+              -0.0021295473354236653
+            ],
+            "mean_delta_mpc_minus_ik": -0.004485778397152321,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0038503390265445365,
+              -0.002238432274505279
+            ],
+            "mean_delta_mpc_minus_ik": -0.003128331042019715,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0119922935981236,
+              -0.007854063617527142
+            ],
+            "mean_delta_mpc_minus_ik": -0.01023781530257961,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03708062709029763,
+              -0.025138606108259395
+            ],
+            "mean_delta_mpc_minus_ik": -0.03239278085529803,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012688878616254928,
+              -0.00892583865293196
+            ],
+            "mean_delta_mpc_minus_ik": -0.011111760318005908,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06969155868284548,
+              0.08108931088041062
+            ],
+            "mean_delta_mpc_minus_ik": 0.0752787602032221,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15521819838303333,
+              0.1811117075678423
+            ],
+            "mean_delta_mpc_minus_ik": 0.16824449585428952,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.0433516190694645,
+              0.057475031839683645
+            ],
+            "mean_delta_mpc_minus_ik": 0.05056704662740228,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.0260858704910854,
+              0.031020285016149396
+            ],
+            "mean_delta_mpc_minus_ik": 0.028663241647742164,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07232617353325535,
+              0.08400168782430947
+            ],
+            "mean_delta_mpc_minus_ik": 0.07811390853414665,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15423235312355876,
+              0.1805341750566423
+            ],
+            "mean_delta_mpc_minus_ik": 0.16760398142816751,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.05825436758715653,
+              0.07255165006034073
+            ],
+            "mean_delta_mpc_minus_ik": 0.06545005112886425,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.03261148204623937,
+              0.0379155214529368
+            ],
+            "mean_delta_mpc_minus_ik": 0.035289223568595755,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06952945176987652,
+              0.08115348230035556
+            ],
+            "mean_delta_mpc_minus_ik": 0.0752787602032221,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15482005749165895,
+              0.1811148242080244
+            ],
+            "mean_delta_mpc_minus_ik": 0.16824449585428952,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.04342780581023542,
+              0.05763354890886693
+            ],
+            "mean_delta_mpc_minus_ik": 0.05056704662740228,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.026140831424657642,
+              0.031054130108187392
+            ],
+            "mean_delta_mpc_minus_ik": 0.028663241647742164,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003717690156667955,
+              -0.0023363233740370587
+            ],
+            "mean_delta_mpc_minus_ik": -0.0031936007161731707,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011162795677504937,
+              -0.008086579850953759
+            ],
+            "mean_delta_mpc_minus_ik": -0.009934661495106068,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.0341032899422571,
+              -0.026990796291269346
+            ],
+            "mean_delta_mpc_minus_ik": -0.03055914485827087,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011793835746403063,
+              -0.009501917887408425
+            ],
+            "mean_delta_mpc_minus_ik": -0.010836474452082181,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0008543838630124522,
+              0.00044391192562500076
+            ],
+            "mean_delta_mpc_minus_ik": -0.00035845238524861154,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011783316534627735,
+              -0.008727907153339008
+            ],
+            "mean_delta_mpc_minus_ik": -0.01057517592122806,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.01917273342516275,
+              -0.011871941566001626
+            ],
+            "mean_delta_mpc_minus_ik": -0.01567614035680891,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005093752873351617,
+              -0.0029773739539223757
+            ],
+            "mean_delta_mpc_minus_ik": -0.004210492531228594,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.00372122756166707,
+              -0.002364073157092742
+            ],
+            "mean_delta_mpc_minus_ik": -0.003193600716173173,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011156969622382466,
+              -0.008076861012125203
+            ],
+            "mean_delta_mpc_minus_ik": -0.009934661495106068,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03420441116765142,
+              -0.027063317350111884
+            ],
+            "mean_delta_mpc_minus_ik": -0.03055914485827087,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011793947982528884,
+              -0.009500192046389955
+            ],
+            "mean_delta_mpc_minus_ik": -0.010836474452082181,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003561878743582382,
+              -0.0027116231805498305
+            ],
+            "mean_delta_mpc_minus_ik": -0.003192545587200315,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010587038981571317,
+              -0.008255893379172262
+            ],
+            "mean_delta_mpc_minus_ik": -0.009444891915628733,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03412695491546764,
+              -0.027019901649560762
+            ],
+            "mean_delta_mpc_minus_ik": -0.03093145672231911,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011844294064102333,
+              -0.009831446928617666
+            ],
+            "mean_delta_mpc_minus_ik": -0.010890561332793489,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0008471109036072785,
+              0.00024217201112932608
+            ],
+            "mean_delta_mpc_minus_ik": -0.00035739725627575585,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011226648337740449,
+              -0.008870319338369953
+            ],
+            "mean_delta_mpc_minus_ik": -0.010085406341750727,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.019322976656723785,
+              -0.012006692589726295
+            ],
+            "mean_delta_mpc_minus_ik": -0.01604845222085715,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.00542269618288475,
+              -0.002941291129615048
+            ],
+            "mean_delta_mpc_minus_ik": -0.004264579411939897,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0035627436738613362,
+              -0.002701755567298428
+            ],
+            "mean_delta_mpc_minus_ik": -0.0031925455872003163,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010585127048802628,
+              -0.00825689406304892
+            ],
+            "mean_delta_mpc_minus_ik": -0.009444891915628733,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.034102176251821215,
+              -0.027028334591537702
+            ],
+            "mean_delta_mpc_minus_ik": -0.03093145672231911,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011834317602386709,
+              -0.009850994508244133
+            ],
+            "mean_delta_mpc_minus_ik": -0.010890561332793489,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260926
+    },
+    "observation_noise_l3": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0034654814048454678,
+              -0.001564630360085418
+            ],
+            "mean_delta_mpc_minus_ik": -0.0025879719898185593,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011023676373868675,
+              -0.0065011251402624405
+            ],
+            "mean_delta_mpc_minus_ik": -0.008978446391256702,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.037548081540036936,
+              -0.023468997276853767
+            ],
+            "mean_delta_mpc_minus_ik": -0.031890416499227275,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01217729547353559,
+              -0.007909376317038622
+            ],
+            "mean_delta_mpc_minus_ik": -0.010321459311083433,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.000747522385874348,
+              0.0013759354129903104
+            ],
+            "mean_delta_mpc_minus_ik": 0.0002471763411060002,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01161681133532969,
+              -0.007087082694100052
+            ],
+            "mean_delta_mpc_minus_ik": -0.009618960817378694,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.022730398536194137,
+              -0.008622917331289509
+            ],
+            "mean_delta_mpc_minus_ik": -0.017007411997765315,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005719534754756092,
+              -0.0010087510248320548
+            ],
+            "mean_delta_mpc_minus_ik": -0.003695477390229845,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003464918739625634,
+              -0.0015956858590479637
+            ],
+            "mean_delta_mpc_minus_ik": -0.0025879719898185606,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.011028918637054887,
+              -0.0064799727088992445
+            ],
+            "mean_delta_mpc_minus_ik": -0.008978446391256702,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03755470311176031,
+              -0.023637396515347048
+            ],
+            "mean_delta_mpc_minus_ik": -0.031890416499227275,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.012164751753939582,
+              -0.007966230864890202
+            ],
+            "mean_delta_mpc_minus_ik": -0.010321459311083433,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0706200136739637,
+              0.0855335302154216
+            ],
+            "mean_delta_mpc_minus_ik": 0.077284849299759,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15469069337874222,
+              0.18680210223916674
+            ],
+            "mean_delta_mpc_minus_ik": 0.16974682491433107,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.047079808903858066,
+              0.05846430093608796
+            ],
+            "mean_delta_mpc_minus_ik": 0.053270195648074135,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.02519689066880654,
+              0.030574787801449996
+            ],
+            "mean_delta_mpc_minus_ik": 0.027808854412780644,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07338818852656637,
+              0.08853237871365227
+            ],
+            "mean_delta_mpc_minus_ik": 0.08011999763068355,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15403837408869614,
+              0.18600670520793272
+            ],
+            "mean_delta_mpc_minus_ik": 0.16910631048820907,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.06220019113831218,
+              0.0734574797591194
+            ],
+            "mean_delta_mpc_minus_ik": 0.0681532001495361,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.031867055605534295,
+              0.03727699718002613
+            ],
+            "mean_delta_mpc_minus_ik": 0.034434836333634235,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0707439139319442,
+              0.085330986721968
+            ],
+            "mean_delta_mpc_minus_ik": 0.077284849299759,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.1547223799709474,
+              0.18654239295837524
+            ],
+            "mean_delta_mpc_minus_ik": 0.16974682491433107,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.047178718963637935,
+              0.05850404975935814
+            ],
+            "mean_delta_mpc_minus_ik": 0.053270195648074135,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.025191748182241038,
+              0.030581498375005442
+            ],
+            "mean_delta_mpc_minus_ik": 0.027808854412780644,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.002188885914437752,
+              -0.0010197346272528538
+            ],
+            "mean_delta_mpc_minus_ik": -0.001619552303589434,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0066427597088522024,
+              -0.003688446927383489
+            ],
+            "mean_delta_mpc_minus_ik": -0.005181148383117716,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02505699174106122,
+              -0.014718429888598629
+            ],
+            "mean_delta_mpc_minus_ik": -0.019516899995505817,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.007936519139252477,
+              -0.005140995347745877
+            ],
+            "mean_delta_mpc_minus_ik": -0.006537110508280995,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.00060199855173431,
+              0.0018268640646094483
+            ],
+            "mean_delta_mpc_minus_ik": 0.0012155960273351248,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.007310101564565466,
+              -0.0043883282820884025
+            ],
+            "mean_delta_mpc_minus_ik": -0.005821662809239707,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.010350615898147283,
+              0.00032787010166793006
+            ],
+            "mean_delta_mpc_minus_ik": -0.00463389549404386,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.0014714078869457916,
+              0.0014882345020040464
+            ],
+            "mean_delta_mpc_minus_ik": 8.887141257259475e-05,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0021758533139240397,
+              -0.0010315951366974977
+            ],
+            "mean_delta_mpc_minus_ik": -0.0016195523035894357,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.006668630518356372,
+              -0.0036923130405958375
+            ],
+            "mean_delta_mpc_minus_ik": -0.005181148383117716,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.025092208833899367,
+              -0.01463180995266889
+            ],
+            "mean_delta_mpc_minus_ik": -0.019516899995505817,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.00798073495976716,
+              -0.005126447154631236
+            ],
+            "mean_delta_mpc_minus_ik": -0.006537110508280995,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003364246295937474,
+              -0.0023814701921993746
+            ],
+            "mean_delta_mpc_minus_ik": -0.002905538464007388,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010118787951249805,
+              -0.007525114708012464
+            ],
+            "mean_delta_mpc_minus_ik": -0.00889630955297374,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.035235300957225255,
+              -0.027115423247683793
+            ],
+            "mean_delta_mpc_minus_ik": -0.0319367809407413,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011627862979206734,
+              -0.009288743593944099
+            ],
+            "mean_delta_mpc_minus_ik": -0.010538944140235661,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0006465588431550859,
+              0.0005798765267476994
+            ],
+            "mean_delta_mpc_minus_ik": -7.03901330828296e-05,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010759802575138094,
+              -0.008145436395955155
+            ],
+            "mean_delta_mpc_minus_ik": -0.009536823979095731,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.020461531133856643,
+              -0.011977393708191814
+            ],
+            "mean_delta_mpc_minus_ik": -0.01705377643927934,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005099565629089097,
+              -0.002379012942741318
+            ],
+            "mean_delta_mpc_minus_ik": -0.003912962219382069,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003364570695099161,
+              -0.002383662941608077
+            ],
+            "mean_delta_mpc_minus_ik": -0.0029055384640073903,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.010096702294651825,
+              -0.007521699654697639
+            ],
+            "mean_delta_mpc_minus_ik": -0.00889630955297374,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.035230629030615086,
+              -0.027126521513331673
+            ],
+            "mean_delta_mpc_minus_ik": -0.0319367809407413,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011601165755523673,
+              -0.009236638481827975
+            ],
+            "mean_delta_mpc_minus_ik": -0.010538944140235661,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260927
+    },
+    "observation_noise_l6": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              9.528441544551962e-05,
+              0.002993472258549673
+            ],
+            "mean_delta_mpc_minus_ik": 0.0014380447519925443,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.003619109260773869,
+              0.0030001762212572363
+            ],
+            "mean_delta_mpc_minus_ik": -0.0005016836210774336,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02779224279429763,
+              -0.010202542519196865
+            ],
+            "mean_delta_mpc_minus_ik": -0.019595753308385623,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.0053328222276231435,
+              0.0008381624964061672
+            ],
+            "mean_delta_mpc_minus_ik": -0.002498431354660313,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0029130384312650876,
+              0.005778855916697903
+            ],
+            "mean_delta_mpc_minus_ik": 0.0042731930829171035,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.004212785933182719,
+              0.0024597383441842618
+            ],
+            "mean_delta_mpc_minus_ik": -0.0011421980471994237,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.013076966698281494,
+              0.0045618905229493365
+            ],
+            "mean_delta_mpc_minus_ik": -0.004712748806923661,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.0012133694387368643,
+              0.007431344947149475
+            ],
+            "mean_delta_mpc_minus_ik": 0.004127550566193278,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.00013349985297559782,
+              0.0029837158670779325
+            ],
+            "mean_delta_mpc_minus_ik": 0.0014380447519925428,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.003601657082300039,
+              0.0030328677199047403
+            ],
+            "mean_delta_mpc_minus_ik": -0.0005016836210774336,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.027772477131802586,
+              -0.010354187663644576
+            ],
+            "mean_delta_mpc_minus_ik": -0.019595753308385623,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005311754869822032,
+              0.0007237458487870869
+            ],
+            "mean_delta_mpc_minus_ik": -0.002498431354660313,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07042314833562824,
+              0.0814208267227729
+            ],
+            "mean_delta_mpc_minus_ik": 0.07592747159371982,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15086639247557235,
+              0.17757037399735168
+            ],
+            "mean_delta_mpc_minus_ik": 0.16379458851708179,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.04612959659751504,
+              0.06516709256637843
+            ],
+            "mean_delta_mpc_minus_ik": 0.05604182239621878,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.025690790791563296,
+              0.03370794706437268
+            ],
+            "mean_delta_mpc_minus_ik": 0.03003582012504863,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0731001287031903,
+              0.08433041901001923
+            ],
+            "mean_delta_mpc_minus_ik": 0.0787626199246444,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15011582564595025,
+              0.1771077941076657
+            ],
+            "mean_delta_mpc_minus_ik": 0.1631540740909598,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.06118190566170957,
+              0.08010973658878354
+            ],
+            "mean_delta_mpc_minus_ik": 0.07092482689768073,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.031956509886248145,
+              0.04057585218976633
+            ],
+            "mean_delta_mpc_minus_ik": 0.03666180204590221,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07047485347009162,
+              0.08159774469870397
+            ],
+            "mean_delta_mpc_minus_ik": 0.07592747159371982,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.15061539145701197,
+              0.1776850842465531
+            ],
+            "mean_delta_mpc_minus_ik": 0.16379458851708179,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.046356498287990676,
+              0.06511394439544531
+            ],
+            "mean_delta_mpc_minus_ik": 0.05604182239621878,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.025753731885749333,
+              0.0336821927781033
+            ],
+            "mean_delta_mpc_minus_ik": 0.03003582012504863,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0006618474958784609,
+              0.0015353139546514642
+            ],
+            "mean_delta_mpc_minus_ik": 0.0003617592649852331,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.00411937199501758,
+              0.0003306266732581923
+            ],
+            "mean_delta_mpc_minus_ik": -0.0020420642209514825,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.025526344061829156,
+              -0.013429038881324224
+            ],
+            "mean_delta_mpc_minus_ik": -0.019969199988991024,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.006884737351029349,
+              -0.0025237820330949266
+            ],
+            "mean_delta_mpc_minus_ik": -0.004819178312851109,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.00208156756552003,
+              0.0045086500289939395
+            ],
+            "mean_delta_mpc_minus_ik": 0.0031969075959097917,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.004733854820814398,
+              -0.0002040257300183807
+            ],
+            "mean_delta_mpc_minus_ik": -0.0026825786470734726,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.01093820498697462,
+              0.001679448498412952
+            ],
+            "mean_delta_mpc_minus_ik": -0.005086195487529062,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.0004122294943009832,
+              0.004325406951631918
+            ],
+            "mean_delta_mpc_minus_ik": 0.0018068036080024813,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0006648774297298625,
+              0.0015467062349614736
+            ],
+            "mean_delta_mpc_minus_ik": 0.00036175926498523137,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.004108571307045824,
+              0.00036808716780048397
+            ],
+            "mean_delta_mpc_minus_ik": -0.0020420642209514825,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.025605542726349073,
+              -0.013440254668705161
+            ],
+            "mean_delta_mpc_minus_ik": -0.019969199988991024,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.00682977727960261,
+              -0.002473971748204456
+            ],
+            "mean_delta_mpc_minus_ik": -0.004819178312851109,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0005040368022065055,
+              0.0035342649408416707
+            ],
+            "mean_delta_mpc_minus_ik": 0.001823787631476996,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.002025166445333644,
+              0.005609019961847189
+            ],
+            "mean_delta_mpc_minus_ik": 0.0011799054362475233,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.025376643863040945,
+              -0.001627407241147023
+            ],
+            "mean_delta_mpc_minus_ik": -0.01632941283285617,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005151449823694987,
+              0.0029152920317914396
+            ],
+            "mean_delta_mpc_minus_ik": -0.0018543322859896673,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.003291340610607931,
+              0.006508893399891758
+            ],
+            "mean_delta_mpc_minus_ik": 0.0046589359624015555,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0026344554048316825,
+              0.004884369169395798
+            ],
+            "mean_delta_mpc_minus_ik": 0.0005393910101255331,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.010665721725672497,
+              0.013257898323703544
+            ],
+            "mean_delta_mpc_minus_ik": -0.0014464083313942121,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.0014116551233509659,
+              0.009829680778427961
+            ],
+            "mean_delta_mpc_minus_ik": 0.004771649634863923,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.000500866028157349,
+              0.0035844662902449077
+            ],
+            "mean_delta_mpc_minus_ik": 0.0018237876314769943,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.002019387226244991,
+              0.005736913823358007
+            ],
+            "mean_delta_mpc_minus_ik": 0.0011799054362475233,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02547565932339058,
+              -0.0014762103529646908
+            ],
+            "mean_delta_mpc_minus_ik": -0.01632941283285617,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.005106831400685608,
+              0.0030233849814058794
+            ],
+            "mean_delta_mpc_minus_ik": -0.0018543322859896673,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260928
+    },
+    "payload_l3": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0020429345830748785,
+              -0.00047634869343364224
+            ],
+            "mean_delta_mpc_minus_ik": -0.0012441331057479906,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.019973825288645667,
+              -0.0166116703416784
+            ],
+            "mean_delta_mpc_minus_ik": -0.018323040348153276,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.023861881587188674,
+              -0.011493187632411734
+            ],
+            "mean_delta_mpc_minus_ik": -0.017586604189127678,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01181324588396307,
+              -0.008362444872530584
+            ],
+            "mean_delta_mpc_minus_ik": -0.010093341682028899,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0003585766889568745,
+              0.0022127656020913752
+            ],
+            "mean_delta_mpc_minus_ik": 0.0012947540462224093,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.019506016360048666,
+              -0.01616205424647604
+            ],
+            "mean_delta_mpc_minus_ik": -0.01784661816058228,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.013412268051411842,
+              -0.0002890896769239871
+            ],
+            "mean_delta_mpc_minus_ik": -0.006703036148101006,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.007661757879867062,
+              -0.003583620363291214
+            ],
+            "mean_delta_mpc_minus_ik": -0.0056179819370541575,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.002045075886309779,
+              -0.0004803700072463228
+            ],
+            "mean_delta_mpc_minus_ik": -0.0012441331057479906,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.020014276180145972,
+              -0.016645723503468848
+            ],
+            "mean_delta_mpc_minus_ik": -0.018323040348153276,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.023754923413507635,
+              -0.011601868539117306
+            ],
+            "mean_delta_mpc_minus_ik": -0.017586604189127678,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011867803994979493,
+              -0.008279932083546987
+            ],
+            "mean_delta_mpc_minus_ik": -0.010093341682028899,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.06755001877312222,
+              0.08050694401451836
+            ],
+            "mean_delta_mpc_minus_ik": 0.07430116527700589,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.1327046381965147,
+              0.16855904984017764
+            ],
+            "mean_delta_mpc_minus_ik": 0.15100935308683033,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.03359207195416088,
+              0.05462652982771392
+            ],
+            "mean_delta_mpc_minus_ik": 0.04327174983918665,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.010591342547777485,
+              0.01804657480165613
+            ],
+            "mean_delta_mpc_minus_ik": 0.014326572728137804,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.07001421879705962,
+              0.08302852505992074
+            ],
+            "mean_delta_mpc_minus_ik": 0.0768400524289763,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.13342879358049156,
+              0.16864506515849786
+            ],
+            "mean_delta_mpc_minus_ik": 0.1514857752744013,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.043872634594328754,
+              0.06531223664991563
+            ],
+            "mean_delta_mpc_minus_ik": 0.05415531788021331,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.014531653655900166,
+              0.02288772187920632
+            ],
+            "mean_delta_mpc_minus_ik": 0.018801932473112543,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.0675266448107157,
+              0.08052683953992094
+            ],
+            "mean_delta_mpc_minus_ik": 0.07430116527700589,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.13248604559072172,
+              0.1683984303556049
+            ],
+            "mean_delta_mpc_minus_ik": 0.15100935308683033,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.033266662991605696,
+              0.05410275747999546
+            ],
+            "mean_delta_mpc_minus_ik": 0.04327174983918665,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              0.010458499146144518,
+              0.01810214227686554
+            ],
+            "mean_delta_mpc_minus_ik": 0.014326572728137804,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0049824024802993215,
+              -0.003141427393498459
+            ],
+            "mean_delta_mpc_minus_ik": -0.004014147266135781,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.022549143317515414,
+              -0.018270576134556578
+            ],
+            "mean_delta_mpc_minus_ik": -0.0203677986615537,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.028525883764959906,
+              -0.02008381274994466
+            ],
+            "mean_delta_mpc_minus_ik": -0.024163885600864916,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.01583718842625001,
+              -0.012290577911769768
+            ],
+            "mean_delta_mpc_minus_ik": -0.014071537924363182,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0026467624170014997,
+              -0.00037769440461586905
+            ],
+            "mean_delta_mpc_minus_ik": -0.0014752601141653809,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.022076172781241805,
+              -0.01776712450279611
+            ],
+            "mean_delta_mpc_minus_ik": -0.01989137647398271,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.0179532983107492,
+              -0.008925768067128921
+            ],
+            "mean_delta_mpc_minus_ik": -0.013280317559838242,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.011781334967316693,
+              -0.007412877645169629
+            ],
+            "mean_delta_mpc_minus_ik": -0.009596178179388435,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.004955104712048731,
+              -0.0031111640968338812
+            ],
+            "mean_delta_mpc_minus_ik": -0.004014147266135781,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.022533898867071935,
+              -0.01828481963500012
+            ],
+            "mean_delta_mpc_minus_ik": -0.0203677986615537,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.028517896950244943,
+              -0.020184317776933337
+            ],
+            "mean_delta_mpc_minus_ik": -0.024163885600864916,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.015808788571665285,
+              -0.012248019011931571
+            ],
+            "mean_delta_mpc_minus_ik": -0.014071537924363182,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003452379603606116,
+              -0.001837724271246317
+            ],
+            "mean_delta_mpc_minus_ik": -0.002648858412760464,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.019693690600929393,
+              -0.016044899977682717
+            ],
+            "mean_delta_mpc_minus_ik": -0.017885235306649247,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.028137880167923877,
+              -0.016608116101473572
+            ],
+            "mean_delta_mpc_minus_ik": -0.02226317137479782,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.013832874452118976,
+              -0.010613241869883456
+            ],
+            "mean_delta_mpc_minus_ik": -0.012251727656395942,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.0010722637150879415,
+              0.0009010030311317655
+            ],
+            "mean_delta_mpc_minus_ik": -0.0001099712607900644,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01921460094278135,
+              -0.015518107246529684
+            ],
+            "mean_delta_mpc_minus_ik": -0.017408813119078246,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.017511685486882842,
+              -0.005224475760944063
+            ],
+            "mean_delta_mpc_minus_ik": -0.011379603333771143,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.009533818900695632,
+              -0.0058266424965114725
+            ],
+            "mean_delta_mpc_minus_ik": -0.0077763679114211965,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.003449590433245833,
+              -0.0018423008579852309
+            ],
+            "mean_delta_mpc_minus_ik": -0.002648858412760464,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.01969100236842833,
+              -0.016050301910999567
+            ],
+            "mean_delta_mpc_minus_ik": -0.017885235306649247,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.02808411188703029,
+              -0.01635058442037552
+            ],
+            "mean_delta_mpc_minus_ik": -0.02226317137479782,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.013873160488719989,
+              -0.010601989363637836
+            ],
+            "mean_delta_mpc_minus_ik": -0.012251727656395942,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260929
+    },
+    "payload_l6": {
+      "comparisons": {
+        "IdealZeroDelay_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013418986302535522,
+              -0.010758623378362238
+            ],
+            "mean_delta_mpc_minus_ik": -0.012273940440247004,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0755168632619563,
+              -0.0674131604481251
+            ],
+            "mean_delta_mpc_minus_ik": -0.07185330673355399,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.0437948686666787,
+              -0.03148812187276782
+            ],
+            "mean_delta_mpc_minus_ik": -0.03793168023228648,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.04015027474075514,
+              -0.0339438626881179
+            ],
+            "mean_delta_mpc_minus_ik": -0.03741852603174662,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.012107241253535444,
+              -0.009045797438868134
+            ],
+            "mean_delta_mpc_minus_ik": -0.010770752389567165,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0749216392569701,
+              -0.06682165539857252
+            ],
+            "mean_delta_mpc_minus_ik": -0.07127573970806178,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.033680879602208585,
+              -0.020550545996054954
+            ],
+            "mean_delta_mpc_minus_ik": -0.02755279459059228,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.038376455461460686,
+              -0.03168030540699055
+            ],
+            "mean_delta_mpc_minus_ik": -0.0353737520601349,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "IdealZeroDelay_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013420365098647575,
+              -0.010787643024212389
+            ],
+            "mean_delta_mpc_minus_ik": -0.012273940440247004,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.0754829506329156,
+              -0.0674933228668296
+            ],
+            "mean_delta_mpc_minus_ik": -0.07185330673355399,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.043662543483078506,
+              -0.03144768479280177
+            ],
+            "mean_delta_mpc_minus_ik": -0.03793168023228648,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.04021004232722039,
+              -0.034021691747272056
+            ],
+            "mean_delta_mpc_minus_ik": -0.03741852603174662,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.04842619753278463,
+              0.0688889711889316
+            ],
+            "mean_delta_mpc_minus_ik": 0.05789042790161549,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.05082060282149465,
+              0.10305197492961139
+            ],
+            "mean_delta_mpc_minus_ik": 0.07716880818152848,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.004265805663541025,
+              0.014438772769644751
+            ],
+            "mean_delta_mpc_minus_ik": 0.004556988179683602,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03570946256494878,
+              -0.030755670749642822
+            ],
+            "mean_delta_mpc_minus_ik": -0.03305097942131717,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.049845942743122415,
+              0.07060058873373558
+            ],
+            "mean_delta_mpc_minus_ik": 0.05939361595229535,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.051201143200807535,
+              0.104512065604506
+            ],
+            "mean_delta_mpc_minus_ik": 0.07774637520702068,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              0.00639320268854502,
+              0.024403616832569308
+            ],
+            "mean_delta_mpc_minus_ik": 0.014935873821377805,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03373386880418704,
+              -0.0285328312476355
+            ],
+            "mean_delta_mpc_minus_ik": -0.031006205449705455,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "NaiveDelayed_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              0.048225238691658324,
+              0.06863889191192808
+            ],
+            "mean_delta_mpc_minus_ik": 0.05789042790161549,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              0.04996387370144299,
+              0.10332604970267568
+            ],
+            "mean_delta_mpc_minus_ik": 0.07716880818152848,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.004325062485411804,
+              0.014263278050348074
+            ],
+            "mean_delta_mpc_minus_ik": 0.004556988179683602,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03571669040542706,
+              -0.030762731591796207
+            ],
+            "mean_delta_mpc_minus_ik": -0.03305097942131717,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013528980117203528,
+              -0.011004271345069065
+            ],
+            "mean_delta_mpc_minus_ik": -0.012325119031014025,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06382494948520652,
+              -0.05348478349863976
+            ],
+            "mean_delta_mpc_minus_ik": -0.059076753723874366,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.04256225825287402,
+              -0.030654758956283376
+            ],
+            "mean_delta_mpc_minus_ik": -0.0364208744466305,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.035582853814467054,
+              -0.029338100023310193
+            ],
+            "mean_delta_mpc_minus_ik": -0.03259571011452336,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.011908651387887886,
+              -0.009683552328686538
+            ],
+            "mean_delta_mpc_minus_ik": -0.010821930980334186,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06318011453969218,
+              -0.052911498709919264
+            ],
+            "mean_delta_mpc_minus_ik": -0.05849918669838215,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.031773607235401694,
+              -0.02061572656966731
+            ],
+            "mean_delta_mpc_minus_ik": -0.026041988804936293,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03336274823213976,
+              -0.02755289990932045
+            ],
+            "mean_delta_mpc_minus_ik": -0.030550936142911638,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "ThreadedAsync_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013532290226088834,
+              -0.010972681948912365
+            ],
+            "mean_delta_mpc_minus_ik": -0.012325119031014025,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06381624479218317,
+              -0.05353566640353773
+            ],
+            "mean_delta_mpc_minus_ik": -0.059076753723874366,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.042394854741171,
+              -0.03056146390549841
+            ],
+            "mean_delta_mpc_minus_ik": -0.0364208744466305,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.035566090516110274,
+              -0.02929827041239377
+            ],
+            "mean_delta_mpc_minus_ik": -0.03259571011452336,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_physical": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013745415136342554,
+              -0.01132128204594022
+            ],
+            "mean_delta_mpc_minus_ik": -0.012667599688246576,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06534120713145543,
+              -0.05827786042464613
+            ],
+            "mean_delta_mpc_minus_ik": -0.06215851478875155,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.04854444283433264,
+              -0.03207867424003783
+            ],
+            "mean_delta_mpc_minus_ik": -0.04120529111474756,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03840760386741445,
+              -0.03156082062222405
+            ],
+            "mean_delta_mpc_minus_ik": -0.035471547368226636,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_preview": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.012350283927885827,
+              -0.009529323351928506
+            ],
+            "mean_delta_mpc_minus_ik": -0.011164411637566735,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06480261898503341,
+              -0.057591843637135216
+            ],
+            "mean_delta_mpc_minus_ik": -0.06158094776325933,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.03878023047838345,
+              -0.021199663568288073
+            ],
+            "mean_delta_mpc_minus_ik": -0.030826405473053348,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03639139775324595,
+              -0.02939753270498186
+            ],
+            "mean_delta_mpc_minus_ik": -0.033426773396614914,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        },
+        "VirtualDelayAware_minus_raw": {
+          "joint_rmse_rad": {
+            "ci95": [
+              -0.013741567225962892,
+              -0.011327855057232676
+            ],
+            "mean_delta_mpc_minus_ik": -0.012667599688246576,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "orientation_rmse_rad": {
+            "ci95": [
+              -0.06528254586268334,
+              -0.05831641718241122
+            ],
+            "mean_delta_mpc_minus_ik": -0.06215851478875155,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_p95_m": {
+            "ci95": [
+              -0.04856733587756755,
+              -0.032230221489444384
+            ],
+            "mean_delta_mpc_minus_ik": -0.04120529111474756,
+            "n_clusters": 4,
+            "n_pairs": 20
+          },
+          "tcp_rmse_m": {
+            "ci95": [
+              -0.03838197514342104,
+              -0.031566945048043825
+            ],
+            "mean_delta_mpc_minus_ik": -0.035471547368226636,
+            "n_clusters": 4,
+            "n_pairs": 20
+          }
+        }
+      },
+      "samples": 10000,
+      "seed": 20260930
+    }
+  },
+  "samples": 10000,
+  "seed": 20260922
+}

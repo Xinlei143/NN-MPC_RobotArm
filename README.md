@@ -40,13 +40,19 @@ action u_t = q_ref,t(6)  # rad
 The compact [ROBIO 2026 evidence bundle](evidence/robio2026/README.md) contains
 the SHA-256-tracked artifacts listed in
 [`PUBLIC_MANIFEST.json`](evidence/robio2026/PUBLIC_MANIFEST.json): ABB and UR5e summaries, paired bootstrap results,
-robustness and timing statistics, model diagnostics, mechanism-isolation
-results, figures, and portable audit manifests. It excludes raw rollouts,
-caches, checkpoints, normalizers, and paper files.
+robustness/timing and paired IK-baseline statistics, true-history GRU model
+diagnostics, mechanism-isolation results, figures, delay calibrations,
+robot/reference contracts, and portable cohort audits. It excludes raw
+rollouts, caches, checkpoints, normalizers, and paper files.
 
 The reported experiments are MuJoCo-only. UR5e is a robot-specific replication
 with its own data, model, IK references, and activation-delay calibration; it is
 not a shared-model transfer result.
+
+The evidence bundle supports claim checking and aggregate reanalysis, not a
+from-scratch reproduction: large learned artifacts and raw runtime arrays are
+deliberately excluded. Its README documents each public directory and the
+boundaries of the reported claims.
 
 ## Repository layout
 
@@ -244,8 +250,17 @@ manifests before reusing a model or reference:
 
 ```bash
 conda run -n pendulum-rl python -m scripts.paper_experiments.workflow --help
+conda run -n pendulum-rl python scripts/paper_experiments/workflow.py \
+  reanalyze-model-validation --overwrite
+conda run -n pendulum-rl python scripts/paper_experiments/ur5e_workflow.py \
+  reanalyze-model-validation --overwrite
 python3 scripts/paper_experiments/publish_evidence.py
 ```
+
+The two reanalysis commands evaluate saved held-out rollouts on windows with a
+complete 16-token ground-truth GRU history. They generate the compact ABB and
+UR5e model-validation summaries used by the ROBIO evidence bundle without
+rerunning training, MuJoCo, or closed-loop controller experiments.
 
 ## Robustness, Model-C, tests, and outputs
 

@@ -26,6 +26,17 @@ SOURCES = {
     ),
     "abb/figures": ("outputs/paper_final/figures/*",),
     "abb/manifests": ("outputs/paper_final/manifests/*.json",),
+    "abb/calibration": (
+        "outputs/paper_final/calibration/delay_task_space_two_stage.json",
+    ),
+    "abb/audit": (
+        "outputs/paper_final/audit/audit_summary.json",
+        "outputs/paper_final/audit/configuration_mismatches.csv",
+        "outputs/paper_final/audit/duplicate_cases.csv",
+        "outputs/paper_final/audit/missing_cases.csv",
+        "outputs/paper_final/audit/run_issues.csv",
+        "outputs/paper_final/audit/semantics_versions.csv",
+    ),
     "ur5e/summaries": ("outputs/paper_ur5e_v2/summaries/*",),
     "ur5e/model_validation": (
         "outputs/paper_ur5e_history_windows_v1/*.csv",
@@ -34,6 +45,11 @@ SOURCES = {
     "ur5e/manifests": (
         "outputs/paper_ur5e_v2/manifests/*.json",
         "outputs/paper_ur5e_v2/freeze_audit.json",
+    ),
+    "ur5e/calibration": ("outputs/paper_ur5e_v2/calibration/delay.json",),
+    "ur5e/contracts": (
+        "outputs/paper_ur5e_v2/diagnostics/robot_contract.json",
+        "outputs/paper_ur5e_v2/references/manifest.json",
     ),
     "claim_evidence/summaries": (
         "outputs/paper_claim_evidence_v2/summaries/*",
@@ -45,6 +61,13 @@ SOURCES = {
     "robustness_and_timing": (
         "outputs/paper_revision_v1/statistics/*.json",
         "outputs/paper_revision_v1/statistics/*.csv",
+    ),
+    "robustness_and_timing/ik_baselines": (
+        "outputs/paper_revision_v1/statistics/ik/baseline_deduplication_report.json",
+        "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_bootstrap.json",
+        "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_condition.csv",
+        "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_level.json",
+        "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_perturbation.json",
     ),
 }
 
