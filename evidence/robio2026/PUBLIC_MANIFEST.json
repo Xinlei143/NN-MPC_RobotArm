@@ -1,5 +1,5 @@
 {
-  "artifact_count": 74,
+  "artifact_count": 82,
   "artifacts": [
     {
       "bytes": 81073,
@@ -194,6 +194,30 @@
       "source": "outputs/paper_final/diagnostics/gru_validation/validation_manifest.json"
     },
     {
+      "bytes": 4328,
+      "path": "abb/model_validation/aggregate.csv",
+      "sha256": "5e503d3de8663dad26c299a510c5143f4d9fed3811629412f285b1b67eb94f40",
+      "source": "outputs/paper_model_validation_history_windows_v1/aggregate.csv"
+    },
+    {
+      "bytes": 6335,
+      "path": "abb/model_validation/rollout_metrics.csv",
+      "sha256": "164aded3ccb9f9045784555529f92c8143afaab9b6a87976d11e3ee89d7f2b92",
+      "source": "outputs/paper_model_validation_history_windows_v1/rollout_metrics.csv"
+    },
+    {
+      "bytes": 722888,
+      "path": "abb/model_validation/window_metrics.csv",
+      "sha256": "b41c26d8a22c974df0974d95a77ab2bde9cbfcc36de143d3cfb8c4df6388c420",
+      "source": "outputs/paper_model_validation_history_windows_v1/window_metrics.csv"
+    },
+    {
+      "bytes": 8587,
+      "path": "abb/model_validation/analysis_manifest.json",
+      "sha256": "64fac2e6cd763be84c20a8bf5ce79ea18932022e4cc400ecf234f688071fff83",
+      "source": "outputs/paper_model_validation_history_windows_v1/analysis_manifest.json"
+    },
+    {
       "bytes": 20602,
       "path": "abb/figures/delay_sweep.pdf",
       "sha256": "077267020d99d38159b20771becccc5f85be3f408bc7b87dfdfebaa255fb18c5",
@@ -278,15 +302,39 @@
       "source": "outputs/paper_ur5e_v2/summaries/worst_seed.json"
     },
     {
-      "bytes": 22571,
+      "bytes": 4431,
+      "path": "ur5e/model_validation/aggregate.csv",
+      "sha256": "a2ff59b960a3c075093531ea1195896b85efe3edf0ffe5f7a5e2991f40a01f3f",
+      "source": "outputs/paper_ur5e_history_windows_v1/aggregate.csv"
+    },
+    {
+      "bytes": 6534,
+      "path": "ur5e/model_validation/rollout_metrics.csv",
+      "sha256": "607a08cd47d52229a05fa0d0b0695e5f72703ee3189a3df13709352d56ff3178",
+      "source": "outputs/paper_ur5e_history_windows_v1/rollout_metrics.csv"
+    },
+    {
+      "bytes": 737606,
+      "path": "ur5e/model_validation/window_metrics.csv",
+      "sha256": "82ffda2f428d44d40ba9f3511b6aed829c1dff722dbca1dbabb7f34190323b10",
+      "source": "outputs/paper_ur5e_history_windows_v1/window_metrics.csv"
+    },
+    {
+      "bytes": 8711,
+      "path": "ur5e/model_validation/analysis_manifest.json",
+      "sha256": "44ce0712e537f526e449dd3d93ecc08463747fd4ca10edae2fafff5649d1d0f5",
+      "source": "outputs/paper_ur5e_history_windows_v1/analysis_manifest.json"
+    },
+    {
+      "bytes": 24730,
       "path": "ur5e/manifests/paper.json",
-      "sha256": "50cc40098ec7fb06f5543f6b32a457069532734ef831fbc4453736fedafea109",
+      "sha256": "a6ba9b0a56b9f9689dbcb49d4a212e9727ede8ab008245465b1261d19e310712",
       "source": "outputs/paper_ur5e_v2/manifests/paper.json"
     },
     {
       "bytes": 1688,
       "path": "ur5e/manifests/freeze_audit.json",
-      "sha256": "41b31dd283378d77516036929d96b153f6c544d9287aefaa018c48f8e0d4e67a",
+      "sha256": "424971d89f9b795ad9c75f766483632f939d8f2797a3cc19a07c2c7ff068a0b8",
       "source": "outputs/paper_ur5e_v2/freeze_audit.json"
     },
     {
@@ -434,15 +482,15 @@
       "source": "outputs/paper_revision_v1/statistics/threaded_vs_fullvirtual_by_perturbation.json"
     },
     {
-      "bytes": 8435,
+      "bytes": 8389,
       "path": "technical_supplement.tex",
-      "sha256": "999983a353d68f3b1444304e46d24240d2345ce4690eec2153f64807d32b1673",
+      "sha256": "e3f9ec9dad92a9be6c1b46210b7d9ac0a1e8a47ea3434f6d496ea67ba14f472f",
       "source": "repository-maintained technical supplement"
     },
     {
-      "bytes": 220542,
+      "bytes": 210894,
       "path": "technical_supplement.pdf",
-      "sha256": "8767544719f3c8f62206b2996dc473eab039541838a645fefb13367a1d971ae2",
+      "sha256": "bbe40d0c513ccc01e7930947f52a9f435d1a88e6db45a62e6526c08679ff9bfe",
       "source": "repository-maintained technical supplement"
     }
   ],

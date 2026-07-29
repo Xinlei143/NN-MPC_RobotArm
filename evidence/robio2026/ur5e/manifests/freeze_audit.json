@@ -8,8 +8,8 @@
   "malformed_index_entries": [],
   "manifest": {
     "path": "./outputs/paper_ur5e_v2/manifests/paper.json",
-    "sha256": "31338ef9a80c9a6415ab3969153fcca8c9d44fdc0df680a6f7687b132b3e852f",
-    "size": 23099
+    "sha256": "9472fc9d4239bfb4a40f5fb0afa8de868d00db3d38d1d579bb722ba7f2f168bf",
+    "size": 25258
   },
   "manifest_commit_exists": true,
   "manifest_git_commit": "abe107c0110d99966d9eec9834f848048416028a",

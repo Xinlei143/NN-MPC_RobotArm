@@ -124,6 +124,7 @@
     "w_tau": 0.02,
     "w_terminal": 0.0
   },
+  "base_run_args_semantics": "Workflow base arguments captured before RobotSpec resolution. Retained verbatim for frozen run-fingerprint compatibility; these fields are not the executed robot contract.",
   "checkpoint": {
     "path": "./dynamics_modeling/outputs/checkpoints/ur5e/gru_20260728_000313/best_model.pt",
     "sha256": "52b8c84f22c9dcd0d756bc075e33d8a9a1e72b566b7473732d03d20a5c8e9edc",
@@ -677,6 +678,14 @@
     "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
     "python": "3.10.20 (main, Mar 11 2026, 17:46:40) [GCC 14.3.0]"
   },
+  "formal_case_delay_steps": {
+    "FullVirtual": 7,
+    "IdealZeroDelay": 0,
+    "NaiveDelayed": 7,
+    "ProjectedDirectIK": 0,
+    "ThreadedAsync": 7,
+    "source": "runs/indexes/main.json"
+  },
   "kind": "ur5e_nominal_portability",
   "methods": [
     "ProjectedDirectIK",
@@ -724,6 +733,84 @@
     "sha256": "cf28428948dbb2ad3bd1cd7aa3957665de640f19235e379b2df701fe6219a635",
     "size": 20079
   },
+  "resolved_robot_contract": {
+    "actuator_names": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow",
+      "wrist_1",
+      "wrist_2",
+      "wrist_3"
+    ],
+    "command_acceleration_limit": [
+      5.0,
+      7.0,
+      10.0,
+      10.0,
+      10.0,
+      12.5
+    ],
+    "command_velocity_limit": [
+      1.0,
+      1.0,
+      1.0,
+      2.0,
+      2.0,
+      2.5
+    ],
+    "contact_semantics": "disabled",
+    "ee_site_name": "ee_site",
+    "expected_control_dt": 0.01,
+    "frame_skip": 5,
+    "gravity_compensation": true,
+    "gravity_compensation_zero_indices": [],
+    "home_q": [
+      -1.5707999467849731,
+      -1.5707999467849731,
+      1.5707999467849731,
+      -1.5707999467849731,
+      -1.5707999467849731,
+      0.0
+    ],
+    "joint_names": [
+      "shoulder_pan_joint",
+      "shoulder_lift_joint",
+      "elbow_joint",
+      "wrist_1_joint",
+      "wrist_2_joint",
+      "wrist_3_joint"
+    ],
+    "model_xml": "dynamics_modeling/robots/ur5e/ur5e_project.xml",
+    "model_xml_sha256": "29b12c1b526b6c88d8267941db05c9f3197884c62745661f79a4e8569fc3ff27",
+    "n_joints": 6,
+    "residual_max": [
+      0.11999999731779099,
+      0.10000000149011612,
+      0.11999999731779099,
+      0.15000000596046448,
+      0.15000000596046448,
+      0.20000000298023224
+    ],
+    "robot_config": "configs/robots/ur5e.yaml",
+    "robot_id": "ur5e",
+    "robot_spec_sha256": "769bf2045193d7ef7d33f1c1ba50b805349b0a40c482e5b43696ade1a1b9c3b9",
+    "servo_scale": [
+      0.07999999821186066,
+      0.07000000029802322,
+      0.07999999821186066,
+      0.03999999910593033,
+      0.02500000037252903,
+      0.05000000074505806
+    ],
+    "state_velocity_limit": [
+      1.0,
+      1.0,
+      1.0,
+      2.0,
+      2.0,
+      2.5
+    ]
+  },
   "robot_identity": {
     "actuator_names": [
       "shoulder_pan",
@@ -761,7 +848,7 @@
     "robot_id": "ur5e",
     "robot_spec_sha256": "769bf2045193d7ef7d33f1c1ba50b805349b0a40c482e5b43696ade1a1b9c3b9"
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "trajectories": [
     "circle",
     "figure8",

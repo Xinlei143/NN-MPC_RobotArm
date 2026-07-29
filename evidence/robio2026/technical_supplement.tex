@@ -10,37 +10,36 @@
 
 \begin{document}
 \maketitle
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
 
 \section{Purpose and evidence boundary}
-This supplement provides the implementation, configuration, and diagnostic detail
-that is intentionally compressed in the conference manuscript. It is
-not a second experimental study and introduces no results beyond the frozen
-public evidence bundle. The source files named below are included in this same
-directory and are listed with SHA-256 digests in \texttt{PUBLIC\_MANIFEST.json}.
+This supplement provides implementation, configuration, and diagnostic detail
+compressed in the conference manuscript. It introduces no results beyond the
+frozen or deterministically reanalysed public evidence bundle; its named source
+files are listed with SHA-256 digests in \texttt{PUBLIC\_MANIFEST.json}.
 
 All results use MuJoCo position-controlled robot models. ABB IRB~2400 is the
 primary robot; UR5e is an independently trained and calibrated nominal
 within-robot replication. The evidence does not establish physical-robot
-performance, hardware torque feasibility for ABB, hard-real-time scheduling,
+performance, ABB hardware-torque feasibility, hard-real-time scheduling,
 robust-MPC guarantees, shared-model transfer, or arbitrary-morphology
-generalization. The post-freeze effort sweep is diagnostic and did not select
-or replace the frozen primary configuration.
+generalization. The post-freeze effort sweep is diagnostic only.
 
-The repository also implements an optional budgeted uncertainty supervisor for
-threaded execution. Model~A alone optimizes CEM; compatible GRU replicas then
-evaluate only the selected short-horizon trajectory, and normalized ensemble
-disagreement can drive hysteretic residual limiting or a strict zero-residual
-fallback to the projected current IK nominal. The supervisor was disabled in all frozen experiments, so this
-supplement reports its implementation boundary but no uncertainty-detection or
-safety-performance result.
+The repository implements an optional budgeted uncertainty supervisor for
+threaded execution. Model~A alone optimizes CEM; compatible GRU replicas assess
+only the selected short-horizon trajectory, and normalized disagreement can
+limit residuals or trigger a strict zero-residual fallback to the projected
+current IK nominal. It was disabled in all frozen experiments, so no
+uncertainty-detection or safety-performance result is reported.
 
 \section{Controller and execution configuration}
-The controller uses a one-layer GRU with hidden size 256 and history length 16.
-It predicts the velocity increment from aligned tokens
-$[q_t,\dot q_t,q_t^{\rm ref}]$ and is trained with one-step increment loss plus
-20-step rollout loss on a disjoint 90/10 split. ABB and UR5e use separate XML
-models, data distributions, checkpoints, normalizers, task references, limits,
-and delay calibrations. The complete machine-readable contracts are
+The controller is a one-layer GRU (hidden size 256; history length 16) that
+predicts velocity increments from aligned $[q_t,\dot q_t,q_t^{\rm ref}]$ tokens,
+using one-step increment plus 20-step rollout loss on a disjoint 90/10 split.
+Frozen controller cost weights/scales are shared; XML models, data distributions,
+checkpoints, normalizers, references, RobotSpec contracts, and delays are
+robot-specific. The complete machine-readable contracts are
 \url{abb/manifests/control_manifest.json} and
 \url{ur5e/manifests/paper.json}.
 
@@ -66,6 +65,16 @@ Residual maximum & (0.12,.10,.12,.15,.15,.20) rad \\
 \end{tabular}
 \end{table}
 
+\paragraph{True-history window validation.}
+Held-out model errors use fixed windows beginning at steps 16, 36, \ldots, 176
+of each saved 200-step rollout. Every window therefore has a complete
+16-token ground-truth recurrent context before its first predicted successor.
+Each horizon is evaluated as a separate segmentwise RMSE: $h=1$ measures the
+first successor and $h=20$ pools prediction steps $1{:}20$ within each window.
+These are not terminal errors. The historical start-of-rollout validation,
+which padded the missing initial GRU history, is retained in the evidence
+bundle for audit but is not used in the manuscript table.
+
 Residual packets encode corrections, not reusable absolute commands. At packet
 age $a$, the full protocol reconstructs and projects
 \[
@@ -80,35 +89,30 @@ not a competitive controller comparison. The implementation is in
 \texttt{mpc/delay\_protocol.py}.
 
 \section{Artifacts, references, and calibration}
-The public manifests record XML/source hashes, TCP site and orientation,
-home/departure configurations, joint and actuator ranges, command limits,
-checkpoint and normalizer hashes, training-dataset and reference hashes, and
-the calibrated activation delay. The ABB delay is $D=6$ and the UR5e delay is
-$D=7$, each defined as
-\[
-\left\lceil\bigl(P_{95}(t_{\rm snapshot\rightarrow publication})+
-5~\mathrm{ms}\bigr)/10~\mathrm{ms}\right\rceil.
-\]
-The ABB manifest records the checkpoint and normalizer SHA-256 digests; the
-corresponding UR5e values are recorded in
-\url{ur5e/manifests/paper.json}. Artifacts themselves are deliberately not
-committed to avoid distributing large learned-model files through Git.
+The manifests record robot contracts, XML/source hashes, command limits, model,
+data, and reference hashes, and activation delays. For UR5e, legacy base-run
+arguments retain pre-resolution workflow values for fingerprint compatibility;
+separate fields record the resolved robot contract and formal per-case delays.
+The guard-adjusted 95th-percentile calibration gives ABB $D=6$ and UR5e $D=7$.
+Checkpoint and normalizer SHA-256 digests are recorded in the manifests;
+artifacts themselves are not committed to avoid distributing large learned
+model files through Git.
 
 \section{Full diagnostics}
 \begin{table}[h]
 \centering\scriptsize
-\caption{Held-out open-loop model errors pooled over steps $1{:}h$.
-Errors are $q/\dot q$ RMSE in rad/rad\,s$^{-1}$; Div. is the divergent-rollout
-rate at $\sigma_u=0.8$.}
+\caption{Held-out open-loop model errors from complete-history windows, pooled
+over prediction steps $1{:}h$. Errors are $q/\dot q$ RMSE in rad/rad\,s$^{-1}$;
+Div. is the divergent-window rate at $\sigma_u=0.8$.}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lccccc}
 \toprule
 Robot, $h$ & $q$ RMSE, $\sigma_u=.5$ & $\dot q$ RMSE, $\sigma_u=.5$ & $q$ RMSE, $\sigma_u=.8$ & $\dot q$ RMSE, $\sigma_u=.8$ & Div., $\sigma_u=.8$ \\
 \midrule
-ABB, 1 & .00337 & .55842 & .00715 & 1.13450 & 0\% \\
-ABB, 20 & .02164 & .26490 & .04411 & .49777 & 2\% \\
-UR5e, 1 & .00127 & .12659 & .00138 & .13613 & 0\% \\
-UR5e, 20 & .00956 & .06916 & .01057 & .07509 & 0\% \\
+ABB, 1 & .000670 & .001990 & .001069 & .005570 & 0\% \\
+ABB, 20 & .004852 & .034472 & .006876 & .051398 & 0\% \\
+UR5e, 1 & .000132 & .000465 & .000160 & .000532 & 0\% \\
+UR5e, 20 & .001334 & .002745 & .001436 & .003023 & 0\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -132,11 +136,12 @@ Relative realized regret & 0.192\% & [0, 0.481]\% \\
 \end{table}
 
 \paragraph{Model validation and CEM ranking.}
-Tables~2--3 provide the principal held-out and replay diagnostics without
-requiring the reader to inspect raw files. Full per-joint, excitation, and
-rollout-level diagnostics are in
-\url{abb/model_validation/gru_validation_aggregate.json} and the
-associated CSV files. Counterfactual candidate replay is in
+Tables~2--3 provide the principal held-out and replay diagnostics. Complete
+window, rollout, and excitation summaries are in
+\url{abb/model_validation/aggregate.csv},
+\url{abb/model_validation/analysis_manifest.json}, and the corresponding
+\url{ur5e/model_validation} files; historical padded-history diagnostics are
+also retained under \url{abb/model_validation}. Counterfactual replay is in
 \url{abb/model_validation/formal_mpc_replay_aggregate.csv} and
 \url{claim_evidence/summaries/candidate_ranking.json}. It covers retained,
 projection-consistent online candidates only; its lower branch error must not
@@ -144,12 +149,11 @@ be compared directly with the broader random-excitation validation.
 
 \paragraph{Robustness and timing.}
 ABB robustness applies L3/L6 single-factor payload, actuator-gain, TCP-force,
-and observation-noise perturbations. The full per-condition and cluster
-bootstrap results are in \url{robustness_and_timing} and
-\url{abb/summaries}. Wall-clock timing, packet behavior, projection activity,
-and the threaded-versus-virtual contrast are stored alongside them. All primary
-experiments had no planner failure or imposed joint, command-velocity, or
-command-acceleration violation; this does not imply a physical actuator limit.
+and observation-noise perturbations. Per-condition/bootstrap results, timing,
+packet behavior, and projection activity are in \url{robustness_and_timing} and
+\url{abb/summaries}. Primary experiments had no planner failure or imposed
+joint, command-velocity, or command-acceleration violation; this does not imply
+a physical actuator limit.
 
 \paragraph{Mechanism isolation.}
 The frozen 20-case ABB matrix gives $+2.82$ mm for removing future alignment
@@ -158,17 +162,9 @@ The frozen 20-case ABB matrix gives $+2.82$ mm for removing future alignment
 ($[-2.25,0.28]$ mm), all relative to FullVirtual. A focused recurrent-history
 isolation changed TCP RMSE by $-0.67$ mm with an interval crossing zero. Thus
 the evidence supports temporal input consistency but does not establish an
-independent nominal tracking gain from recurrent-history advancement.
-
-\paragraph{Projection, reranking, and effort sensitivity.}
-The detailed projection and task-score studies are in
-\url{abb/summaries/projection_choice_aggregate.csv} and
-\url{abb/summaries/task_cost_aggregate.csv}. At common $D=6$, task-space
-reranking did not establish an independent tracking gain. The post-freeze sweep
-jointly scales servo and residual-smoothness terms by $0.5,1,2,4,8\times$;
-the complete tracking, acceleration, torque RMS/P95/max, jerk, and power
-proxies are in \url{claim_evidence/summaries/effort_pareto_aggregate.csv}
-and \url{claim_evidence/summaries/effort_peak_aggregate.csv}. It is a diagnostic frontier, not a
-replacement primary configuration.
+independent nominal tracking gain from recurrent-history advancement. Detailed
+projection/task-score and post-freeze effort diagnostics are released in the
+corresponding \url{abb/summaries} and \url{claim_evidence/summaries} files;
+they did not replace the frozen primary configuration.
 
 \end{document}

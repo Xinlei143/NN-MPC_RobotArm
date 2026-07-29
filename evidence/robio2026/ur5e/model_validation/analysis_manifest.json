@@ -1,0 +1,390 @@
+{
+  "aggregation": "For each rollout and horizon, pool equal-length windows by RMS; then report the mean and distribution over rollouts within each action-std group.",
+  "checkpoint": {
+    "path": "./dynamics_modeling/outputs/checkpoints/ur5e/gru_20260728_000313/best_model.pt",
+    "sha256": "52b8c84f22c9dcd0d756bc075e33d8a9a1e72b566b7473732d03d20a5c8e9edc",
+    "size": 3363765
+  },
+  "description": "Offline reanalysis of saved held-out rollouts. Starts have complete ground-truth recurrent history; no MuJoCo rollout, data collection, or training was rerun.",
+  "history_len": 16,
+  "horizons": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "kind": "frozen_gru_true_history_window_reanalysis",
+  "normalizer": {
+    "path": "./dynamics_modeling/outputs/checkpoints/ur5e/gru_20260728_000313/normalizer.pt",
+    "sha256": "8cfdfc8a3b4b39c81358a1906950067d1309aeeadbe04ba8894793c3d91b4c15",
+    "size": 3961
+  },
+  "raw_rollouts": [
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_000.npz",
+      "sha256": "a260a5e4f72e84f12e93c55f826eb4011b2b821697b4cbb78bae838a865e0edf",
+      "size": 21423
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_001.npz",
+      "sha256": "8fac87c082d470ad7145618f8ea9845fd813b30b6040f477a38a25ca44983b5f",
+      "size": 22977
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_002.npz",
+      "sha256": "90db1eece3693e79da28ccde1848a65498fa9dff04200a269c14ce7b7b52cf31",
+      "size": 22911
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_003.npz",
+      "sha256": "5616174973b8fa6ad099a2fd8535ae20587082d35a87d66acd04394f4501479f",
+      "size": 22909
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_004.npz",
+      "sha256": "217c1fa4276406abb680de365c49cd088887a8d8efa4fd51e764e09d85abc3f3",
+      "size": 23199
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_005.npz",
+      "sha256": "3001644ddb27a5a7f4c2c4eef44d1d2fe6b71aecf2cd64c2aba30d1a128e7d99",
+      "size": 23050
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_006.npz",
+      "sha256": "aa218bd541e1369cf31416df4e14f864b8f4d4a47a4a2d2a933418ca002e316e",
+      "size": 21243
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_007.npz",
+      "sha256": "07baab32e029583a2feedafb8b542fe4b3c331b9a6beca7f0eb665536ed09610",
+      "size": 22928
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_008.npz",
+      "sha256": "0c7c15a960f489fe5b0ece016ddc4455c389cb6ce2c7348e315770d2a4d5018a",
+      "size": 23011
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_009.npz",
+      "sha256": "f9ed5184800be034c96b1575a11c8ba6cc2458f8fc79069a69593df635992cb0",
+      "size": 22960
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_010.npz",
+      "sha256": "98ba9baa94d3b49831d711eefe53ae25b99b6e4fe68d29dd05385a48e2716592",
+      "size": 22969
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_011.npz",
+      "sha256": "74415bfd458aae753b2a35a86b073b4e1bb8ec16cd5876bf971dd7b41ecc83c4",
+      "size": 22969
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_012.npz",
+      "sha256": "0de581042a1ef1f0a158ecc0abec10dff9725db106f92282dbc2024c31acd1e8",
+      "size": 21135
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_013.npz",
+      "sha256": "4ddd920531d78b4864722d74f83f093e810c7ccc689f0418b221cbeedc649787",
+      "size": 23105
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_014.npz",
+      "sha256": "2a396ca05db3819b6bd81d551527b55fce2a57c819f2b4d395b6aa871e122b72",
+      "size": 22988
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_015.npz",
+      "sha256": "26eb6b2bce1c72a60ce3c19e4eba8009e942741abe7d9be8af1b654cc71644f6",
+      "size": 22822
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_016.npz",
+      "sha256": "44043aebd1ed16db6812aec8f57d4c96b56b585c16f6d26a1049a9d2193a7a88",
+      "size": 22910
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_017.npz",
+      "sha256": "56dbc627035abacc02af6a5e8394300868d116e6fca50848d5ab1597a6dbd5b6",
+      "size": 22967
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_018.npz",
+      "sha256": "17fee5c1018ba0b0c8c5d4041e790c56baa34841b3e54947d426e80796ad949b",
+      "size": 21384
+    },
+    {
+      "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/evaluation_rollout_019.npz",
+      "sha256": "045e0300b32060d5e382b26ffafb0376e2c86313960f5a70dbc3c1f3e565df56",
+      "size": 23089
+    }
+  ],
+  "robot_identity": {
+    "actuator_names": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow",
+      "wrist_1",
+      "wrist_2",
+      "wrist_3"
+    ],
+    "contact_semantics": "disabled",
+    "ee_site_name": "ee_site",
+    "expected_control_dt": 0.01,
+    "frame_skip": 5,
+    "gravity_compensation": true,
+    "gravity_compensation_zero_indices": [],
+    "home_q": [
+      -1.5707999467849731,
+      -1.5707999467849731,
+      1.5707999467849731,
+      -1.5707999467849731,
+      -1.5707999467849731,
+      0.0
+    ],
+    "joint_names": [
+      "shoulder_pan_joint",
+      "shoulder_lift_joint",
+      "elbow_joint",
+      "wrist_1_joint",
+      "wrist_2_joint",
+      "wrist_3_joint"
+    ],
+    "model_xml": "dynamics_modeling/robots/ur5e/ur5e_project.xml",
+    "model_xml_sha256": "29b12c1b526b6c88d8267941db05c9f3197884c62745661f79a4e8569fc3ff27",
+    "n_joints": 6,
+    "robot_id": "ur5e",
+    "robot_spec_sha256": "769bf2045193d7ef7d33f1c1ba50b805349b0a40c482e5b43696ade1a1b9c3b9"
+  },
+  "schema_version": 1,
+  "source_validation_manifest": {
+    "path": "./outputs/paper_ur5e_v2/diagnostics/gru_validation/validation_manifest.json",
+    "sha256": "22d169a3caa817251dfedb74b3be8808ea430e1da63d24f2d3f10ca863cbcdfb",
+    "size": 1707
+  },
+  "starts_by_rollout": {
+    "0": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "1": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "10": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "11": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "12": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "13": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "14": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "15": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "16": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "17": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "18": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "19": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "2": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "3": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "4": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "5": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "6": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "7": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "8": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ],
+    "9": [
+      16,
+      36,
+      56,
+      76,
+      96,
+      116,
+      136,
+      156,
+      176
+    ]
+  },
+  "window_stride": 20
+}

@@ -21,10 +21,16 @@ SOURCES = {
         "outputs/paper_final/diagnostics/formal_mpc_replay/*.csv",
         "outputs/paper_final/diagnostics/gru_validation/*.csv",
         "outputs/paper_final/diagnostics/gru_validation/*.json",
+        "outputs/paper_model_validation_history_windows_v1/*.csv",
+        "outputs/paper_model_validation_history_windows_v1/*.json",
     ),
     "abb/figures": ("outputs/paper_final/figures/*",),
     "abb/manifests": ("outputs/paper_final/manifests/*.json",),
     "ur5e/summaries": ("outputs/paper_ur5e_v2/summaries/*",),
+    "ur5e/model_validation": (
+        "outputs/paper_ur5e_history_windows_v1/*.csv",
+        "outputs/paper_ur5e_history_windows_v1/*.json",
+    ),
     "ur5e/manifests": (
         "outputs/paper_ur5e_v2/manifests/*.json",
         "outputs/paper_ur5e_v2/freeze_audit.json",

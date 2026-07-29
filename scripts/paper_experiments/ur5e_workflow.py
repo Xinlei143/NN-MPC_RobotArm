@@ -37,6 +37,7 @@ from scripts.experiment_utils import (
     write_immutable_json,
 )
 from scripts.paper_experiments.evaluation import aggregate_rows, summarize_arrays, write_csv, write_json
+from scripts.paper_experiments.reanalyze_gru_history_windows import parse_horizons, reanalyze
 from scripts.robustness._runtime import load_runner
 
 
@@ -74,6 +75,20 @@ def parser() -> argparse.ArgumentParser:
     validation.add_argument("--num-rollouts", type=int, default=20)
     validation.add_argument("--rollout-len", type=int, default=200)
 
+    history_windows = sub.add_parser("reanalyze-model-validation")
+    history_windows.add_argument(
+        "--input-dir",
+        default=str(ROOT / "outputs" / "paper_ur5e_v2" / "diagnostics" / "gru_validation"),
+        help="Frozen validation rollout directory to reanalyse without rerunning MuJoCo.",
+    )
+    history_windows.add_argument(
+        "--output-dir",
+        default=str(ROOT / "outputs" / "paper_ur5e_history_windows_v1"),
+    )
+    history_windows.add_argument("--horizons", type=parse_horizons, default=(1, 5, 10, 20))
+    history_windows.add_argument("--window-stride", type=int, default=20)
+    history_windows.add_argument("--overwrite", action="store_true")
+
     delay = sub.add_parser("calibrate-delay")
     delay.add_argument("--samples", type=int, default=500)
     delay.add_argument("--guard-ms", type=float, default=5.0)
@@ -85,6 +100,9 @@ def parser() -> argparse.ArgumentParser:
 
     manifest = sub.add_parser("build-manifest")
     manifest.add_argument("--allow-dirty", action="store_true")
+
+    upgrade = sub.add_parser("upgrade-manifest")
+    upgrade.add_argument("--manifest", default=None)
 
     run = sub.add_parser("run")
     run.add_argument("--manifest", default=None)
@@ -279,6 +297,73 @@ def _base_args(checkpoint: Path, normalizer: Path) -> argparse.Namespace:
     args.visualize = False
     args.settle_steps = 50
     return args
+
+
+def resolved_robot_contract(robot) -> dict[str, Any]:
+    """Return the RobotSpec-resolved contract applied by the runtime.
+
+    ``base_run_args`` is intentionally preserved in frozen manifests because it
+    participates in historical run fingerprints. It is captured before the
+    runner resolves a RobotSpec, so legacy defaults such as an ABB XML path are
+    not evidence of the robot model used by a UR5e rollout.
+    """
+    return {
+        **robot.artifact_identity(),
+        "robot_config": str(ROBOT_CONFIG.relative_to(ROOT)),
+        "command_velocity_limit": [float(value) for value in robot.command_velocity_limit],
+        "command_acceleration_limit": [float(value) for value in robot.command_acceleration_limit],
+        "state_velocity_limit": [float(value) for value in robot.state_velocity_limit],
+        "residual_max": [float(value) for value in robot.residual_max],
+        "servo_scale": [float(value) for value in robot.servo_scale],
+    }
+
+
+def formal_case_delay_steps(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Summarize the formal per-method delays recorded in the main index."""
+    delay = int(manifest["delay_calibration"]["anticipation_delay_steps"])
+    return {
+        "ProjectedDirectIK": 0,
+        "IdealZeroDelay": 0,
+        "NaiveDelayed": delay,
+        "FullVirtual": delay,
+        "ThreadedAsync": delay,
+        "source": "runs/indexes/main.json",
+    }
+
+
+def upgrade_manifest_payload(manifest: dict[str, Any], robot=None) -> dict[str, Any]:
+    """Add RobotSpec resolution metadata without changing fingerprints."""
+    if manifest.get("kind") != "ur5e_nominal_portability":
+        raise ValueError("Manifest is not a UR5e nominal-portability manifest")
+    if "base_run_args" not in manifest:
+        raise ValueError("Legacy base_run_args is required for fingerprint compatibility")
+    resolved_robot = robot or load_robot_spec(ROBOT_CONFIG, validate_model=True)
+    if manifest.get("robot_identity") != resolved_robot.artifact_identity():
+        raise ValueError("Manifest robot identity does not match the resolved UR5e RobotSpec")
+    upgraded = deepcopy(manifest)
+    upgraded["schema_version"] = 2
+    upgraded["base_run_args_semantics"] = (
+        "Workflow base arguments captured before RobotSpec resolution. Retained "
+        "verbatim for frozen run-fingerprint compatibility; these fields are not "
+        "the executed robot contract."
+    )
+    upgraded["resolved_robot_contract"] = resolved_robot_contract(resolved_robot)
+    upgraded["formal_case_delay_steps"] = formal_case_delay_steps(upgraded)
+    return upgraded
+
+
+def upgrade_manifest(manifest_path: Path) -> Path:
+    """Upgrade a frozen manifest's explanatory schema without rerunning control."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    upgraded = upgrade_manifest_payload(manifest)
+    if manifest.get("schema_version") == 2:
+        if manifest != upgraded:
+            raise ValueError("Existing schema-v2 manifest conflicts with the current UR5e contract")
+        return manifest_path
+    if manifest.get("schema_version") != 1:
+        raise ValueError("Only schema-v1 UR5e manifests can be upgraded")
+    write_json(manifest_path, upgraded)
+    return manifest_path
 
 
 def validate_model(
@@ -495,7 +580,7 @@ def build_manifest(
         raise FileNotFoundError("References and formal delay calibration must exist")
     base = _base_args(checkpoint, normalizer)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "ur5e_nominal_portability",
         "robot_identity": robot.artifact_identity(),
         "environment": environment,
@@ -516,11 +601,18 @@ def build_manifest(
             key: value for key, value in vars(base).items()
             if key not in {"checkpoint", "normalizer", "save_dir", "seed", "_robot_spec"}
         },
+        "base_run_args_semantics": (
+            "Workflow base arguments captured before RobotSpec resolution. Retained "
+            "verbatim for frozen run-fingerprint compatibility; these fields are not "
+            "the executed robot contract."
+        ),
+        "resolved_robot_contract": resolved_robot_contract(robot),
         "claim_scope": (
             "Nominal architecture portability on a second 6-DoF position-controlled "
             "MuJoCo manipulator; not learned-model transfer."
         ),
     }
+    payload["formal_case_delay_steps"] = formal_case_delay_steps(payload)
     path = output / "manifests" / "paper.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     write_immutable_json(path, payload)
@@ -854,6 +946,15 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "validate-model":
         checkpoint, normalizer = _require_artifacts(args)
         print(validate_model(output, checkpoint, normalizer, args.num_rollouts, args.rollout_len))
+    elif args.command == "reanalyze-model-validation":
+        print(reanalyze(
+            resolve(args.input_dir),
+            resolve(args.output_dir),
+            ROBOT_CONFIG,
+            args.horizons,
+            args.window_stride,
+            args.overwrite,
+        ))
     elif args.command == "calibrate-delay":
         checkpoint, normalizer = _require_artifacts(args)
         print(calibrate_delay(
@@ -870,6 +971,9 @@ def main(argv: list[str] | None = None) -> None:
         print(build_manifest(
             output, checkpoint, normalizer, resolve(args.dataset_manifest), args.allow_dirty,
         ))
+    elif args.command == "upgrade-manifest":
+        manifest = resolve(args.manifest or output / "manifests" / "paper.json")
+        print(upgrade_manifest(manifest))
     elif args.command == "run":
         manifest = resolve(args.manifest or output / "manifests" / "paper.json")
         print(run_suite(output, manifest, args.resume, args.case_limit))

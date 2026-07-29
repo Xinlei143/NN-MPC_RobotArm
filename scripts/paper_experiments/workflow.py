@@ -27,6 +27,7 @@ from scripts.experiment_utils import (
     paired_bootstrap_rows, run_fingerprint, write_immutable_json,
 )
 from scripts.paper_experiments.evaluation import aggregate_rows, latency_recovery, summarize_arrays, write_csv, write_json
+from scripts.paper_experiments.reanalyze_gru_history_windows import parse_horizons, reanalyze
 from scripts.paper_experiments.statistics import delay_sweep_report, main_endpoint, projection_report
 from scripts.robustness._runtime import ROOT, load_runner
 
@@ -95,6 +96,20 @@ def parser() -> argparse.ArgumentParser:
     validation = sub.add_parser("validate-model")
     validation.add_argument("--num-rollouts", type=int, default=20)
     validation.add_argument("--rollout-len", type=int, default=200)
+
+    history_windows = sub.add_parser("reanalyze-model-validation")
+    history_windows.add_argument(
+        "--input-dir",
+        default=str(ROOT / "outputs" / "paper_final" / "diagnostics" / "gru_validation"),
+        help="Frozen validation rollout directory to reanalyse without rerunning MuJoCo.",
+    )
+    history_windows.add_argument(
+        "--output-dir",
+        default=str(ROOT / "outputs" / "paper_model_validation_history_windows_v1"),
+    )
+    history_windows.add_argument("--horizons", type=parse_horizons, default=(1, 5, 10, 20))
+    history_windows.add_argument("--window-stride", type=int, default=20)
+    history_windows.add_argument("--overwrite", action="store_true")
 
     manifest = sub.add_parser("build-manifest")
     manifest.add_argument("--allow-dirty", action="store_true")
@@ -997,6 +1012,15 @@ def main(argv: list[str] | None = None) -> None:
         values = [int(value) for value in args.preview_values.split(",") if value.strip()]
         print(calibrate_preview(output, values, args.smoke, args.orientation_tolerance))
     elif args.command == "validate-model": validate_model(output, args.num_rollouts, args.rollout_len)
+    elif args.command == "reanalyze-model-validation":
+        print(reanalyze(
+            resolve(args.input_dir),
+            resolve(args.output_dir),
+            ROOT / "configs" / "robots" / "abb_irb2400.yaml",
+            args.horizons,
+            args.window_stride,
+            args.overwrite,
+        ))
     elif args.command == "build-manifest":
         print(build_manifest(
             output,
