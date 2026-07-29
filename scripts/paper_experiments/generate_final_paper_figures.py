@@ -288,7 +288,7 @@ def fig3(output: Path, data_root: Path, run_dir: Path, seed: int) -> None:
 
 def fig4(output: Path, data_root: Path, suite_root: Path) -> None:
     path=suite_root/"summaries"/"delay_sweep_components.csv"; rows=pd.read_csv(path)
-    mapping={"naive_delayed":"NaiveDelayed","anchor_only":"Anchor-only","no_feedback":"Anchor+Reanchor","full":"FullVirtual"}
+    mapping={"naive_delayed":"NaiveDelayed","anchor_only":"Alignment-only","no_feedback":"Alignment+Reanchor","full":"FullVirtual"}
     fig, axes=plt.subplots(1,2,figsize=(DOUBLE_COLUMN_IN,1.78),sharey=True)
     tidy=[]
     for ax,trajectory,label in zip(axes,("circle","fast_ellipse"),("circle","fast ellipse")):
@@ -305,14 +305,14 @@ def fig4(output: Path, data_root: Path, suite_root: Path) -> None:
         inset=inset_axes(ax,width="42%",height="42%",loc="upper left",borderpad=.8)
         collapse=members[members.delay_protocol.eq("anchor_only")]
         for delay, group in collapse.groupby("delay_steps"):
-            inset.scatter([delay]*len(group),group.tcp_rmse_m*1000,color=METHOD_STYLES["Anchor-only"]["color"],marker="X",s=14)
-            inset.plot([delay],[group.tcp_rmse_m.mean()*1000],marker="X",color=METHOD_STYLES["Anchor-only"]["color"],ms=3.5)
-        inset.set_xlim(5.6,8.4); inset.set_ylim(600,1100); inset.set_xticks([6,8]); inset.set_yticks([600,1000]); inset.tick_params(labelsize=5.6); inset.set_title("Anchor-only collapse",fontsize=5.7,pad=1)
+            inset.scatter([delay]*len(group),group.tcp_rmse_m*1000,color=METHOD_STYLES["Alignment-only"]["color"],marker="X",s=14)
+            inset.plot([delay],[group.tcp_rmse_m.mean()*1000],marker="X",color=METHOD_STYLES["Alignment-only"]["color"],ms=3.5)
+        inset.set_xlim(5.6,8.4); inset.set_ylim(600,1100); inset.set_xticks([6,8]); inset.set_yticks([600,1000]); inset.tick_params(labelsize=5.6); inset.set_title("Alignment-only collapse",fontsize=5.7,pad=1)
         ax.set_title(label); ax.set_xlabel("Delay $D$ [control steps]"); ax.set_xticks([2,4,6,8]); ax.set_ylim(0,120); finish_axis(ax); panel_label(ax,"a" if trajectory=="circle" else "b")
     axes[0].set_ylabel("TCP RMSE [mm]"); axes[1].legend(loc="lower right",fontsize=6.1,ncol=2,handlelength=2)
     fig.subplots_adjust(left=.075,right=.995,bottom=.22,top=.91,wspace=.08); save_figure(fig,output/"fig4_delay_sweep")
     metadata=source_metadata([path],selection="Frozen 2 trajectories × 4 protocols × 4 delays × 3 seeds.",statistic_unit="trajectory × seed case; points show all three seeds and error bars are min–max, not confidence intervals.")
-    metadata["methods"]=list(mapping.values()); write_bundle(data_root/"fig4",tidy=tidy,wide=pd.DataFrame(tidy).pivot_table(index=["trajectory","delay_steps","seed"],columns="display_name",values="tcp_rmse_mm").reset_index().to_dict("records"),metadata=metadata,readme="Fig. 4 source data. The inset displays the unfitted, untransformed 600–1100 mm Anchor-only collapse range.")
+    metadata["methods"]=list(mapping.values()); write_bundle(data_root/"fig4",tidy=tidy,wide=pd.DataFrame(tidy).pivot_table(index=["trajectory","delay_steps","seed"],columns="display_name",values="tcp_rmse_mm").reset_index().to_dict("records"),metadata=metadata,readme="Fig. 4 source data. The inset displays the unfitted, untransformed 600–1100 mm Alignment-only collapse range.")
     write_source_manifest(output,"fig4_delay_sweep",metadata)
 
 

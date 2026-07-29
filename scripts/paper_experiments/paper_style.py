@@ -20,8 +20,8 @@ METHOD_STYLES: dict[str, dict[str, Any]] = {
     "NaiveDelayed": {"color": "#D55E00", "linestyle": "-", "linewidth": 1.65, "marker": "o"},
     "FullVirtual": {"color": "#0072B2", "linestyle": "--", "linewidth": 1.65, "marker": "s"},
     "ThreadedASAP": {"color": "#009E73", "linestyle": "-", "linewidth": 1.7, "marker": "^"},
-    "Anchor-only": {"color": "#E69F00", "linestyle": "--", "linewidth": 1.5, "marker": "X"},
-    "Anchor+Reanchor": {"color": "#009E73", "linestyle": "-.", "linewidth": 1.5, "marker": "d"},
+    "Alignment-only": {"color": "#E69F00", "linestyle": "--", "linewidth": 1.5, "marker": "X"},
+    "Alignment+Reanchor": {"color": "#009E73", "linestyle": "-.", "linewidth": 1.5, "marker": "d"},
 }
 
 

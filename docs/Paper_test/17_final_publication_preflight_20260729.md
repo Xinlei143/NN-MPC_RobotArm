@@ -25,7 +25,7 @@ repository footnote must target the resulting immutable release URL rather than
 | Check | Expected result |
 |---|---|
 | Manuscript compilation | Successful `latexmk` build; 7 pages; A4 PDF |
-| Supplement compilation | Successful `latexmk` build; 2 pages; A4 PDF |
+| Supplement compilation | Successful `latexmk` build; 3 pages; A4 PDF |
 | PDF fonts | All fonts embedded; no Type 3 fonts |
 | LaTeX integrity | No undefined citations/references; final PDF visually checked for clipping or overlap |
 | Evidence manifest | Every listed artifact matches its SHA-256 digest |
@@ -37,7 +37,7 @@ repository footnote must target the resulting immutable release URL rather than
 ## Local verification record
 
 - The manuscript compiles as a seven-page A4 PDF; the technical supplement
-  compiles as a two-page A4 PDF.
+  compiles as a three-page A4 PDF.
 - Both PDFs use embedded Type 1 fonts, with no Type 3 fonts or undefined
   references. The final PDF was visually checked for clipping and overlap.
 - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n pendulum-rl pytest -q mpc/tests`

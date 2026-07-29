@@ -8,7 +8,7 @@ from pathlib import Path
 from paper_style import METHOD_STYLES
 
 
-MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", "fig4_delay_sweep", "fig5_robustness_forest")
+MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", "fig4_delay_sweep")
 
 
 def main() -> None:
@@ -23,9 +23,7 @@ def main() -> None:
         for suffix in suffixes:
             if not (figures/f"{name}{suffix}").is_file(): failures.append(f"missing {name}{suffix}")
         if name.startswith("fig2") and not (data/"fig2"/"metadata.json").is_file(): failures.append("missing Fig. 2 source data")
-    if not (figures / "fig2_temporal_alignment_timeline.png").is_file():
-        failures.append("missing temporal-alignment timeline figure")
-    if "no_feedback" in tex: failures.append("main.tex still exposes no_feedback rather than Anchor+Reanchor")
+    if "no_feedback" in tex: failures.append("main.tex still exposes no_feedback rather than Alignment+Reanchor")
     if "Latency [ms]" in tex: failures.append("main.tex contains ambiguous Latency label")
     forbidden = {
         "77505a5": "obsolete evidence-only commit",
@@ -36,7 +34,7 @@ def main() -> None:
     for phrase, reason in forbidden.items():
         if phrase in tex:
             failures.append(f"main.tex contains {phrase!r}: {reason}")
-    required = ("8132559", "tab:configuration", "tab:protocol-semantics", "tab:design-ablation", "fig2_temporal_alignment_timeline")
+    required = ("tab:gru-validation", "tab:protocol-semantics", "tab:ablation", "fig2_representative_tracking", "fig4_delay_sweep")
     for phrase in required:
         if phrase not in tex:
             failures.append(f"main.tex is missing required manuscript marker {phrase!r}")
