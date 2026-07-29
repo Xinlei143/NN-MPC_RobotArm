@@ -1,0 +1,23 @@
+{
+  "delay_steps": 6,
+  "matched_cases": 20,
+  "max_abs_1x_minus_primary": {
+    "command_acceleration_rms_rad_s2": 0.0,
+    "tcp_rmse_mm": 0.0,
+    "torque_rms_nm": 0.0
+  },
+  "protocol": "FullVirtual",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "trajectories": [
+    "circle",
+    "figure8",
+    "fast_ellipse",
+    "rounded_square"
+  ]
+}

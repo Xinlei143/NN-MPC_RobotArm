@@ -1,6 +1,6 @@
 # Core-Claim Evidence Tests
 
-This report adds 99 closed-loop rollouts, 54 candidate snapshots, and 35
+This report adds 145 closed-loop rollouts, 54 candidate snapshots, and 36
 passing targeted unit tests.
 
 ## History alignment
@@ -20,13 +20,21 @@ an independent tracking gain from advancing recurrent history.
 
 | Setting | TCP RMSE | Command acceleration RMS | Torque RMS |
 | --- | ---: | ---: | ---: |
-| Projected IK | 40.68 mm | 0.57 rad/s^2 | 5.90 Nm |
-| Frozen 1x | 30.70 mm | 6.78 rad/s^2 | 19.31 Nm |
-| Post-freeze 2x | 30.30 mm | 6.56 rad/s^2 | 13.40 Nm |
-| Post-freeze 8x | 36.74 mm | 5.60 rad/s^2 | 8.37 Nm |
+| Projected IK | 39.26 mm | 0.58 rad/s^2 | 5.60 Nm |
+| Post-freeze 0.5x | 31.73 mm | 6.99 rad/s^2 | 23.52 Nm |
+| Frozen 1x | 28.37 mm | 6.69 rad/s^2 | 17.17 Nm |
+| Post-freeze 2x | 29.02 mm | 6.49 rad/s^2 | 13.25 Nm |
+| Post-freeze 4x | 31.99 mm | 6.18 rad/s^2 | 10.99 Nm |
+| Post-freeze 8x | 35.36 mm | 5.53 rad/s^2 | 8.04 Nm |
 
-The post-freeze sweep is diagnostic, not a replacement for the primary frozen
-configuration. It demonstrates an accuracy-effort trade-off.
+The post-freeze sweep uses the complete primary FullVirtual grid: four
+trajectories, five paired CEM seeds, and the same fixed $D=6$ protocol at every
+scale. The 1x rows reproduce the 20 primary FullVirtual cases exactly. Relative
+to 1x, 2x changed TCP RMSE by +0.65 mm (95% paired-bootstrap CI
+[-0.46, 1.62] mm), while reducing command-acceleration RMS by 0.20 rad/s^2
+([-0.28, -0.12]) and torque RMS by 3.92 Nm ([-6.06, -2.17]). The diagnostic
+therefore establishes an accuracy--effort sensitivity; it was not used to
+replace the primary frozen configuration.
 
 ## Candidate ranking
 

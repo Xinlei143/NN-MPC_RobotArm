@@ -1,9 +1,9 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "paper_core_claim_evidence",
-  "completed_at": "2026-07-28",
-  "base_git_commit": "b4e6f807a9c511e41826c788a3d852135fac1bf2",
-  "implementation_patch_sha256": "df98d7e8e58f1eac4fe965d6c9cf2031c3c9e303910b8af8af0c2f4566772efa",
+  "completed_at": "2026-07-29",
+  "base_git_commit": "0d219fd2401186624359809b3fd0a67361925f73",
+  "implementation_patch_sha256": "d8ce22175de119973dde3bce49947645e551d8ab81f8e0e88962570e672d7b67",
   "frozen_manifest": "outputs/paper_delay_aware_two_stage_v2/manifests/paper.json",
   "frozen_manifest_git_commit": "77505a528459c6d21c44822d1bc6f9ed4cdb8da0",
   "inputs": {
@@ -13,7 +13,8 @@
     "references": {
       "circle": "c15a120662df139ed529a1c7d6ba9b078cca47bc7eb4bbfe9dd74464c976ce23",
       "figure8": "fc025a1f6ab9fdf644127a3000f4fa2244f35d77ef570ff282c34eafdba01260",
-      "fast_ellipse": "a84ffca02433ad64f0319e8491bdfb45dc33c2b92cc508e1e0adeeff8df170e0"
+      "fast_ellipse": "a84ffca02433ad64f0319e8491bdfb45dc33c2b92cc508e1e0adeeff8df170e0",
+      "rounded_square": "1368b3fd4139e18c4f8cd5601d45c6c91fe9f73751ce15406f842e1274121fed"
     }
   },
   "configuration": {
@@ -25,17 +26,37 @@
     "control_dt_s": 0.01,
     "planner_projection_strategy": "two_stage",
     "cost_profile": "blackbox",
+    "effort_pareto_protocol": "FullVirtual",
+    "effort_pareto_scales": [
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0
+    ],
+    "paired_cem_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
     "trajectories": [
       "circle",
       "figure8",
-      "fast_ellipse"
+      "fast_ellipse",
+      "rounded_square"
     ]
+  },
+  "evidence_components": {
+    "history_alignment_and_candidate_ranking": "outputs/paper_claim_evidence_v1",
+    "aligned_effort_pareto": "outputs/paper_claim_evidence_v2"
   },
   "completed_evidence": {
     "history_alignment_cases": 45,
-    "effort_pareto_cases": 54,
+    "effort_pareto_cases": 100,
     "candidate_snapshots": 54,
     "unique_counterfactual_candidates": 149,
-    "unit_tests_passed": 35
+    "unit_tests_passed": 36
   }
 }

@@ -1,5 +1,5 @@
 {
-  "artifact_count": 70,
+  "artifact_count": 72,
   "artifacts": [
     {
       "bytes": 81073,
@@ -293,97 +293,109 @@
       "bytes": 3029,
       "path": "claim_evidence/summaries/candidate_ranking.json",
       "sha256": "0b818b6407442c4765783f894bcafadad53425ed726ce6991509e90802bf5e8a",
-      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking.json"
+      "source": "outputs/paper_claim_evidence_v2/summaries/candidate_ranking.json"
     },
     {
       "bytes": 15407,
       "path": "claim_evidence/summaries/candidate_ranking.pdf",
       "sha256": "a552f3b6becea36576544d0b28890eec9a1e5fc72b9d70dce0895738d262d604",
-      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking.pdf"
+      "source": "outputs/paper_claim_evidence_v2/summaries/candidate_ranking.pdf"
     },
     {
       "bytes": 8445,
       "path": "claim_evidence/summaries/candidate_ranking_groups.csv",
       "sha256": "aa53e36e77c5d2c5e8f52841dca832351803c430ed29dcde7dcdef7563559d87",
-      "source": "outputs/paper_claim_evidence_v1/summaries/candidate_ranking_groups.csv"
+      "source": "outputs/paper_claim_evidence_v2/summaries/candidate_ranking_groups.csv"
     },
     {
-      "bytes": 54864,
+      "bytes": 100119,
       "path": "claim_evidence/summaries/effort_pareto.csv",
-      "sha256": "ddaf7e645ca960a13bb331984751432f99485c73f3c5e519403deab5bb45eab4",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto.csv"
+      "sha256": "840b3f4b38d933ca082f57aed46a3bdb53cc34825825d04b00180159ef26c46a",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto.csv"
     },
     {
-      "bytes": 1670,
+      "bytes": 1443,
       "path": "claim_evidence/summaries/effort_pareto_aggregate.csv",
-      "sha256": "47930346fdbc6b588d3965a13a2021b915d605db4dcc8574fa9f9aa7a9b50747",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_aggregate.csv"
+      "sha256": "9d85f7b3e5c097b4247fc9b2a6a55314673a00a91fe935a6a5f98d34051215ba",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto_aggregate.csv"
     },
     {
-      "bytes": 24559,
+      "bytes": 352,
+      "path": "claim_evidence/summaries/effort_pareto_alignment_audit.json",
+      "sha256": "d8fa436cd31271279a953abf0bbfb2daa2987a682ac016f653c197e67d55a213",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto_alignment_audit.json"
+    },
+    {
+      "bytes": 45195,
       "path": "claim_evidence/summaries/effort_pareto_metrics.csv",
-      "sha256": "a54f1571884237b8d83e32c98d53fbcaf528cf00e12deb2c90153fa39e4e838f",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_metrics.csv"
+      "sha256": "2f5b013cf3b969e8b3aedfe45349fa9aef408fb5d20f618f362347f0e2fc138e",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto_metrics.csv"
     },
     {
-      "bytes": 218,
+      "bytes": 4789,
+      "path": "claim_evidence/summaries/effort_pareto_paired_bootstrap.json",
+      "sha256": "808d4d1b53f5361b91ce0bb92b934a532843323cb6bbc3231e6f298552ed5fb0",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto_paired_bootstrap.json"
+    },
+    {
+      "bytes": 239,
       "path": "claim_evidence/summaries/effort_pareto_projected_ik_baseline.json",
-      "sha256": "c98c06748bf7f7f304ce19bca114db48e3d36848ef3e5eb1c4fa267c65f36038",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_pareto_projected_ik_baseline.json"
+      "sha256": "2c770611d83bd13894e9920f42cd77b0e6b4392c3a41438da01d12ac7c094409",
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_pareto_projected_ik_baseline.json"
     },
     {
       "bytes": 2463,
       "path": "claim_evidence/summaries/effort_peak_aggregate.csv",
       "sha256": "bc8aaf2da1f0bd7c0d212c699eaa0076ff4c8edf0b3d43fdca456882f6a90e42",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_peak_aggregate.csv"
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_peak_aggregate.csv"
     },
     {
       "bytes": 37902,
       "path": "claim_evidence/summaries/effort_peak_metrics.csv",
       "sha256": "6b10967e4c992638dc04e81c7a52554a8f3291e8cd22f11997291b98daa59f4b",
-      "source": "outputs/paper_claim_evidence_v1/summaries/effort_peak_metrics.csv"
+      "source": "outputs/paper_claim_evidence_v2/summaries/effort_peak_metrics.csv"
     },
     {
       "bytes": 46283,
       "path": "claim_evidence/summaries/history_alignment.csv",
       "sha256": "5b731e7de8dfd8ec55d68b547d3c383b1084031a0e5689c86a674f1dcfd14bdf",
-      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment.csv"
+      "source": "outputs/paper_claim_evidence_v2/summaries/history_alignment.csv"
     },
     {
       "bytes": 17038,
       "path": "claim_evidence/summaries/history_alignment_aggregate.csv",
       "sha256": "e833b70c44e4201dfbb087c4c3342eaf36920d5990b3ffe1b81b9fbf8355a1a0",
-      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment_aggregate.csv"
+      "source": "outputs/paper_claim_evidence_v2/summaries/history_alignment_aggregate.csv"
     },
     {
       "bytes": 3891,
       "path": "claim_evidence/summaries/history_alignment_paired_bootstrap.json",
       "sha256": "d1ec10dca9c05d07a8650528bed488bf76db55ea7d68c8c96459c2564533809e",
-      "source": "outputs/paper_claim_evidence_v1/summaries/history_alignment_paired_bootstrap.json"
+      "source": "outputs/paper_claim_evidence_v2/summaries/history_alignment_paired_bootstrap.json"
     },
     {
-      "bytes": 15400,
+      "bytes": 15416,
       "path": "claim_evidence/summaries/pareto_command_acceleration.pdf",
-      "sha256": "9e7296d28b1de2020b103129ca1048afbfbee040a4719ac1ba21680192bf0636",
-      "source": "outputs/paper_claim_evidence_v1/summaries/pareto_command_acceleration.pdf"
+      "sha256": "3e4de98c1b8368c52ac34d1c289516d9540d33ce1ff386c15899bfdd06e62263",
+      "source": "outputs/paper_claim_evidence_v2/summaries/pareto_command_acceleration.pdf"
     },
     {
-      "bytes": 14381,
+      "bytes": 15082,
       "path": "claim_evidence/summaries/pareto_torque.pdf",
-      "sha256": "59532f7c61ef0e624a6b6628b360715abf34dd36211bd684b428e04c143ad694",
-      "source": "outputs/paper_claim_evidence_v1/summaries/pareto_torque.pdf"
+      "sha256": "06aa494559576d5f086dd11d18616cf99283d48ff68f1369166e80e931b84927",
+      "source": "outputs/paper_claim_evidence_v2/summaries/pareto_torque.pdf"
     },
     {
-      "bytes": 1543,
+      "bytes": 2050,
       "path": "claim_evidence/manifests/claim_manifest.json",
-      "sha256": "fb05fa842320cad9293d9c60fda5db1fd0734925d5f00e7d589f8bdc7ee8523d",
-      "source": "outputs/paper_claim_evidence_v1/claim_manifest.json"
+      "sha256": "9a9a46ad8e096f2ea81a76f9eb226fef4959c5327f5b59046402f6fa2effc3e7",
+      "source": "outputs/paper_claim_evidence_v2/claim_manifest.json"
     },
     {
-      "bytes": 4061,
+      "bytes": 4178,
       "path": "claim_evidence/manifests/unit_tests.log",
-      "sha256": "2ce1acb83a9620b330fb6fcdfa30e7794f3b415f6ed11f46f148bf755baac777",
-      "source": "outputs/paper_claim_evidence_v1/unit_tests.log"
+      "sha256": "d3181b493b0d00ddb2e1eb505e8ba1c1a471fede755b7a230ab23c57598e788b",
+      "source": "outputs/paper_claim_evidence_v2/unit_tests.log"
     },
     {
       "bytes": 3581,

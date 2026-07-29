@@ -28,13 +28,17 @@ from mpc.history import history_tokens
 from mpc.model_c.branches import execute_open_loop_action_branch, project_activation_q_ref_sequence
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig
 from neural_dynamics.rollout import rollout_dynamics_batch
-from scripts.experiment_utils import load_json
+from scripts.experiment_utils import load_json, paired_bootstrap_rows
 from scripts.paper_experiments.evaluation import write_json
-from scripts.paper_experiments.workflow import ROOT, RUNNER
+from scripts.paper_experiments.workflow import (
+    EFFORT_PARETO_SCALES,
+    ROOT,
+    RUNNER,
+    TRAJECTORIES,
+)
 
 
-TRAJECTORIES = ("circle", "figure8", "fast_ellipse")
-SCALES = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
+SCALES = EFFORT_PARETO_SCALES
 
 
 def _args_from_manifest(manifest: dict[str, Any]) -> argparse.Namespace:
@@ -472,9 +476,27 @@ def pareto_figures(output: Path, pareto_index: Path, abb_main_index: Path) -> No
     abb_xml = ROOT / "dynamics_modeling" / "ABB_IRB2400.xml"
     entries = load_json(pareto_index)["entries"]
     rows = [_effort_row("ABB", entry, abb_xml) | {"effort_scale": float(entry["effort_scale"])} for entry in entries]
+    main_entries = load_json(abb_main_index)["entries"]
+    main_full_rows = [
+        _effort_row("ABB", entry, abb_xml)
+        for entry in main_entries if entry["label"] == "FullVirtual"
+    ]
+    expected_grid = {(trajectory, seed) for trajectory in TRAJECTORIES for seed in range(5)}
+    for scale in SCALES:
+        actual_grid = {
+            (str(row["trajectory"]), int(row["seed"]))
+            for row in rows if math.isclose(float(row["effort_scale"]), scale)
+        }
+        if actual_grid != expected_grid:
+            missing = sorted(expected_grid - actual_grid)
+            extra = sorted(actual_grid - expected_grid)
+            raise ValueError(
+                f"Incomplete effort Pareto grid at {scale:g}x: "
+                f"missing={missing}, extra={extra}"
+            )
     direct_rows = [
         _effort_row("ABB", entry, abb_xml)
-        for entry in load_json(abb_main_index)["entries"]
+        for entry in main_entries
         if entry["label"] == "DirectIK" and entry["trajectory"] in TRAJECTORIES
     ]
     destination = output / "summaries"
@@ -514,6 +536,60 @@ def pareto_figures(output: Path, pareto_index: Path, abb_main_index: Path) -> No
         writer = csv.DictWriter(file, fieldnames=list(aggregate[0]))
         writer.writeheader()
         writer.writerows(aggregate)
+    paired_rows = [
+        {
+            **row,
+            "label": f"EffortScale{float(row['effort_scale']):g}",
+            "case_id": f"{row['trajectory']}:{row['seed']}",
+        }
+        for row in rows
+    ]
+    comparisons = {
+        f"EffortScale{scale:g}_minus_EffortScale1": paired_bootstrap_rows(
+            paired_rows,
+            left="EffortScale1",
+            right=f"EffortScale{scale:g}",
+            metrics=(
+                "tcp_rmse_mm",
+                "command_acceleration_rms_rad_s2",
+                "torque_rms_nm",
+            ),
+            samples=10_000,
+            seed=20260800 + index,
+        )
+        for index, scale in enumerate(SCALES)
+        if not math.isclose(scale, 1.0)
+    }
+    write_json(destination / "effort_pareto_paired_bootstrap.json", comparisons)
+    frozen_rows = {
+        (str(row["trajectory"]), int(row["seed"])): row
+        for row in rows if math.isclose(float(row["effort_scale"]), 1.0)
+    }
+    primary_rows = {
+        (str(row["trajectory"]), int(row["seed"])): row
+        for row in main_full_rows
+    }
+    if set(frozen_rows) != expected_grid or set(primary_rows) != expected_grid:
+        raise ValueError("The 1x sensitivity and primary FullVirtual grids must both contain 20 matched cases")
+    alignment_metrics = (
+        "tcp_rmse_mm",
+        "command_acceleration_rms_rad_s2",
+        "torque_rms_nm",
+    )
+    write_json(destination / "effort_pareto_alignment_audit.json", {
+        "matched_cases": len(expected_grid),
+        "trajectories": list(TRAJECTORIES),
+        "seeds": list(range(5)),
+        "protocol": "FullVirtual",
+        "delay_steps": 6,
+        "max_abs_1x_minus_primary": {
+            metric: float(max(
+                abs(float(frozen_rows[key][metric]) - float(primary_rows[key][metric]))
+                for key in expected_grid
+            ))
+            for metric in alignment_metrics
+        },
+    })
     baseline = {
         metric: float(np.mean([row[metric] for row in direct_rows]))
         for metric in ("tcp_rmse_mm", "command_acceleration_rms_rad_s2", "torque_rms_nm")
@@ -551,7 +627,7 @@ def pareto_figures(output: Path, pareto_index: Path, abb_main_index: Path) -> No
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", default="outputs/paper_claim_evidence_v1")
+    parser.add_argument("--output-root", default="outputs/paper_claim_evidence_v2")
     sub = parser.add_subparsers(dest="command", required=True)
     candidate = sub.add_parser("candidate-ranking")
     candidate.add_argument("--manifest", required=True)

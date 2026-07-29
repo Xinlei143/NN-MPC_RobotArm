@@ -30,11 +30,11 @@ SOURCES = {
         "outputs/paper_ur5e_v2/freeze_audit.json",
     ),
     "claim_evidence/summaries": (
-        "outputs/paper_claim_evidence_v1/summaries/*",
+        "outputs/paper_claim_evidence_v2/summaries/*",
     ),
     "claim_evidence/manifests": (
-        "outputs/paper_claim_evidence_v1/claim_manifest.json",
-        "outputs/paper_claim_evidence_v1/unit_tests.log",
+        "outputs/paper_claim_evidence_v2/claim_manifest.json",
+        "outputs/paper_claim_evidence_v2/unit_tests.log",
     ),
     "robustness_and_timing": (
         "outputs/paper_revision_v1/statistics/*.json",
