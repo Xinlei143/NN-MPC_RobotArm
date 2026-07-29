@@ -57,6 +57,7 @@ SOURCES = {
     "claim_evidence/manifests": (
         "outputs/paper_claim_evidence_v2/claim_manifest.json",
         "outputs/paper_claim_evidence_v2/unit_tests.log",
+        "docs/Paper_test/19_final_regression_test_20260729.md",
     ),
     "robustness_and_timing": (
         "outputs/paper_revision_v1/statistics/*.json",

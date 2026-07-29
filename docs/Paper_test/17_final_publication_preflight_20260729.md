@@ -9,14 +9,16 @@ historical preflight in
 
 ## Repository release record
 
-The final submission must be tagged `robio2026-submission-v1` after this
-preflight commit is pushed. The associated GitHub Release should record the
-tagged commit SHA, the manuscript PDF SHA-256, the technical-supplement PDF
-SHA-256, the SHA-256 of `PUBLIC_MANIFEST.json`, the manifest artifact count,
-the frozen environment summaries, the manuscript title, and submission date.
-Attach the manuscript PDF, technical supplement PDF, and public manifest (or
-link them directly in the release notes). The manuscript repository footnote
-must target the resulting immutable release URL rather than `main`.
+The final release tag must point to the final audited `main` commit after all
+publication documents and evidence artifacts have been synchronized. Tag that
+commit as `robio2026-submission-v1`. The associated GitHub Release should record
+the complete tagged commit SHA, the manuscript PDF SHA-256, the
+technical-supplement PDF SHA-256, the SHA-256 of `PUBLIC_MANIFEST.json`, the
+manifest artifact count, the frozen environment summaries, the manuscript
+title, and submission date. Attach the manuscript PDF, technical supplement PDF,
+and public manifest (or link them directly in the release notes). The manuscript
+repository footnote must target the resulting immutable release URL rather than
+`main`.
 
 ## Required final checks
 
@@ -39,8 +41,12 @@ must target the resulting immutable release URL rather than `main`.
 - Both PDFs use embedded Type 1 fonts, with no Type 3 fonts or undefined
   references. The final PDF was visually checked for clipping and overlap.
 - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n pendulum-rl pytest -q mpc/tests`
-  passed with 147 tests and 12 subtests; the only warnings were two upstream
-  PyTorch `torch.jit.script` deprecation warnings.
+  passed with 147 tests, 2 warnings, and 12 subtests; the warnings were two
+  upstream PyTorch `torch.jit.script` deprecation warnings.
+- The full-regression record is
+  [`19_final_regression_test_20260729.md`](19_final_regression_test_20260729.md).
+  The separate public `unit_tests.log` remains a historical 36-test
+  claim-evidence subset.
 - The UR5e freeze audit passed with 84 expected/observed cases, zero fingerprint
   mismatches, zero input-hash mismatches, and zero constraint-violation runs.
 - Table I's ABB and UR5e $h=1/20$, $\sigma_u=0.5$ values were checked

@@ -1,5 +1,5 @@
 {
-  "artifact_count": 97,
+  "artifact_count": 98,
   "artifacts": [
     {
       "bytes": 81073,
@@ -504,6 +504,12 @@
       "path": "claim_evidence/manifests/unit_tests.log",
       "sha256": "d3181b493b0d00ddb2e1eb505e8ba1c1a471fede755b7a230ab23c57598e788b",
       "source": "outputs/paper_claim_evidence_v2/unit_tests.log"
+    },
+    {
+      "bytes": 802,
+      "path": "claim_evidence/manifests/19_final_regression_test_20260729.md",
+      "sha256": "a34fa5ef85521fad1f9d7b89df8d223e24421887488d6714921b13ad536dcc87",
+      "source": "docs/Paper_test/19_final_regression_test_20260729.md"
     },
     {
       "bytes": 3581,

@@ -23,7 +23,8 @@ caches to Git history.
 - `ur5e/contracts`: machine-readable UR5e robot contract and four-reference
   generation manifest.
 - `claim_evidence`: recurrent-history isolation, tracking--effort Pareto,
-  candidate-ranking/realized-regret, peak-effort summaries, and test log.
+  candidate-ranking/realized-regret, peak-effort summaries, the historical
+  claim-evidence test log, and the final full-regression record.
 - `robustness_and_timing`: single-factor perturbation, threaded-versus-virtual,
   wall-clock timing, and `ik_baselines` paired statistics versus Projected and
   Preview IK.
