@@ -3,7 +3,7 @@
 Learned-dynamics, delay-aware residual CEM-MPC for position-controlled
 manipulators in MuJoCo. The repository contains the ABB IRB 2400 primary
 evaluation, an independently trained and calibrated UR5e replication, task-space
-reference generation, and reproducible evidence for the ROBIO 2026 manuscript.
+reference generation, and auditable public evidence for the ROBIO 2026 manuscript.
 
 > This is simulation research code. Position, velocity, acceleration, and
 > safety limits in this repository are planning or MuJoCo constraints, not
@@ -38,7 +38,8 @@ action u_t = q_ref,t(6)  # rad
 ## Public evidence
 
 The compact [ROBIO 2026 evidence bundle](evidence/robio2026/README.md) contains
-70 SHA-256-tracked artifacts: ABB and UR5e summaries, paired bootstrap results,
+the SHA-256-tracked artifacts listed in
+[`PUBLIC_MANIFEST.json`](evidence/robio2026/PUBLIC_MANIFEST.json): ABB and UR5e summaries, paired bootstrap results,
 robustness and timing statistics, model diagnostics, mechanism-isolation
 results, figures, and portable audit manifests. It excludes raw rollouts,
 caches, checkpoints, normalizers, and paper files.

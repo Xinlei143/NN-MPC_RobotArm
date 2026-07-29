@@ -13,7 +13,7 @@ evidence is under `outputs/paper_revision_v1`.
 | Item | Result |
 | --- | --- |
 | Historical evidence audit | 720 MPC and 540 IK rollouts; passed |
-| Regression suite | 130 passed, 1 skipped, 12 subtests passed |
+| Regression suite | 143 passed, 12 subtests passed |
 | Delay calibration | Four groups of 500 plans; D=6 in each group |
 | GRU held-out validation | 20 rollouts; ten each at action std. 0.5 and 0.8 |
 | Core ablation | 80 cases |
@@ -45,6 +45,8 @@ evidence is under `outputs/paper_revision_v1`.
 | 14 | UR5e independently trained and calibrated replication |
 | 15 | History alignment, effort sensitivity, and candidate-ranking diagnostics |
 | 16 | Submission preflight |
+| 17 | Final publication preflight and release checklist |
+| 18 | GRU true-history window reanalysis of Table I metrics |
 
 The primary result is activation alignment plus execution-time reanchoring.
 The reports preserve the MuJoCo-only scope, the history-ablation limitation,

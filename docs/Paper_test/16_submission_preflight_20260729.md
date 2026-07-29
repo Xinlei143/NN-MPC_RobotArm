@@ -1,4 +1,10 @@
-# ROBIO 2026 submission preflight — 2026-07-29
+# Historical ROBIO 2026 submission preflight — 2026-07-29
+
+> **Superseded record.** This preflight predates publication of the compact
+> public evidence bundle and the technical supplement. Its former public-404
+> blocker and eight-page PDF record are resolved/outdated; use
+> [`17_final_publication_preflight_20260729.md`](17_final_publication_preflight_20260729.md)
+> for the final submission state.
 
 ## Scope
 
