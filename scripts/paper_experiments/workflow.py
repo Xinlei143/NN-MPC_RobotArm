@@ -41,6 +41,11 @@ TRAINING_DATASET = ROOT / "dynamics_modeling" / "outputs" / "datasets" / "irb240
 LEGACY_MPC_ROOT = ROOT / "outputs" / "robustness" / "paper_three_ik_l036_s5_v1" / "mpc_architectures"
 LEGACY_IK_ROOT = ROOT / "outputs" / "robustness" / "paper_three_ik_l036_s5_v1"
 TRAJECTORIES = ("circle", "figure8", "fast_ellipse", "rounded_square")
+# This post-freeze diagnostic is evaluated on exactly the same nominal
+# trajectory--seed grid as the primary FullVirtual experiment.  The absolute
+# 1x point is therefore a directly matched sensitivity reference, rather than
+# a three-trajectory exploratory subset.
+EFFORT_PARETO_SCALES = (0.5, 1.0, 2.0, 4.0, 8.0)
 
 
 def resolve(value: str | Path) -> Path:
@@ -540,9 +545,9 @@ def suite_cases(manifest: dict[str, Any], suite: str) -> list[dict[str, Any]]:
                     for label, protocol in labels
                 )
     elif suite == "effort_pareto":
-        for trajectory in ("circle", "figure8", "fast_ellipse"):
-            for seed in (0, 1, 2):
-                for scale in (0.25, 0.5, 1.0, 2.0, 4.0, 8.0):
+        for trajectory in TRAJECTORIES:
+            for seed in seeds:
+                for scale in EFFORT_PARETO_SCALES:
                     cases.append(_case(
                         f"EffortScale{scale:g}", trajectory, seed,
                         "virtual_asap", "full", delay, effort_scale=scale,

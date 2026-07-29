@@ -42,8 +42,9 @@ commit identifiers are otherwise unchanged.
   replication. It is not a shared-model transfer experiment.
 - The history-only ablation does not establish an independent nominal tracking
   gain from advancing recurrent history.
-- The effort sweep was performed after freezing the primary configuration and
-  was not substituted into the matched primary evidence.
+- The effort sweep was performed after freezing the primary configuration,
+  uses the same four-trajectory, five-seed FullVirtual matrix at every scale,
+  and was not used to replace the matched primary evidence.
 - Candidate-ranking diagnostics use retained, projection-active candidates.
 - Results are from MuJoCo; they do not establish physical-robot performance or
   hard-real-time guarantees.

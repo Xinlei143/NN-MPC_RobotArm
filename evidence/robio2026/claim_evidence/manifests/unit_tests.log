@@ -17,6 +17,7 @@ test_perturbation_family_ignores_level (mpc.tests.test_paper_experiments.Experim
 test_threaded_failure_uses_unique_events_not_persistent_status (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
 test_timing_summary_contains_max_values (mpc.tests.test_paper_experiments.ExperimentStatisticsTests) ... ok
 test_ablation_full_cases_are_exact_main_cache_reuses (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
+test_effort_pareto_uses_the_primary_fullvirtual_case_grid (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
 test_existing_main_case_cache_compatibility (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
 test_formal_suite_sizes_match_the_registered_protocol (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
 test_four_stage_delay_sweep_size (mpc.tests.test_paper_experiments.PaperMatrixTests) ... ok
@@ -35,7 +36,7 @@ test_projection_changes_an_infeasible_first_action (mpc.tests.model_c.test_branc
 test_projection_makes_each_command_rate_feasible (mpc.tests.model_c.test_branches.ActivationProjectedBranchTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 35 tests in 0.109s
+Ran 36 tests in 0.258s
 
 OK
 

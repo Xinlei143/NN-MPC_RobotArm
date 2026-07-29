@@ -1,0 +1,210 @@
+{
+  "EffortScale0.5_minus_EffortScale1": {
+    "left": "EffortScale1",
+    "metrics": {
+      "command_acceleration_rms_rad_s2": {
+        "ci95": [
+          0.16869310671473303,
+          0.4330828893016513
+        ],
+        "mean_delta_right_minus_left": 0.29613719902762664,
+        "n": 20
+      },
+      "tcp_rmse_mm": {
+        "ci95": [
+          0.7822190102050179,
+          6.239228234681638
+        ],
+        "mean_delta_right_minus_left": 3.3552598838059327,
+        "n": 20
+      },
+      "torque_rms_nm": {
+        "ci95": [
+          2.8902325741310233,
+          10.091695707135974
+        ],
+        "mean_delta_right_minus_left": 6.350617620365221,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "EffortScale0.5"
+  },
+  "EffortScale2_minus_EffortScale1": {
+    "left": "EffortScale1",
+    "metrics": {
+      "command_acceleration_rms_rad_s2": {
+        "ci95": [
+          -0.2763999186024142,
+          -0.12252174935785216
+        ],
+        "mean_delta_right_minus_left": -0.19877170588192303,
+        "n": 20
+      },
+      "tcp_rmse_mm": {
+        "ci95": [
+          -0.45585109949392605,
+          1.6207113264038007
+        ],
+        "mean_delta_right_minus_left": 0.6491026355003401,
+        "n": 20
+      },
+      "torque_rms_nm": {
+        "ci95": [
+          -6.061652531078158,
+          -2.167774383253709
+        ],
+        "mean_delta_right_minus_left": -3.915432190695262,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "EffortScale2"
+  },
+  "EffortScale4_minus_EffortScale1": {
+    "left": "EffortScale1",
+    "metrics": {
+      "command_acceleration_rms_rad_s2": {
+        "ci95": [
+          -0.5837309995326926,
+          -0.44345432711511446
+        ],
+        "mean_delta_right_minus_left": -0.5144521247634469,
+        "n": 20
+      },
+      "tcp_rmse_mm": {
+        "ci95": [
+          2.6490662562849474,
+          4.460941864538698
+        ],
+        "mean_delta_right_minus_left": 3.619011519645768,
+        "n": 20
+      },
+      "torque_rms_nm": {
+        "ci95": [
+          -8.385745986109244,
+          -4.3450816883187615
+        ],
+        "mean_delta_right_minus_left": -6.182477032802453,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "EffortScale4"
+  },
+  "EffortScale8_minus_EffortScale1": {
+    "left": "EffortScale1",
+    "metrics": {
+      "command_acceleration_rms_rad_s2": {
+        "ci95": [
+          -1.2188840911275018,
+          -1.0989697689073277
+        ],
+        "mean_delta_right_minus_left": -1.1580217995841853,
+        "n": 20
+      },
+      "tcp_rmse_mm": {
+        "ci95": [
+          6.040155077335198,
+          7.812230741099979
+        ],
+        "mean_delta_right_minus_left": 6.987390423120006,
+        "n": 20
+      },
+      "torque_rms_nm": {
+        "ci95": [
+          -11.227931291303458,
+          -7.492665615896216
+        ],
+        "mean_delta_right_minus_left": -9.12963408115795,
+        "n": 20
+      }
+    },
+    "paired_cases": [
+      "circle:0",
+      "circle:1",
+      "circle:2",
+      "circle:3",
+      "circle:4",
+      "fast_ellipse:0",
+      "fast_ellipse:1",
+      "fast_ellipse:2",
+      "fast_ellipse:3",
+      "fast_ellipse:4",
+      "figure8:0",
+      "figure8:1",
+      "figure8:2",
+      "figure8:3",
+      "figure8:4",
+      "rounded_square:0",
+      "rounded_square:1",
+      "rounded_square:2",
+      "rounded_square:3",
+      "rounded_square:4"
+    ],
+    "right": "EffortScale8"
+  }
+}

@@ -72,15 +72,17 @@ if the portal requires it.
   - ThreadedAsync 10.42 mm;
   - FullVirtual--NaiveDelayed difference -24.36 mm.
 - Candidate-ranking values match
-  `outputs/paper_claim_evidence_v1/summaries/candidate_ranking.json`:
+  `outputs/paper_claim_evidence_v2/summaries/candidate_ranking.json`:
   - within-snapshot Spearman 0.976;
   - pairwise concordance 0.988;
   - realized relative regret 0.192%;
   - 20-step branch replay joint RMSE 0.889 mrad.
 - The post-freeze effort sweep matches
-  `outputs/paper_claim_evidence_v1/summaries/effort_pareto_aggregate.csv`.
-  The manuscript correctly labels this sweep as diagnostic and does not
-  substitute the 2x setting into the frozen primary evidence.
+  `outputs/paper_claim_evidence_v2/summaries/effort_pareto_aggregate.csv`.
+  It contains 100 FullVirtual cases (four trajectories, five paired seeds, and
+  five scales), and its 1x cases exactly reproduce the primary FullVirtual
+  matrix. The manuscript correctly labels this sweep as diagnostic and does
+  not substitute another setting into the frozen primary evidence.
 - The UR5e freeze audit passes with all 84 expected cases present and no
   constraint-violation runs.
 - The ABB analysis manifest contains 78 artifacts; all local paths, sizes, and
@@ -106,7 +108,7 @@ following URLs returned 404 during this preflight:
 
 - `outputs/paper_final/manifests/analysis_manifest.json`
 - `outputs/paper_ur5e_v2/freeze_audit.json`
-- `outputs/paper_claim_evidence_v1/claim_manifest.json`
+- `outputs/paper_claim_evidence_v2/claim_manifest.json`
 - `docs/Paper_test/15_core_claim_evidence_tests.md`
 
 The local `.gitignore` excludes `/outputs` and `/Paper`, and the evidence

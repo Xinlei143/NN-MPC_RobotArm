@@ -339,13 +339,36 @@ class PaperMatrixTests(unittest.TestCase):
         self.assertEqual(len(suite_cases(manifest, "main")), 84)
         self.assertEqual(len(suite_cases(manifest, "ablation")), 80)
         self.assertEqual(len(suite_cases(manifest, "history_alignment")), 45)
-        self.assertEqual(len(suite_cases(manifest, "effort_pareto")), 54)
+        self.assertEqual(len(suite_cases(manifest, "effort_pareto")), 100)
         self.assertEqual(len(suite_cases(manifest, "delay_sweep")), 60)
         self.assertEqual(len(suite_cases(manifest, "preview")), 4)
         self.assertEqual(len(suite_cases(manifest, "oracle")), 12)
         self.assertEqual(len(suite_cases(manifest, "task_cost")), 24)
         self.assertEqual(len(suite_cases(manifest, "delay_sweep_components")), 96)
         self.assertEqual(len(suite_cases(manifest, "projection_choice")), 36)
+
+    def test_effort_pareto_uses_the_primary_fullvirtual_case_grid(self) -> None:
+        manifest = self._manifest()
+        primary = [
+            case for case in suite_cases(manifest, "main")
+            if case["label"] == "FullVirtual"
+        ]
+        pareto = suite_cases(manifest, "effort_pareto")
+        primary_grid = {
+            (case["trajectory"], case["seed"], case["multirate_mode"],
+             case["delay_protocol"], case["delay_steps"])
+            for case in primary
+        }
+        scales = {case["effort_scale"] for case in pareto}
+        self.assertEqual(scales, {0.5, 1.0, 2.0, 4.0, 8.0})
+        self.assertEqual(len(pareto), len(primary_grid) * len(scales))
+        for scale in scales:
+            scale_grid = {
+                (case["trajectory"], case["seed"], case["multirate_mode"],
+                 case["delay_protocol"], case["delay_steps"])
+                for case in pareto if case["effort_scale"] == scale
+            }
+            self.assertEqual(scale_grid, primary_grid)
 
     def test_projection_suite_freezes_joint_only_cost_and_common_d6(self) -> None:
         cases = suite_cases(self._manifest(), "projection_choice")
