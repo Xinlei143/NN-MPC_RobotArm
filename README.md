@@ -156,6 +156,81 @@ conda run -n pendulum-rl python scripts/run_cem_mpc.py \
 execution projection with the MPC path. Preview IK is a separate baseline and
 must not be reported as standard Direct IK.
 
+## MPC semantics, constraints, and recovery
+
+Residual MPC does not search an unconstrained absolute command trajectory. It
+optimizes bounded corrections around the IK nominal:
+
+```text
+q_des[t+1:t+H] -> q_nom -> sample r / r_max in [-1, 1]
+                  -> planner_projection(q_nom + r)
+                  -> learned rollout and cost -> select command
+                  -> 100 Hz physical projection and execution
+```
+
+With the default `raw_ik` nominal-command semantics, zero residual is exactly
+the raw Direct-IK nominal. `--cem_execute lowest_cost` compares the zero
+residual baseline, best sample, and final distribution mean. Legacy acceleration
+policies, linear control points, and stage-one GPU FK are retained for historical
+reproduction and ablations; they are not the default method.
+
+`threaded_asap` uses a CUDA worker and a 100 Hz execution loop. The worker
+replans whenever a solve completes; its update rate is therefore hardware and
+load dependent, not a fixed 20 Hz setting. `virtual_asap` is the deterministic
+logical-delay mode for repeatable ablations, while `synchronous` and
+`virtual_smooth` are fixed-replanning baselines. Formal experiments must derive
+`--anticipation_delay_steps` from measured end-to-end latency rather than reuse
+the local fallback value.
+
+Planner projection enforces configured kinematic and braking-aware constraints
+on candidates. The execution layer independently applies position, velocity,
+acceleration, and braking projection to every final `q_ref`. The default
+residual bounds are `[0.12, 0.10, 0.12, 0.15, 0.15, 0.20]` rad, subject to
+RobotSpec and CLI overrides. A planner failure falls back to the nominal and
+resets the CEM warm start. Persistent tracking deterioration or residual
+saturation can trigger recovery; hitting a command limit is diagnostic by
+itself and is not a recovery event.
+
+## Optional uncertainty supervisor
+
+The uncertainty feature is an optional post-selection safety monitor and is
+disabled by default (`--uncertainty_mode off`). It is available only for learned
+MPC in `threaded_asap` mode. Model A remains the only model used by CEM; replicas
+evaluate the selected command sequence and never average predictions into the
+control command.
+
+```text
+Model-A CEM selects q_ref[0:H)
+    -> primary cached rollout + compatible replica rollouts
+    -> normalized inter-model RMS disagreement
+    -> monitor, hysteretic residual limiting, or nominal fallback
+```
+
+The score is normalized by the primary normalizer's state standard deviation:
+
+```text
+sqrt(mean_{horizon,state}((std_models[x_hat] / state_std)^2))
+```
+
+Thresholds depend on replica count, training protocol, normalizer, and horizon;
+they cannot be transferred between configurations. All replicas must match the
+primary model type, state dimension, target mode, history length, and control
+period. At least two replicas beyond the primary model are required.
+
+| Mode | Behavior |
+| --- | --- |
+| `off` | Standard residual MPC with no uncertainty computation. |
+| `ensemble_monitor` | Logs disagreement and risk flags without changing commands. |
+| `ensemble_soft_gate` | Uses `normal -> suspected -> limited -> fallback` hysteresis. |
+
+In soft-gate mode, sustained high disagreement limits the residual; high
+disagreement plus predicted physical risk causes nominal fallback. Nonfinite
+replica output or an expired replica-computation budget also causes conservative
+fallback. The active-packet prediction innovation is a confirmation signal, not
+an immediate physical emergency. See the
+[uncertainty supervisor guide](docs/safety/uncertainty-soft-supervisor.md) for
+the full training and calibration procedure.
+
 ## Robots and reproducibility
 
 Use a complete `RobotSpec` for every robot. Do not substitute an XML alone:
@@ -169,6 +244,26 @@ manifests before reusing a model or reference:
 ```bash
 conda run -n pendulum-rl python -m scripts.paper_experiments.workflow --help
 python3 scripts/paper_experiments/publish_evidence.py
+```
+
+## Robustness, Model-C, tests, and outputs
+
+The robustness workflows cover payload, actuator-gain mismatch, force pulses,
+and observation noise. Every rollout manifest records robot, dataset,
+checkpoint, normalizer, XML, and reference identity. Model-C collection,
+dataset, benchmark, and evaluation workflows live under `scripts/model_c/`;
+their outputs must not be mixed with the frozen Model-A evidence without a new
+experiment protocol.
+
+Every MPC run writes `rollout.npz`, `rollout.csv`, tracking/control plots, and
+`run_summary.json`; task-space runs also write `task_tracking_summary.json`.
+Record tracking error together with planner rate, deadline misses, late-packet
+drops, packet age, projection activity, and fallback duty cycle.
+
+Run the MPC tests with:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n pendulum-rl pytest -q mpc/tests
 ```
 
 ## Documentation
