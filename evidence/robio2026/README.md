@@ -24,6 +24,10 @@ caches to Git history.
 
 The detailed interpretation and evidence boundaries are documented in
 [`docs/Paper_test/15_core_claim_evidence_tests.md`](../../docs/Paper_test/15_core_claim_evidence_tests.md).
+The conference-paper implementation details, full controller configuration,
+and compressed diagnostics are collected in
+[`technical_supplement.pdf`](technical_supplement.pdf), with its auditable
+LaTeX source in [`technical_supplement.tex`](technical_supplement.tex).
 
 ## Deliberate exclusions
 

@@ -1,5 +1,5 @@
 {
-  "artifact_count": 72,
+  "artifact_count": 74,
   "artifacts": [
     {
       "bytes": 81073,
@@ -432,6 +432,18 @@
       "path": "robustness_and_timing/threaded_vs_fullvirtual_by_perturbation.json",
       "sha256": "cdcb8923d7fc788aba57f5b7f8de744ebe790b22a49268baf8c9679359d63592",
       "source": "outputs/paper_revision_v1/statistics/threaded_vs_fullvirtual_by_perturbation.json"
+    },
+    {
+      "bytes": 8435,
+      "path": "technical_supplement.tex",
+      "sha256": "999983a353d68f3b1444304e46d24240d2345ce4690eec2153f64807d32b1673",
+      "source": "repository-maintained technical supplement"
+    },
+    {
+      "bytes": 220542,
+      "path": "technical_supplement.pdf",
+      "sha256": "8767544719f3c8f62206b2996dc473eab039541838a645fefb13367a1d971ae2",
+      "source": "repository-maintained technical supplement"
     }
   ],
   "description": "Compact public evidence for the ROBIO 2026 paper",

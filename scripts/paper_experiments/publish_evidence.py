@@ -43,6 +43,8 @@ SOURCES = {
 }
 
 TEXT_SUFFIXES = {".csv", ".json", ".log", ".md", ".txt"}
+PRESERVED_PUBLIC_FILES = {"README.md", "technical_supplement.tex", "technical_supplement.pdf"}
+MANIFESTED_PUBLIC_FILES = ("technical_supplement.tex", "technical_supplement.pdf")
 
 
 def _portable_copy(source: Path, destination: Path) -> None:
@@ -60,7 +62,7 @@ def _portable_copy(source: Path, destination: Path) -> None:
 def build() -> None:
     DESTINATION.mkdir(parents=True, exist_ok=True)
     for child in DESTINATION.iterdir():
-        if child.name == "README.md":
+        if child.name in PRESERVED_PUBLIC_FILES:
             continue
         if child.is_dir():
             shutil.rmtree(child)
@@ -85,6 +87,18 @@ def build() -> None:
                         "source": source.relative_to(ROOT).as_posix(),
                     }
                 )
+    for name in MANIFESTED_PUBLIC_FILES:
+        public_file = DESTINATION / name
+        if not public_file.is_file():
+            continue
+        copied.append(
+            {
+                "path": name,
+                "bytes": public_file.stat().st_size,
+                "sha256": hashlib.sha256(public_file.read_bytes()).hexdigest(),
+                "source": "repository-maintained technical supplement",
+            }
+        )
     manifest = {
         "schema_version": 1,
         "description": "Compact public evidence for the ROBIO 2026 paper",
