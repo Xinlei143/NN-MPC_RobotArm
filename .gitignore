@@ -25,6 +25,15 @@
 # Local investigation notes; intentionally excluded from commits.
 /docs/2026.7.22_work.md
 
+# Internal historical notes and superseded experiment records. Public
+# documentation is maintained under docs/architecture, docs/guides,
+# docs/safety, and docs/Paper_test.
+/docs/archive/
+/docs/experiments/
+/docs/Paper_test/paper-test-plan.md
+/docs/Paper_test/direct-ik-three-variant-robustness-results.md
+/docs/Paper_test/mpc-four-architectures-robustness-results.md
+
 # Python bytecode and caches
 __pycache__/
 *.pyc
