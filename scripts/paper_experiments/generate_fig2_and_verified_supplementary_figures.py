@@ -1,10 +1,8 @@
-"""Generate traceable ROBIO 2026 final and supplementary figures from frozen evidence."""
+"""Regenerate the verified ROBIO 2026 Fig. 2 and supplementary figures."""
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +11,11 @@ matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
 from export_prism_data import sha256, write_bundle
 from paper_style import (
     DOUBLE_COLUMN_IN, SINGLE_COLUMN_IN, METHOD_STYLES, apply_style, finish_axis,
-    method_style, panel_label, save_figure,
+    save_figure,
 )
 
 
@@ -104,49 +101,6 @@ def representative(main_rows: pd.DataFrame, entries: list[dict[str, Any]], legac
     if not all(path.is_dir() for path in paths.values()):
         raise FileNotFoundError("Representative Projected/Preview IK run directories are missing")
     return seed, paths, rows
-
-
-def pca_plane(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    center = np.mean(points, axis=0)
-    _, _, right = np.linalg.svd(points - center, full_matrices=False)
-    return center, right[:2]
-
-
-def fig1_architecture(output: Path) -> None:
-    tex = output / "fig1_activation_aligned_architecture.tex"
-    pdf = output / "fig1_activation_aligned_architecture.pdf"
-    svg = output / "fig1_activation_aligned_architecture.svg"
-    png = output / "fig1_activation_aligned_architecture.png"
-    text = r'''\documentclass[tikz,border=2pt]{standalone}
-\usepackage{newtxtext,newtxmath}
-\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
-\definecolor{planner}{HTML}{EAF2FA}\definecolor{execution}{HTML}{EDF7EF}\definecolor{packet}{HTML}{0072B2}\definecolor{anchor}{HTML}{009E73}\definecolor{fallback}{HTML}{666666}
-\begin{document}\begin{tikzpicture}[font=\small,>=Latex, node distance=6mm and 8mm,
-box/.style={draw,rounded corners=2pt,align=center,minimum height=9mm,minimum width=22mm,fill=white},
-arr/.style={->,line width=.65pt}]
-\node[box] (ref) {Task-space\\reference};
-\node[box,right=of ref] (ik) {Continuous\\IK};
-\node[box,right=of ik,fill=planner!25] (snap) {State/history\\snapshot};
-\node[box,right=of snap,fill=planner!25] (forecast) {Future activation-state\\and GRU-history forecast};
-\node[box,right=of forecast,fill=planner!25] (cem) {GRU rollout + CEM};
-\node[box,right=of cem,fill=planner!25] (exact) {Exact final-pool projection\\and task-space reranking};
-\node[box,right=of exact,draw=packet,line width=1pt] (packet) {Timestamped residual packet\\$\{t_a,\ r_{0:H-1},\ \hat{x}_{0:H}\}$};
-\node[box,below=19mm of ik,fill=execution!35] (nominal) {Current IK nominal};
-\node[box,right=of nominal,fill=execution!35] (age) {Packet-age indexing\\$\kappa=t-t_a$; read $r_\kappa$};
-\node[box,right=of age,draw=anchor,line width=1pt,fill=execution!35] (reanchor) {Optional bounded feedback\\+ execution-time re-anchor};
-\node[box,right=of reanchor,fill=execution!35] (project) {Shared velocity/acceleration/\\braking/joint-limit projector};
-\node[box,right=of project] (robot) {Position-controlled\\MuJoCo robot};
-\draw[arr] (ref)--(ik); \draw[arr] (ik)--(snap); \draw[arr] (snap)--(forecast); \draw[arr] (forecast)--(cem); \draw[arr] (cem)--(exact); \draw[arr] (exact)--(packet);
-\draw[arr] (ik.south)|-(nominal.west); \draw[arr] (nominal)--(age); \draw[arr] (age)--(reanchor); \draw[arr] (reanchor)--(project); \draw[arr] (project)--(robot);
-\draw[arr,packet] (packet.south)|-(age.north);
-\draw[arr,dashed,fallback] (robot.south)--++(0,-8mm)-| node[pos=.72,below,font=\scriptsize]{measured state and executed-command history} (snap.west);
-\draw[arr,dashed,fallback] (snap.south)--++(0,-7mm)-| node[pos=.72,above,font=\scriptsize]{No valid packet: Projected Direct IK fallback} (project.north);
-\begin{scope}[on background layer]\node[fit=(snap)(packet),fill=planner!45,draw=planner!70,rounded corners=3pt,inner sep=4mm,label=above:{\bfseries Asynchronous planner, approximately 25 Hz}]{};\node[fit=(nominal)(robot),fill=execution!45,draw=anchor!50,rounded corners=3pt,inner sep=4mm,label=below:{\bfseries 100 Hz execution layer}]{};\end{scope}
-\end{tikzpicture}\end{document}'''
-    tex.write_text(text + "\n", encoding="utf-8")
-    subprocess.run(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-output-directory", str(output), str(tex)], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["dvisvgm", "--pdf", f"--output={svg}", str(pdf)], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["pdftocairo", "-png", "-r", "300", "-singlefile", str(pdf), str(output / "fig1_activation_aligned_architecture")], check=True)
 
 
 def fig2(output: Path, data_root: Path, arrays: dict[str, dict[str, np.ndarray]], seed: int, paths: dict[str, Path]) -> None:
@@ -257,70 +211,6 @@ def fig2(output: Path, data_root: Path, arrays: dict[str, dict[str, np.ndarray]]
     write_source_manifest(output, "fig2_representative_tracking", metadata)
 
 
-def fig3(output: Path, data_root: Path, run_dir: Path, seed: int) -> None:
-    arrays = load_npz(run_dir)
-    events = [json.loads(line) for line in (run_dir / "planner_events.jsonl").read_text(encoding="utf-8").splitlines()]
-    late_index = next((i for i, event in enumerate(events) if "late" in str(event["result_type"])), 0)
-    chosen = events[max(0, late_index-3):late_index+5]
-    delay = int(np.asarray(arrays["anticipation_delay_steps"]).reshape(-1)[0])
-    fig, ax = plt.subplots(figsize=(SINGLE_COLUMN_IN, 2.30))
-    earliest = min(e["observed_control_step"]*.01 for e in chosen)
-    latest = max(e["observed_control_step"]*.01 + max(float(e["end_to_end_latency_s"]), delay*.01) for e in chosen)
-    ticks = np.arange(np.floor(earliest/.01)*.01, np.ceil(latest/.01)*.01+.001, .01)
-    for t in ticks: ax.axvline(t, color="#D0D0D0", linewidth=.45, zorder=0)
-    tidy=[]
-    for row, event in enumerate(chosen):
-        snapshot=event["observed_control_step"]*.01; publication=snapshot+float(event["end_to_end_latency_s"]); scheduled=snapshot+delay*.01
-        late="late" in str(event["result_type"])
-        ax.hlines(row, snapshot, publication, color="#0072B2", linewidth=3.2, zorder=2)
-        ax.plot(snapshot,row,"o",color="#111111",ms=3); ax.plot(publication,row,"s",color="#0072B2",ms=3.2)
-        ax.plot(scheduled,row,"x" if late else "^",color="#D55E00" if late else "#009E73",ms=4.2,mew=1.1)
-        if not late: ax.axvspan(scheduled, min(scheduled+.05, latest), color="#009E73",alpha=.07,zorder=0)
-        tidy.append({"packet":int(event["plan_id"]),"snapshot_s":snapshot,"publication_s":publication,"scheduled_activation_s":scheduled,"result_type":event["result_type"],"late":late})
-    ax.set_yticks(range(len(chosen))); ax.set_yticklabels([f"packet {e['plan_id']}" for e in chosen]); ax.set_xlabel("Wall-clock time from rollout start [s]"); ax.set_ylabel("Planner packet")
-    ax.set_xlim(earliest-.01, latest+.01); ax.invert_yaxis(); finish_axis(ax, grid=False)
-    ax.text(.01,.98,"● snapshot   ■ publication   ▲ activation   × late drop",transform=ax.transAxes,va="top",fontsize=6.2)
-    fig.subplots_adjust(left=.23,right=.99,bottom=.22,top=.94); save_figure(fig, output / "fig3_threaded_timeline")
-    source=[run_dir/"planner_events.jsonl",run_dir/"rollout.npz"]
-    metadata=source_metadata(source,selection=f"Pre-registered representative nominal circle seed {seed}; fixed window includes the first late packet and three preceding/four following planner events.",statistic_unit="Wall-clock events and 100-Hz control ticks are descriptive timing records.")
-    write_bundle(data_root/"fig3",tidy=tidy,wide=tidy,metadata=metadata,readme="Fig. 3 uses an actual wall-clock event window, not a schematic or statistically representative sample.")
-    write_source_manifest(output,"fig3_threaded_timeline",metadata)
-
-
-def fig4(output: Path, data_root: Path, suite_root: Path) -> None:
-    path=suite_root/"summaries"/"delay_sweep_components.csv"; rows=pd.read_csv(path)
-    mapping={"naive_delayed":"NaiveDelayed","anchor_only":"Alignment-only","no_feedback":"Alignment+Reanchor","full":"FullVirtual"}
-    fig, axes=plt.subplots(1,2,figsize=(DOUBLE_COLUMN_IN,2.25),sharey=True)
-    tidy=[]
-    for ax,trajectory,label,panel in zip(axes,("circle","fast_ellipse"),("Circle","Fast ellipse"),("a","b")):
-        members=rows[rows.trajectory.eq(trajectory)]
-        for protocol,name in mapping.items():
-            vals=members[members.delay_protocol.eq(protocol)]
-            summaries=vals.groupby("delay_steps").tcp_rmse_m.agg(["mean","min","max"])*1000
-            x=summaries.index.to_numpy(dtype=float); y=summaries["mean"].to_numpy()
-            style=method_style(name)
-            ax.plot(x,y,label=name,**style)
-            for _,row in vals.iterrows():
-                tidy.append({"trajectory":trajectory,"protocol":protocol,"display_name":name,"delay_steps":row.delay_steps,"seed":row.seed,"tcp_rmse_mm":row.tcp_rmse_m*1000})
-        ax.axvspan(5,8.3,color="#F4E9CF",alpha=.38,zorder=0)
-        ax.text(.98,.96,r"Collapse for $D\geq6$",transform=ax.transAxes,
-                ha="right",va="top",fontsize=7.0,color="#555555")
-        ax.set_title(f"({panel}) {label}",loc="left"); ax.set_yscale("log"); ax.set_xticks([2,4,6,8])
-        ax.set_xticklabels(["2\n20 ms","4\n40 ms","6\n60 ms","8\n80 ms"])
-        ax.set_ylim(20,1400); ax.set_yticks([20,30,50,100,300,1000])
-        ax.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-        finish_axis(ax)
-    axes[0].set_ylabel("TCP RMSE [mm, log scale]")
-    axes[0].legend(loc="upper left",fontsize=6.5,ncol=2,frameon=True,framealpha=.95,
-                   edgecolor="#BBBBBB",handlelength=2)
-    fig.supxlabel(r"Delay $D$ [control steps] (10 ms/step)",fontsize=8.0,y=.01)
-    fig.subplots_adjust(left=.075,right=.995,bottom=.25,top=.94,wspace=.08)
-    save_figure(fig,output/"fig3_circle_fast_ellipse_delay_sweep")
-    metadata=source_metadata([path],selection="Frozen 2 trajectories × 4 protocols × 4 delays × 3 seeds.",statistic_unit="trajectory × seed case; plotted lines show the mean over three seeds for each trajectory, protocol, and delay.")
-    metadata["methods"]=list(mapping.values()); write_bundle(data_root/"fig4",tidy=tidy,wide=pd.DataFrame(tidy).pivot_table(index=["trajectory","delay_steps","seed"],columns="display_name",values="tcp_rmse_mm").reset_index().to_dict("records"),metadata=metadata,readme="Delay-sweep source data. The plotted lines are trajectory-specific means over three seeds on a logarithmic axis.")
-    write_source_manifest(output,"fig3_circle_fast_ellipse_delay_sweep",metadata)
-
-
 def threaded_comparison(group: dict[str, Any], target: str) -> dict[str, Any]:
     for name, values in group["comparisons"].items():
         if name.startswith(("ThreadedASAP_minus_", "ThreadedAsync_minus_")) and target in name:
@@ -328,7 +218,7 @@ def threaded_comparison(group: dict[str, Any], target: str) -> dict[str, Any]:
     raise KeyError(f"Missing ThreadedASAP comparison containing {target}")
 
 
-def fig5(output: Path, data_root: Path, paper_root: Path) -> None:
+def supplementary_robustness_forest(output: Path, data_root: Path, paper_root: Path) -> None:
     path=paper_root/"statistics"/"ik"/"mpc_vs_projected_ik_by_perturbation.json"; groups=load_json(path)["groups"]
     order=[("nominal","Nominal"),("payload","Payload"),("actuator_gain","Actuator gain"),("force_pulse","Force pulse"),("observation_noise","Observation noise")]
     fig,ax=plt.subplots(figsize=(SINGLE_COLUMN_IN,2.55)); tidy=[]; ypos=np.arange(len(order))[::-1]
@@ -345,7 +235,7 @@ def fig5(output: Path, data_root: Path, paper_root: Path) -> None:
     write_source_manifest(output,"fig5_robustness_forest",metadata)
 
 
-def supplementary(output: Path, data_root: Path, suite_root: Path, representative_arrays: dict[str, np.ndarray]) -> None:
+def supplementary(output: Path, data_root: Path, suite_root: Path) -> None:
     sup=output/"supplementary"; sup.mkdir(parents=True,exist_ok=True)
     aggregate=suite_root/"diagnostics"/"gru_validation"/"gru_validation_aggregate.csv"; df=pd.read_csv(aggregate); fig,axes=plt.subplots(1,2,figsize=(DOUBLE_COLUMN_IN,2.25),sharex=True)
     for ax,metric,label in zip(axes,["q_rmse","dq_rmse"],["q RMSE [rad]","dq RMSE [rad/s]"]):
@@ -370,11 +260,6 @@ def supplementary(output: Path, data_root: Path, suite_root: Path, representativ
             data=sub[sub.variant.eq(variant)]; ax.scatter(data[xcol]*1000,data.tcp_rmse_m*1000,label=variant,s=18,alpha=.7)
         ax.set_xlabel(xlabel); ax.set_ylabel("TCP RMSE [mm]"); ax.set_title("Common-D" if setting=="common_d" else "Deployed"); finish_axis(ax); ax.legend(fontsize=6.2)
     fig.subplots_adjust(wspace=.28,left=.075,right=.995,bottom=.23,top=.90); save_figure(fig,sup/"s3_projection_choice")
-    fig,axes=plt.subplots(4,1,figsize=(SINGLE_COLUMN_IN,4.25),sharex=True)
-    signals=[("requested_mpc_residual","Requested residual"),("executed_residual","Executed residual"),("feedback_correction","Feedback correction"),("safety_projection_offset","Command-projection offset")]
-    for ax,(key,label) in zip(axes,signals):
-        value=np.linalg.norm(representative_arrays[key],axis=1); ax.plot(np.arange(len(value))*.01,value,color="#0072B2",lw=.85); ax.set_ylabel(label+"\n[L2 rad]"); finish_axis(ax)
-    axes[-1].set_xlabel("Time [s]"); fig.subplots_adjust(left=.25,right=.99,bottom=.09,top=.98,hspace=.14); save_figure(fig,sup/"s4_representative_control_diagnostics")
 
 
 def main() -> None:
@@ -385,16 +270,12 @@ def main() -> None:
     arrays={name:load_npz(path) for name,path in paths.items()}
     print(f"Representative case: nominal circle seed {seed}")
     for name,path in paths.items(): print(f"  {name}: {path}")
-    fig1_architecture(output)
-    write_source_manifest(output, "fig1_activation_aligned_architecture", {
-        "original_inputs": [{"path": str(args.paper_root / "statistics" / "threaded_realtime_nominal.json"), "sha256": sha256(args.paper_root / "statistics" / "threaded_realtime_nominal.json")}],
-        "selection_rule": "Frozen paper controller protocol; non-statistical architecture diagram.",
-        "statistical_unit": "not applicable", "coordinate_transform": "not applicable", "method_styles": METHOD_STYLES,
-    })
-    fig2(output,data,arrays,seed,paths); fig3(output,data,paths["ThreadedASAP"],seed); fig4(output,data,args.suite_root); fig5(output,data,args.paper_root); supplementary(output,data,args.suite_root,arrays["ThreadedASAP"])
+    fig2(output,data,arrays,seed,paths)
+    supplementary_robustness_forest(output,data,args.paper_root)
+    supplementary(output,data,args.suite_root)
     limitation=output.parent/"PRISM_EXPORT_LIMITATION.md"
     limitation.write_text("# GraphPad Prism export limitation\n\nNo GraphPad Prism executable and no `.prism`, `.pzf`, or `.pzfx` template was found in the audited workspace. pyPRISM is a Polymer Reference Interaction Site Model calculation package, not a GraphPad Prism project writer. The figure-data bundles provide tidy and wide CSV files plus metadata so that a supplied Prism 10/11 project or PZFX template can be populated without altering statistics. No native Prism file was fabricated.\n",encoding="utf-8")
-    print(f"Wrote final figures to {output}; source data to {data}")
+    print(f"Wrote verified Fig. 2 and supplementary figures to {output}; source data to {data}")
 
 
 if __name__=="__main__": main()

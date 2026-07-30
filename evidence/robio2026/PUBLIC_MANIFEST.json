@@ -578,15 +578,15 @@
       "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_perturbation.json"
     },
     {
-      "bytes": 10264,
+      "bytes": 10246,
       "path": "technical_supplement.tex",
-      "sha256": "e50836d1629c6a2d49bee8cf5f98086c744ed36899d36b3bb25e22e7bc69b604",
+      "sha256": "2ac727ba7678c88a40d87b42a3f9cc8de81534b604544272dbe62d9f0401d827",
       "source": "repository-maintained technical supplement"
     },
     {
-      "bytes": 223572,
+      "bytes": 223873,
       "path": "technical_supplement.pdf",
-      "sha256": "b0fa60c08751a3b4b2eb7a6d6241ffe3a4fe1c1a4763076ada2522560eabdc8d",
+      "sha256": "51f2254b836c83e0e7331dfc4a3af82fba1f441a2eaa27bd039e735e1033547a",
       "source": "repository-maintained technical supplement"
     }
   ],
