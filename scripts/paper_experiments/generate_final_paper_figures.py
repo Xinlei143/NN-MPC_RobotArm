@@ -132,14 +132,15 @@ arr/.style={->,line width=.65pt}]
 \node[box,right=of cem,fill=planner!25] (exact) {Exact final-pool projection\\and task-space reranking};
 \node[box,right=of exact,draw=packet,line width=1pt] (packet) {Timestamped residual packet\\$\{t_a,\ r_{0:H-1},\ \hat{x}_{0:H}\}$};
 \node[box,below=19mm of ik,fill=execution!35] (nominal) {Current IK nominal};
-\node[box,right=of nominal,fill=execution!35] (age) {Packet-age indexing\\+ age-aligned residual};
+\node[box,right=of nominal,fill=execution!35] (age) {Packet-age indexing\\$\kappa=t-t_a$; read $r_\kappa$};
 \node[box,right=of age,draw=anchor,line width=1pt,fill=execution!35] (reanchor) {Optional bounded feedback\\+ execution-time re-anchor};
 \node[box,right=of reanchor,fill=execution!35] (project) {Shared velocity/acceleration/\\braking/joint-limit projector};
 \node[box,right=of project] (robot) {Position-controlled\\MuJoCo robot};
 \draw[arr] (ref)--(ik); \draw[arr] (ik)--(snap); \draw[arr] (snap)--(forecast); \draw[arr] (forecast)--(cem); \draw[arr] (cem)--(exact); \draw[arr] (exact)--(packet);
 \draw[arr] (ik.south)|-(nominal.west); \draw[arr] (nominal)--(age); \draw[arr] (age)--(reanchor); \draw[arr] (reanchor)--(project); \draw[arr] (project)--(robot);
-\draw[arr,packet] (packet.south)|-(age.north); \draw[arr] (robot.south)|-(snap.south); \draw[arr] (robot.south)|-(nominal.south);
-\draw[->,dashed,fallback] (snap.south)--++(0,-7mm)-| node[pos=.65,below]{No valid packet: Projected Direct IK fallback} (project.south);
+\draw[arr,packet] (packet.south)|-(age.north);
+\draw[arr,dashed,fallback] (robot.south)--++(0,-8mm)-| node[pos=.72,below,font=\scriptsize]{measured state and executed-command history} (snap.west);
+\draw[arr,dashed,fallback] (snap.south)--++(0,-7mm)-| node[pos=.72,above,font=\scriptsize]{No valid packet: Projected Direct IK fallback} (project.north);
 \begin{scope}[on background layer]\node[fit=(snap)(packet),fill=planner!45,draw=planner!70,rounded corners=3pt,inner sep=4mm,label=above:{\bfseries Asynchronous planner, approximately 25 Hz}]{};\node[fit=(nominal)(robot),fill=execution!45,draw=anchor!50,rounded corners=3pt,inner sep=4mm,label=below:{\bfseries 100 Hz execution layer}]{};\end{scope}
 \end{tikzpicture}\end{document}'''
     tex.write_text(text + "\n", encoding="utf-8")
@@ -289,31 +290,35 @@ def fig3(output: Path, data_root: Path, run_dir: Path, seed: int) -> None:
 def fig4(output: Path, data_root: Path, suite_root: Path) -> None:
     path=suite_root/"summaries"/"delay_sweep_components.csv"; rows=pd.read_csv(path)
     mapping={"naive_delayed":"NaiveDelayed","anchor_only":"Alignment-only","no_feedback":"Alignment+Reanchor","full":"FullVirtual"}
-    fig, axes=plt.subplots(1,2,figsize=(DOUBLE_COLUMN_IN,1.78),sharey=True)
+    fig, axes=plt.subplots(1,2,figsize=(DOUBLE_COLUMN_IN,2.25),sharey=True)
     tidy=[]
-    for ax,trajectory,label in zip(axes,("circle","fast_ellipse"),("circle","fast ellipse")):
+    for ax,trajectory,label,panel in zip(axes,("circle","fast_ellipse"),("Circle","Fast ellipse"),("a","b")):
         members=rows[rows.trajectory.eq(trajectory)]
         for protocol,name in mapping.items():
             vals=members[members.delay_protocol.eq(protocol)]
             summaries=vals.groupby("delay_steps").tcp_rmse_m.agg(["mean","min","max"])*1000
             x=summaries.index.to_numpy(dtype=float); y=summaries["mean"].to_numpy()
             style=method_style(name)
-            ax.errorbar(x,y,yerr=[y-summaries["min"].to_numpy(),summaries["max"].to_numpy()-y],label=name,**style,capsize=2.2,elinewidth=.7)
+            ax.plot(x,y,label=name,**style)
             for _,row in vals.iterrows():
-                ax.scatter(row.delay_steps,float(row.tcp_rmse_m)*1000,color=style["color"],marker=style["marker"],s=16,alpha=.68,zorder=3)
                 tidy.append({"trajectory":trajectory,"protocol":protocol,"display_name":name,"delay_steps":row.delay_steps,"seed":row.seed,"tcp_rmse_mm":row.tcp_rmse_m*1000})
-        inset=inset_axes(ax,width="42%",height="42%",loc="upper left",borderpad=.8)
-        collapse=members[members.delay_protocol.eq("anchor_only")]
-        for delay, group in collapse.groupby("delay_steps"):
-            inset.scatter([delay]*len(group),group.tcp_rmse_m*1000,color=METHOD_STYLES["Alignment-only"]["color"],marker="X",s=14)
-            inset.plot([delay],[group.tcp_rmse_m.mean()*1000],marker="X",color=METHOD_STYLES["Alignment-only"]["color"],ms=3.5)
-        inset.set_xlim(5.6,8.4); inset.set_ylim(600,1100); inset.set_xticks([6,8]); inset.set_yticks([600,1000]); inset.tick_params(labelsize=5.6); inset.set_title("Alignment-only collapse",fontsize=5.7,pad=1)
-        ax.set_title(label); ax.set_xlabel("Delay $D$ [control steps]"); ax.set_xticks([2,4,6,8]); ax.set_ylim(0,120); finish_axis(ax); panel_label(ax,"a" if trajectory=="circle" else "b")
-    axes[0].set_ylabel("TCP RMSE [mm]"); axes[1].legend(loc="lower right",fontsize=6.1,ncol=2,handlelength=2)
-    fig.subplots_adjust(left=.075,right=.995,bottom=.22,top=.91,wspace=.08); save_figure(fig,output/"fig4_delay_sweep")
-    metadata=source_metadata([path],selection="Frozen 2 trajectories × 4 protocols × 4 delays × 3 seeds.",statistic_unit="trajectory × seed case; points show all three seeds and error bars are min–max, not confidence intervals.")
-    metadata["methods"]=list(mapping.values()); write_bundle(data_root/"fig4",tidy=tidy,wide=pd.DataFrame(tidy).pivot_table(index=["trajectory","delay_steps","seed"],columns="display_name",values="tcp_rmse_mm").reset_index().to_dict("records"),metadata=metadata,readme="Fig. 4 source data. The inset displays the unfitted, untransformed 600–1100 mm Alignment-only collapse range.")
-    write_source_manifest(output,"fig4_delay_sweep",metadata)
+        ax.axvspan(5,8.3,color="#F4E9CF",alpha=.38,zorder=0)
+        ax.text(.98,.96,r"Collapse for $D\geq6$",transform=ax.transAxes,
+                ha="right",va="top",fontsize=7.0,color="#555555")
+        ax.set_title(f"({panel}) {label}",loc="left"); ax.set_yscale("log"); ax.set_xticks([2,4,6,8])
+        ax.set_xticklabels(["2\n20 ms","4\n40 ms","6\n60 ms","8\n80 ms"])
+        ax.set_ylim(20,1400); ax.set_yticks([20,30,50,100,300,1000])
+        ax.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+        finish_axis(ax)
+    axes[0].set_ylabel("TCP RMSE [mm, log scale]")
+    axes[0].legend(loc="upper left",fontsize=6.5,ncol=2,frameon=True,framealpha=.95,
+                   edgecolor="#BBBBBB",handlelength=2)
+    fig.supxlabel(r"Delay $D$ [control steps] (10 ms/step)",fontsize=8.0,y=.01)
+    fig.subplots_adjust(left=.075,right=.995,bottom=.25,top=.94,wspace=.08)
+    save_figure(fig,output/"fig3_circle_fast_ellipse_delay_sweep")
+    metadata=source_metadata([path],selection="Frozen 2 trajectories × 4 protocols × 4 delays × 3 seeds.",statistic_unit="trajectory × seed case; plotted lines show the mean over three seeds for each trajectory, protocol, and delay.")
+    metadata["methods"]=list(mapping.values()); write_bundle(data_root/"fig4",tidy=tidy,wide=pd.DataFrame(tidy).pivot_table(index=["trajectory","delay_steps","seed"],columns="display_name",values="tcp_rmse_mm").reset_index().to_dict("records"),metadata=metadata,readme="Delay-sweep source data. The plotted lines are trajectory-specific means over three seeds on a logarithmic axis.")
+    write_source_manifest(output,"fig3_circle_fast_ellipse_delay_sweep",metadata)
 
 
 def threaded_comparison(group: dict[str, Any], target: str) -> dict[str, Any]:
@@ -366,7 +371,7 @@ def supplementary(output: Path, data_root: Path, suite_root: Path, representativ
         ax.set_xlabel(xlabel); ax.set_ylabel("TCP RMSE [mm]"); ax.set_title("Common-D" if setting=="common_d" else "Deployed"); finish_axis(ax); ax.legend(fontsize=6.2)
     fig.subplots_adjust(wspace=.28,left=.075,right=.995,bottom=.23,top=.90); save_figure(fig,sup/"s3_projection_choice")
     fig,axes=plt.subplots(4,1,figsize=(SINGLE_COLUMN_IN,4.25),sharex=True)
-    signals=[("requested_mpc_residual","Requested residual"),("executed_residual","Executed residual"),("feedback_correction","Feedback correction"),("safety_projection_offset","Safety projection offset")]
+    signals=[("requested_mpc_residual","Requested residual"),("executed_residual","Executed residual"),("feedback_correction","Feedback correction"),("safety_projection_offset","Command-projection offset")]
     for ax,(key,label) in zip(axes,signals):
         value=np.linalg.norm(representative_arrays[key],axis=1); ax.plot(np.arange(len(value))*.01,value,color="#0072B2",lw=.85); ax.set_ylabel(label+"\n[L2 rad]"); finish_axis(ax)
     axes[-1].set_xlabel("Time [s]"); fig.subplots_adjust(left=.25,right=.99,bottom=.09,top=.98,hspace=.14); save_figure(fig,sup/"s4_representative_control_diagnostics")

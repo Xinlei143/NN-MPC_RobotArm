@@ -11,5 +11,5 @@ results, or an exhausted replica-computation budget triggers the conservative
 nominal fallback.
 
 Thresholds depend on the normalizer, model family, replica training protocol,
-and uncertainty horizon. This is a MuJoCo safety monitor, not a certified
-hardware safety system.
+and uncertainty horizon. This is an experimental MuJoCo monitoring and gating
+mechanism, not a validated or certified safety system.

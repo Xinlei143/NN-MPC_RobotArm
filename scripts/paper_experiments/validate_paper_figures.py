@@ -8,7 +8,11 @@ from pathlib import Path
 from paper_style import METHOD_STYLES
 
 
-MAIN = ("fig1_activation_aligned_architecture", "fig2_representative_tracking", "fig4_delay_sweep")
+MAIN = (
+    "fig1_activation_aligned_asynchronous_mpc.png",
+    "fig2_representative_tracking.png",
+    "fig3_circle_fast_ellipse_delay_sweep.png",
+)
 
 
 def main() -> None:
@@ -19,10 +23,11 @@ def main() -> None:
     args = parser.parse_args(); paper=args.paper_dir.resolve(); figures=(args.figures_dir or paper/"figures").resolve(); data=(args.figure_data_dir or paper/"figure_data").resolve(); tex=(paper/"main.tex").read_text(encoding="utf-8")
     failures=[]
     for name in MAIN:
-        suffixes = (".svg", ".png", ".source_manifest.json") if name == "fig1_activation_aligned_architecture" else (".pdf", ".svg", ".png", ".source_manifest.json")
-        for suffix in suffixes:
-            if not (figures/f"{name}{suffix}").is_file(): failures.append(f"missing {name}{suffix}")
-        if name.startswith("fig2") and not (data/"fig2"/"metadata.json").is_file(): failures.append("missing Fig. 2 source data")
+        if not (figures/name).is_file(): failures.append(f"missing {name}")
+    for stem in ("fig2_representative_tracking", "fig3_circle_fast_ellipse_delay_sweep"):
+        for suffix in (".pdf", ".svg", ".source_manifest.json"):
+            if not (figures/f"{stem}{suffix}").is_file(): failures.append(f"missing {stem}{suffix}")
+    if not (data/"fig2"/"metadata.json").is_file(): failures.append("missing Fig. 2 source data")
     if "no_feedback" in tex: failures.append("main.tex still exposes no_feedback rather than Alignment+Reanchor")
     if "Latency [ms]" in tex: failures.append("main.tex contains ambiguous Latency label")
     forbidden = {
@@ -34,7 +39,7 @@ def main() -> None:
     for phrase, reason in forbidden.items():
         if phrase in tex:
             failures.append(f"main.tex contains {phrase!r}: {reason}")
-    required = ("tab:gru-validation", "tab:protocol-semantics", "tab:ablation", "fig2_representative_tracking", "fig4_delay_sweep")
+    required = ("tab:gru-validation", "tab:protocol-semantics", "tab:ablation", *MAIN)
     for phrase in required:
         if phrase not in tex:
             failures.append(f"main.tex is missing required manuscript marker {phrase!r}")

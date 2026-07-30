@@ -198,13 +198,13 @@ resets the CEM warm start. Persistent tracking deterioration or residual
 saturation can trigger recovery; hitting a command limit is diagnostic by
 itself and is not a recovery event.
 
-## Optional uncertainty supervisor
+## Optional model-disagreement monitor and residual gate
 
-The uncertainty feature is an optional post-selection safety monitor and is
-disabled by default (`--uncertainty_mode off`). It is available only for learned
-MPC in `threaded_asap` mode. Model A remains the only model used by CEM; replicas
-evaluate the selected command sequence and never average predictions into the
-control command.
+The uncertainty feature is an optional post-selection model-disagreement monitor
+and residual gate and is disabled by default (`--uncertainty_mode off`). It is
+available only for learned MPC in `threaded_asap` mode. Model A remains the only
+model used by CEM; replicas evaluate the selected command sequence and never
+average predictions into the control command.
 
 ```text
 Model-A CEM selects q_ref[0:H)
