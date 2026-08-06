@@ -1,0 +1,5 @@
+# Install into the existing LeRobot environment. The hardware API itself is
+# pinned to the commit below; install the required CUDA-enabled PyTorch wheel
+# from the official PyTorch index first when GPU planning is required.
+-r dynamics_modeling/requirements.txt
+lerobot @ git+https://github.com/huggingface/lerobot.git@2aba372b4e217cc47db28e0f836859b20d1456c9
