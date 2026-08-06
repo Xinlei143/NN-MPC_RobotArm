@@ -98,6 +98,11 @@ def _copy_packet(packet: ASAPPlanPacket) -> ASAPPlanPacket:
         uncertainty_high_risk=packet.uncertainty_high_risk,
         uncertainty_state=packet.uncertainty_state,
         uncertainty_reference_feedback=packet.uncertainty_reference_feedback,
+        launch_tick=packet.launch_tick,
+        publication_tick=packet.publication_tick,
+        activation_tick=packet.activation_tick,
+        history_generation=packet.history_generation,
+        estimator_generation=packet.estimator_generation,
     )
 
 
@@ -112,6 +117,8 @@ def copy_snapshot(snapshot: PlanningSnapshot) -> PlanningSnapshot:
         previous_command_nominal_offset_velocity=snapshot.previous_command_nominal_offset_velocity.copy(),
         packet_schedule=tuple(_copy_packet(packet) for packet in snapshot.packet_schedule),
         packet_prediction_q_innovation=float(snapshot.packet_prediction_q_innovation),
+        history_generation=snapshot.history_generation,
+        estimator_generation=snapshot.estimator_generation,
     )
 
 
@@ -187,3 +194,8 @@ class PlanPacketStore:
         with self._lock:
             packets: Iterable[ASAPPlanPacket] = (() if self._active is None else (self._active,))
             return tuple(_copy_packet(packet) for packet in (*packets, *self._pending))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._active = None
+            self._pending = []

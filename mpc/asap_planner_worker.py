@@ -612,6 +612,13 @@ class ASAPPlannerWorker(threading.Thread):
                     uncertainty_high_risk=uncertainty_high_risk,
                     uncertainty_state=uncertainty_state,
                     uncertainty_reference_feedback=uncertainty_reference_feedback,
+                    launch_tick=snapshot.launch_step,
+                    publication_tick=snapshot.launch_step + max(
+                        0, int((publish_ns - snapshot.launch_time_ns) // int(bundle.control_dt * 1e9))
+                    ),
+                    activation_tick=anchor,
+                    history_generation=snapshot.history_generation,
+                    estimator_generation=snapshot.estimator_generation,
                 )
                 with self._status_lock:
                     self._last_successful_plan_id = plan_id

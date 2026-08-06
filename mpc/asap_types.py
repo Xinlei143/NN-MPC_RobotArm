@@ -31,6 +31,11 @@ class ASAPPlanPacket:
     uncertainty_high_risk: bool = False
     uncertainty_state: str = "normal"
     uncertainty_reference_feedback: bool = False
+    launch_tick: int = -1
+    publication_tick: int = -1
+    activation_tick: int = -1
+    history_generation: int = 0
+    estimator_generation: int = 0
 
     @property
     def horizon(self) -> int:
@@ -56,6 +61,8 @@ class PlanningSnapshot:
     previous_command_nominal_offset_velocity: np.ndarray
     packet_schedule: tuple[ASAPPlanPacket, ...]
     packet_prediction_q_innovation: float = float("nan")
+    history_generation: int = 0
+    estimator_generation: int = 0
 
 
 @dataclass(frozen=True)
