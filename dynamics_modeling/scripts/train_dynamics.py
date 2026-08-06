@@ -20,7 +20,9 @@ from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
-from neural_dynamics.dataset import load_npz_dataset, load_rollout_npz_dataset, split_dataset
+from neural_dynamics.dataset import (
+    load_npz_dataset, load_rollout_npz_dataset, split_dataset, split_dataset_by_group_ids,
+)
 from neural_dynamics.integration import reconstruct_next_state
 from neural_dynamics.normalization import StandardNormalizer
 from neural_dynamics.rollout import rollout_dynamics_batch
@@ -72,6 +74,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollout_loss_steps", default=1, type=int)
     parser.add_argument("--rollout_loss_weight", default=0.0, type=float)
     parser.add_argument("--rollout_loss_discount", default=1.0, type=float)
+    parser.add_argument("--real_defaults", action="store_true", help="Use frozen SO101 Model-A defaults (GRU/8-step/delta-state/Huber/30 Hz).")
+    parser.add_argument("--test_group_ids", default=None, help="Comma-separated split_group_ids held out from both training and validation.")
+    parser.add_argument("--validation_group_ids", default=None,
+                        help="Comma-separated split_group_ids used only for validation (required for real 8/2/2).")
+    parser.add_argument("--val_fraction", default=0.1, type=float)
     parser.add_argument("--train_sample_stride", default=1, type=int)
     parser.add_argument("--val_sample_stride", default=1, type=int)
     parser.add_argument(
@@ -93,6 +100,8 @@ def validate_checkpoint_config(checkpoint: dict, expected: dict, expected_state_
             raise ValueError(
                 f"Checkpoint {key}={config[key]!r} does not match current {key}={expected[key]!r}"
             )
+    if expected.get("plant_identity") is not None and config.get("plant_identity") != expected["plant_identity"]:
+        raise ValueError("Checkpoint plant_identity does not match current real plant")
     if expected_state_dict is not None:
         actual_state_dict = checkpoint.get("model_state_dict")
         if not isinstance(actual_state_dict, dict):
@@ -241,6 +250,7 @@ def write_artifact_manifest(
     robot_identity: dict,
     dataset_manifest_path: Path,
     dataset_manifest_sha256: str,
+    plant_identity: dict | None = None,
 ) -> None:
     files = {}
     for name in (
@@ -257,6 +267,7 @@ def write_artifact_manifest(
         "schema_version": 1,
         "kind": "robot_dynamics_training_artifacts",
         "robot_identity": robot_identity,
+        "plant_identity": plant_identity,
         "dataset_manifest": {
             "path": str(dataset_manifest_path),
             "sha256": dataset_manifest_sha256,
@@ -523,6 +534,19 @@ def run_epoch(
 
 def main() -> None:
     args = parse_args()
+    if args.real_defaults:
+        args.model_type = "gru"
+        args.history_len = 8
+        args.target_mode = "delta_state"
+        args.control_dt = 1.0 / 30.0
+        args.loss_type = "huber"
+        args.q_weight = 1.0
+        args.dq_weight = 0.35
+        args.rollout_loss_steps = 5
+        if args.rollout_loss_weight == 0.0:
+            args.rollout_loss_weight = 1.0
+        if args.val_fraction == 0.1:
+            args.val_fraction = 0.2
     robot = load_robot_spec(args.robot_config, validate_model=True)
     data_path = Path(args.data_path).expanduser().resolve()
     manifest_path = (
@@ -535,6 +559,12 @@ def main() -> None:
     dataset_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if dataset_manifest.get("robot_identity") != robot.artifact_identity():
         raise ValueError("Dataset manifest robot identity does not match --robot_config")
+    plant_identity = dataset_manifest.get("plant_identity")
+    if robot.source.get("domain") == "real":
+        if not isinstance(plant_identity, dict):
+            raise ValueError("Real-domain training requires plant_identity in the dataset manifest")
+        if dataset_manifest.get("collection_mode") != "model_a_excitation":
+            raise ValueError("SO101 Model A training accepts only model_a_excitation data")
     dataset_record = dataset_manifest.get("dataset", {})
     if dataset_record.get("sha256") != file_sha256(data_path):
         raise ValueError("Dataset file hash does not match its manifest")
@@ -572,6 +602,35 @@ def main() -> None:
     if args.q_weight == 0 and args.dq_weight == 0:
         raise ValueError("At least one of q_weight or dq_weight must be positive")
     use_rollout_loss = bool(args.rollout_loss_steps > 1 and args.rollout_loss_weight > 0.0)
+    def parse_group_ids(value: str | None, option: str) -> np.ndarray | None:
+        if value is None:
+            return None
+        parsed = np.asarray([int(item) for item in value.split(",") if item.strip()], dtype=np.int64)
+        if parsed.size != len(np.unique(parsed)):
+            raise ValueError(f"{option} must not contain duplicate group IDs")
+        return parsed
+
+    test_group_ids = parse_group_ids(args.test_group_ids, "--test_group_ids")
+    validation_group_ids = parse_group_ids(args.validation_group_ids, "--validation_group_ids")
+    if robot.source.get("domain") == "real":
+        if test_group_ids is None or test_group_ids.size != 2:
+            raise ValueError("Real Model-A training requires exactly two --test_group_ids for the 8/2/2 session split")
+        if validation_group_ids is None or validation_group_ids.size != 2:
+            raise ValueError("Real Model-A training requires exactly two --validation_group_ids for the 8/2/2 session split")
+        if np.intersect1d(test_group_ids, validation_group_ids).size:
+            raise ValueError("test and validation group IDs must be disjoint")
+        with np.load(data_path, allow_pickle=False) as raw_dataset:
+            if "split_group_ids" not in raw_dataset.files:
+                raise KeyError("Real Model-A 8/2/2 split requires split_group_ids")
+            all_group_ids = np.unique(np.asarray(raw_dataset["split_group_ids"], dtype=np.int64))
+        if all_group_ids.size != 12:
+            raise ValueError(f"Real Model-A 8/2/2 split requires exactly 12 session groups, got {all_group_ids.size}")
+        selected = np.union1d(test_group_ids, validation_group_ids)
+        missing = np.setdiff1d(selected, all_group_ids)
+        if missing.size:
+            raise ValueError(f"requested split groups are absent from dataset: {missing.tolist()}")
+        if np.setdiff1d(all_group_ids, selected).size != 8:
+            raise ValueError("real group split must leave exactly eight training sessions")
     if not args.no_require_q_ref_dataset:
         validate_q_ref_dataset(data_path, args.model_type)
 
@@ -585,9 +644,11 @@ def main() -> None:
             args.history_len,
             target_mode=args.target_mode,
             rollout_steps=args.rollout_loss_steps,
+            exclude_split_group_ids=test_group_ids,
         )
     else:
-        dataset = load_npz_dataset(data_path, args.model_type, args.history_len, target_mode=args.target_mode)
+        dataset = load_npz_dataset(data_path, args.model_type, args.history_len, target_mode=args.target_mode,
+                                   exclude_split_group_ids=test_group_ids)
     q_extra_weights = parse_extra_weights(args.q_extra_weights, dataset.state_dim // 2, "q_extra_weights")
     dq_extra_weights = parse_extra_weights(args.dq_extra_weights, dataset.state_dim // 2, "dq_extra_weights")
     source_weights = parse_source_weights(args.source_weights)
@@ -600,14 +661,21 @@ def main() -> None:
         print(f"q_extra_weights={q_extra_weights.tolist()}", flush=True)
     if dq_extra_weights is not None:
         print(f"dq_extra_weights={dq_extra_weights.tolist()}", flush=True)
-    train_set, val_set = split_dataset(
-        dataset,
-        val_fraction=0.1,
-        seed=args.seed,
-        train_sample_stride=args.train_sample_stride,
-        val_sample_stride=args.val_sample_stride,
-        show_progress=True,
-    )
+    if validation_group_ids is not None:
+        train_set, val_set = split_dataset_by_group_ids(
+            dataset, validation_group_ids,
+            train_sample_stride=args.train_sample_stride,
+            val_sample_stride=args.val_sample_stride,
+        )
+    else:
+        train_set, val_set = split_dataset(
+            dataset,
+            val_fraction=args.val_fraction,
+            seed=args.seed,
+            train_sample_stride=args.train_sample_stride,
+            val_sample_stride=args.val_sample_stride,
+            show_progress=True,
+        )
     print(
         f"split dataset: train={len(train_set)} val={len(val_set)} "
         f"train_sample_stride={args.train_sample_stride} val_sample_stride={args.val_sample_stride}",
@@ -622,20 +690,34 @@ def main() -> None:
             raise ValueError("Frozen normalizer robot identity does not match RobotSpec")
         if normalizer.metadata.get("dataset_manifest_sha256") != dataset_manifest_sha256:
             raise ValueError("Frozen normalizer dataset identity does not match current training data")
+        if normalizer.metadata.get("plant_identity") != plant_identity:
+            raise ValueError("Frozen normalizer plant identity does not match current real plant")
         print(f"loaded frozen normalizer: {normalizer_source}", flush=True)
     else:
         print("fitting normalizer", flush=True)
-        deltas = dataset.next_states - dataset.states
+        # Fit only the train windows.  Validation and test session statistics
+        # must not leak into the real-world normalizer.
+        train_window_indices = np.asarray(train_set.indices, dtype=np.int64)
+        if dataset.model_type == "mlp":
+            train_rows = train_window_indices
+        else:
+            if dataset.sequence_indices is None:
+                raise RuntimeError("sequence dataset has no sequence indices")
+            train_rows = dataset.sequence_indices[train_window_indices] + dataset.history_len - 1
+        train_states = dataset.states[train_rows]
+        train_actions = dataset.actions[train_rows]
+        deltas = dataset.next_states[train_rows] - train_states
         if args.target_mode == "delta_dq":
             deltas = deltas[:, dataset.state_dim // 2 :]
         normalizer = StandardNormalizer()
-        fit_normalizer_with_progress(normalizer, dataset.states, dataset.actions, deltas)
-        del deltas
+        fit_normalizer_with_progress(normalizer, train_states, train_actions, deltas)
+        del deltas, train_states, train_actions
         print("normalizer ready", flush=True)
     normalizer.metadata = {
         "schema_version": 1,
         "robot_identity": robot.artifact_identity(),
         "dataset_manifest_sha256": dataset_manifest_sha256,
+        "plant_identity": plant_identity,
     }
 
     model = build_model(
@@ -675,9 +757,13 @@ def main() -> None:
         "freeze_normalizer": bool(args.freeze_normalizer),
         "source_weights": source_weights,
         "steps_per_epoch": args.steps_per_epoch,
+        "test_group_ids": None if test_group_ids is None else test_group_ids.tolist(),
+        "validation_group_ids": None if validation_group_ids is None else validation_group_ids.tolist(),
+        "val_fraction": args.val_fraction,
         "robot_identity": robot.artifact_identity(),
         "dataset_manifest_sha256": dataset_manifest_sha256,
         "dataset_sha256": dataset_record["sha256"],
+        "plant_identity": plant_identity,
     }
 
     start_epoch = 1
@@ -858,6 +944,7 @@ def main() -> None:
             robot_identity=robot.artifact_identity(),
             dataset_manifest_path=manifest_path,
             dataset_manifest_sha256=dataset_manifest_sha256,
+            plant_identity=plant_identity,
         )
         print(f"  → saved latest checkpoint: {save_dir / 'latest_model.pt'}")
 

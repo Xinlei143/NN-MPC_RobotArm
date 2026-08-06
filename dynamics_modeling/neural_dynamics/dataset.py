@@ -9,6 +9,18 @@ from torch.utils.data import Dataset, Subset, random_split
 from tqdm import tqdm
 
 
+def _all_valid_window_mask(valid_target: np.ndarray, starts: np.ndarray, length: int) -> np.ndarray:
+    """Return whether every transition in each half-open window is valid."""
+    if length <= 0:
+        raise ValueError("window length must be positive")
+    valid = np.asarray(valid_target, dtype=bool)
+    indices = np.asarray(starts, dtype=np.int64)
+    if indices.ndim != 1 or np.any(indices < 0) or np.any(indices + length > len(valid)):
+        raise ValueError("window indices are outside valid_target")
+    invalid_prefix = np.concatenate(([0], np.cumsum(~valid, dtype=np.int64)))
+    return invalid_prefix[indices + length] == invalid_prefix[indices]
+
+
 class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     def __init__(
         self,
@@ -78,8 +90,11 @@ class DynamicsDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 "each episode must contain at least history_len samples."
             )
         indices = np.concatenate(starts_by_run)
+        # A recurrent input represents the whole history, not merely its last
+        # target.  Retained audit rows (timing resets, command uncertainty,
+        # etc.) must therefore break every window that contains them.
         valid = self.valid_target.cpu().numpy()
-        return indices[valid[indices + self.history_len - 1]]
+        return indices[_all_valid_window_mask(valid, indices, self.history_len)]
 
     @property
     def state_dim(self) -> int:
@@ -188,10 +203,14 @@ class RolloutDynamicsDataset(DynamicsDataset):
                 f"rollout_steps={self.rollout_steps}; each episode must contain enough samples."
             )
         indices = np.concatenate(starts_by_run)
-        current = indices if self.model_type == "mlp" else indices + self.history_len - 1
         valid = self.valid_target.cpu().numpy()
-        keep = np.asarray([np.all(valid[index : index + self.rollout_steps]) for index in current], dtype=bool)
-        return indices[keep]
+        # For a recurrent rollout, require both the input history and every
+        # rollout target to be valid.  The current row is shared by the two,
+        # so the required half-open interval has history_len+rollout_steps-1
+        # entries.  MLP has no history and needs only rollout_steps entries.
+        required_length = (self.rollout_steps if self.model_type == "mlp"
+                           else self.history_len + self.rollout_steps - 1)
+        return indices[_all_valid_window_mask(valid, indices, required_length)]
 
     def __len__(self) -> int:
         if self.sequence_indices is None:
@@ -221,6 +240,7 @@ def load_npz_dataset(
     model_type: str,
     history_len: int,
     target_mode: str = "delta_state",
+    exclude_split_group_ids: np.ndarray | None = None,
 ) -> DynamicsDataset:
     data_path = Path(data_path)
     if not data_path.exists():
@@ -234,16 +254,20 @@ def load_npz_dataset(
     split_group_ids = data["split_group_ids"] if "split_group_ids" in data.files else None
     source_ids = data["source_ids"] if "source_ids" in data.files else None
     valid_target = data["valid_target"] if "valid_target" in data.files else None
+    keep = np.ones(len(data["states"]), dtype=bool)
+    if exclude_split_group_ids is not None:
+        if split_group_ids is None:
+            raise KeyError("exclude_split_group_ids requires split_group_ids in the dataset")
+        keep = ~np.isin(split_group_ids, np.asarray(exclude_split_group_ids))
+    def selected(value):
+        return None if value is None else value[keep]
     return DynamicsDataset(
-        data["states"],
-        data["actions"],
-        data["next_states"],
+        data["states"][keep],
+        data["actions"][keep],
+        data["next_states"][keep],
         model_type,
         history_len,
-        episode_ids,
-        split_group_ids,
-        source_ids,
-        valid_target,
+        selected(episode_ids), selected(split_group_ids), selected(source_ids), selected(valid_target),
         target_mode=target_mode,
     )
 
@@ -254,6 +278,7 @@ def load_rollout_npz_dataset(
     history_len: int,
     target_mode: str = "delta_state",
     rollout_steps: int = 1,
+    exclude_split_group_ids: np.ndarray | None = None,
 ) -> RolloutDynamicsDataset:
     data_path = Path(data_path)
     if not data_path.exists():
@@ -267,16 +292,18 @@ def load_rollout_npz_dataset(
     split_group_ids = data["split_group_ids"] if "split_group_ids" in data.files else None
     source_ids = data["source_ids"] if "source_ids" in data.files else None
     valid_target = data["valid_target"] if "valid_target" in data.files else None
+    keep = np.ones(len(data["states"]), dtype=bool)
+    if exclude_split_group_ids is not None:
+        if split_group_ids is None:
+            raise KeyError("exclude_split_group_ids requires split_group_ids in the dataset")
+        keep = ~np.isin(split_group_ids, np.asarray(exclude_split_group_ids))
+    def selected(value):
+        return None if value is None else value[keep]
     return RolloutDynamicsDataset(
-        data["states"],
-        data["actions"],
-        data["next_states"],
+        data["states"][keep], data["actions"][keep], data["next_states"][keep],
         model_type,
         history_len,
-        episode_ids,
-        split_group_ids,
-        source_ids,
-        valid_target,
+        selected(episode_ids), selected(split_group_ids), selected(source_ids), selected(valid_target),
         target_mode=target_mode,
         rollout_steps=rollout_steps,
     )
@@ -367,4 +394,40 @@ def split_dataset(
     train_set, val_set = random_split(dataset, [train_size, val_size], generator=generator)
     train_indices = apply_sample_stride(np.asarray(train_set.indices, dtype=np.int64), train_sample_stride)
     val_indices = apply_sample_stride(np.asarray(val_set.indices, dtype=np.int64), val_sample_stride)
+    return Subset(dataset, train_indices), Subset(dataset, val_indices)
+
+
+def split_dataset_by_group_ids(
+    dataset: DynamicsDataset,
+    validation_group_ids: np.ndarray,
+    *,
+    train_sample_stride: int = 1,
+    val_sample_stride: int = 1,
+) -> tuple[Subset[DynamicsDataset], Subset[DynamicsDataset]]:
+    """Split sequence windows by explicit session groups without leakage."""
+    if dataset.split_group_ids is None:
+        raise ValueError("explicit group splitting requires split_group_ids")
+    if train_sample_stride <= 0 or val_sample_stride <= 0:
+        raise ValueError("sample strides must be positive")
+    validation = np.unique(np.asarray(validation_group_ids, dtype=np.int64))
+    if validation.size == 0:
+        raise ValueError("at least one validation split_group_id is required")
+    row_groups = dataset.split_group_ids.cpu().numpy()
+    if dataset.model_type == "mlp":
+        current_rows = np.arange(len(dataset), dtype=np.int64)
+        window_indices = current_rows
+    else:
+        if dataset.sequence_indices is None:
+            raise ValueError("sequence-aware explicit splitting requires sequence indices")
+        window_indices = np.arange(len(dataset), dtype=np.int64)
+        current_rows = dataset.sequence_indices + dataset.history_len - 1
+    groups = row_groups[current_rows]
+    available = np.unique(groups)
+    missing = np.setdiff1d(validation, available)
+    if missing.size:
+        raise ValueError(f"validation groups have no valid windows: {missing.tolist()}")
+    val_indices = window_indices[np.isin(groups, validation)][::val_sample_stride]
+    train_indices = window_indices[~np.isin(groups, validation)][::train_sample_stride]
+    if len(train_indices) == 0 or len(val_indices) == 0:
+        raise ValueError("explicit group split produced an empty train or validation subset")
     return Subset(dataset, train_indices), Subset(dataset, val_indices)
