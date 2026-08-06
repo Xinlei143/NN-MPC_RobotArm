@@ -1,0 +1,7 @@
+<mujoco model="so101_table_guard_20mm">
+  <include file="so101_new_calib.xml"/>
+  <worldbody>
+    <geom name="table_clearance_guard" type="plane" pos="0 0 0.020"
+          size="0 0 0.05" rgba="0.1 0.8 0.2 0.25"/>
+  </worldbody>
+</mujoco>

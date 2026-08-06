@@ -39,3 +39,9 @@ __pycache__/
 *.pyc
 
 /diagnostics
+
+# Machine-specific SO101 serial port, calibration hash, and safety envelope.
+/configs/hardware/*.local.yaml
+
+# MuJoCo runtime warning logs.
+/MUJOCO_LOG*.TXT

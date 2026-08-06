@@ -1,0 +1,34 @@
+robot_id: so101_real_v1
+model_xml: dynamics_modeling/robots/so101/so101_nominal.xml
+n_joints: 5
+joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll]
+actuator_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll]
+ee_site_name: ee_site
+home_q: [0, 0, 0, 0.2516342834, 0]
+frame_skip: 1
+expected_control_dt: 0.03333333333333333
+gravity_compensation: false
+gravity_compensation_zero_indices: []
+contact_semantics: hardware_unavailable
+command_velocity_limit: [0.25, 0.25, 0.25, 0.25, 0.25]
+command_acceleration_limit: [1.0, 1.0, 1.0, 1.0, 1.0]
+state_velocity_limit: [0.5, 0.5, 0.5, 0.5, 0.5]
+residual_max: [0.0349066, 0.0349066, 0.0349066, 0.0349066, 0.0349066]
+servo_scale: [1, 1, 1, 1, 1]
+# Real Model-A collection workspace: manually verified hardware range inset by
+# one degree.  The wrist-flex home is asymmetric because its calibrated home
+# is raw 2048 rather than the calibration midpoint.  The limits themselves
+# include the safety inset, so no additional simulated-only margin is applied.
+data_reset_low_delta: [1.6826124756, 1.7923188857, 1.6642002110, 1.7562615342, 2.6285425713]
+data_reset_high_delta: [1.6826124756, 1.7923188857, 1.6642002110, 1.2529929674, 1.8690366550]
+data_target_low_delta: [1.6826124756, 1.7923188857, 1.6642002110, 1.7562615342, 2.6285425713]
+data_target_high_delta: [1.6826124756, 1.7923188857, 1.6642002110, 1.2529929674, 1.8690366550]
+data_joint_limit_margin: 0.0
+legacy_artifacts: {}
+source:
+  domain: real
+  hardware: SO101 follower 12V
+  motor_model: STS3215
+  kinematics_repository: TheRobotStudio/SO-ARM100
+  kinematics_commit: 63eede5a636e548eb8f2854e558bd343c21db9f7
+  lerobot_repository: huggingface/lerobot

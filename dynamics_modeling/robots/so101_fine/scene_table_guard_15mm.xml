@@ -1,0 +1,16 @@
+<!--
+  Detailed SO101 collision scene with a virtual table-clearance guard.
+
+  The physical tabletop is the base frame z=0 plane.  The guard is raised
+  15 mm so a required 50 mm mesh-to-guard clearance represents at least
+  65 mm physical clearance to the real tabletop.  The base is intentionally
+  not a collision geom in the upstream model, so visual overlap with this
+  guard is expected and has no contact-solver consequence.
+-->
+<mujoco model="so101_table_guard_15mm">
+  <include file="so101_new_calib.xml"/>
+  <worldbody>
+    <geom name="table_clearance_guard" type="plane" pos="0 0 0.015"
+          size="0 0 0.05" rgba="0.1 0.8 0.2 0.25"/>
+  </worldbody>
+</mujoco>

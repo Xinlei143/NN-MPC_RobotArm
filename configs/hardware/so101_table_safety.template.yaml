@@ -1,0 +1,36 @@
+# Copy to so101_table_safety.local.yaml (gitignored).  This profile is a hard
+# prerequisite for full-workspace E3 collection; do not mark it approved until
+# all manual clearance captures have been finalized by the calibration tool.
+schema_version: 1
+status: draft
+model_xml_sha256: CHECK_ME
+table_plane:
+  # Base bottom lies directly on a level tabletop: n dot p = offset.
+  normal: [0, 0, 1]
+  offset_m: 0.0
+minimum_clearance_m: 0.050
+calibrated_overprediction_m: 0.0
+static_margin_m: 0.010
+geometry_padding_m: 0.010
+base_level:
+  roll_deg: 0.0
+  pitch_deg: 0.0
+q_ctrl_to_q_kin:
+  joint_sign: [1, 1, 1, 1, 1]
+  joint_offset: [0, 0, 0, 0, 0]
+  source: manual_pending_verification
+safety_body_names: [upper_arm, forearm, wrist, tool, gripper]
+table_probe:
+  # A draft placeholder. The tool fits this point from repeated contacts of
+  # one physical TCP/gripper point on a known-height >=50 mm gauge.
+  body: tool
+  local_position_m: [0, 0, 0]
+  radius_m: 0.0
+tcp_center:
+  # MuJoCo ee_site: tool-local [0, 0, 0.08]. The collector additionally
+  # requires this model TCP center to stay at least 110 mm above the table.
+  body: tool
+  local_position_m: [0, 0, 0.08]
+  minimum_height_m: 0.110
+tcp_probe_calibration:
+  status: pending_known_height_contacts

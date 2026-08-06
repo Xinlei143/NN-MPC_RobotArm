@@ -1,0 +1,47 @@
+# Template only: this profile is intentionally not approved for real motion.
+#
+# It selects the official SO101 MuJoCo mesh collision model rather than the
+# legacy capsule model.  Its first evaluation shows that the shoulder housing
+# is about 16 mm above a tabletop coincident with the base frame.  Therefore a
+# The virtual guard plane is 15 mm above the real tabletop.  Protected meshes
+# must not contact or penetrate it, which gives a 15 mm physical clearance.
+# shoulder_pan housing and its fixed-height link to shoulder_lift are excluded
+# by the experiment's component policy; all downstream links and TCP remain protected.
+schema_version: 1
+status: draft
+model_xml_sha256: b09773240f26cca096344a52baec71e96406471e47dd3318db305c318fa1de36
+table_plane:
+  normal: [0.0, 0.0, 1.0]
+  offset_m: 0.0
+minimum_clearance_m: 0.0
+calibrated_overprediction_m: 0.0
+static_margin_m: 0.0
+geometry_padding_m: 0.0
+base_level:
+  roll_deg: 0.0
+  pitch_deg: 0.0
+q_ctrl_to_q_kin:
+  joint_sign: [1, 1, 1, 1, 1]
+  joint_offset: [0, 0, 0, 0, 0]
+  source: identity_candidate_requires_physical_registration
+mesh_collision:
+  model_xml: dynamics_modeling/robots/so101_fine/scene_table_guard_15mm.xml
+  bundle_sha256: 7552e1c7d1b905d82b41f7b53e89de7c75abf3ca98098293ff060c390b8ad663
+  floor_geom: table_clearance_guard
+  joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll]
+# ``shoulder`` contains joint 1 (shoulder_pan) and the link from joint 1 to
+# joint 2 (shoulder_lift), so it is intentionally excluded from this gate.
+safety_body_names: [upper_arm, lower_arm, wrist, gripper, moving_jaw_so101_v1]
+table_probe:
+  # Official model's gripperframe site expressed in the gripper body frame.
+  body: gripper
+  local_position_m: [-0.0079, -0.000218121, -0.0981274]
+  radius_m: 0.0
+tcp_center:
+  enabled: false
+  body: gripper
+  local_position_m: [-0.0079, -0.000218121, -0.0981274]
+  minimum_height_m: 0.0
+tcp_probe_calibration:
+  status: pending_known_height_contacts
+verification_mode: assumed_level_base_mesh_collision

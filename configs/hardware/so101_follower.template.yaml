@@ -1,0 +1,51 @@
+# Copy to configs/hardware/so101_follower.local.yaml (gitignored), replace all
+# CHECK_ME values, and run scripts/validate_so101_config.py before connecting.
+port: /dev/ttyACM0
+robot_id: CHECK_ME
+calibration_path: CHECK_ME.json
+calibration_sha256: CHECK_ME
+control_dt: 0.03333333333333333
+joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll]
+gripper_name: gripper
+joint_low: [-0.0523599, -0.0523599, -0.0523599, -0.0523599, -0.0523599]
+joint_high: [0.0523599, 0.0523599, 0.0523599, 0.0523599, 0.0523599]
+# Do not fill these from the calibration envelope. They are wider, manually
+# verified collision-free q_ctrl limits used only to hold the measured pose and
+# perform the constrained startup trajectory to home. Motion entry points
+# refuse to run while they are null.
+hardware_joint_low: null
+hardware_joint_high: null
+raw_low: [0, 0, 0, 0, 0, 0]
+raw_high: [4095, 4095, 4095, 4095, 4095, 4095]
+home_q_ctrl: [0, 0, 0, 0, 0]
+command_velocity_limit: [0.25, 0.25, 0.25, 0.25, 0.25]
+command_acceleration_limit: [1, 1, 1, 1, 1]
+relative_target_limit: [0.0523599, 0.0523599, 0.0523599, 0.0523599, 0.0523599]
+measured_velocity_plausible: [1, 1, 1, 1, 1]
+measured_velocity_emergency: [2, 2, 2, 2, 2]
+position_p: 16
+position_i: 0
+# Optional overrides for a gravity-loaded joint. Motors omitted here inherit
+# position_i, so the conservative default leaves this mapping absent.
+# position_i_by_motor:
+#   elbow_flex: 5
+position_d: 32
+acceleration: 32
+maximum_acceleration: 32
+return_delay_time: 0
+gripper_hold_raw: null
+# Optional E3 guarded shutdown pose, raw counts for IDs 1..6.  It must be
+# inside raw_low/raw_high and is only attempted after live diagnostics and the
+# complete mesh-guarded path pass.  Keep null until this pose is verified.
+shutdown_recovery_raw: null
+shutdown_recovery_seconds: 10
+read_retries: 2
+diagnostic_rate_hz: 2
+goal_readback_rate_hz: 2
+# Freeze these after direct-mode PSU/EEPROM/bus characterization. All four may
+# remain null for read-only benchmark and direct calibration; active MPC rejects nulls.
+voltage_warning_low: null
+voltage_warning_high: null
+voltage_hard_low: null
+voltage_hard_high: null
+lerobot_commit: 2aba372b4e217cc47db28e0f836859b20d1456c9
