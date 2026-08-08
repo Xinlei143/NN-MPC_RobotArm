@@ -74,10 +74,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollout_loss_steps", default=1, type=int)
     parser.add_argument("--rollout_loss_weight", default=0.0, type=float)
     parser.add_argument("--rollout_loss_discount", default=1.0, type=float)
-    parser.add_argument("--real_defaults", action="store_true", help="Use frozen SO101 Model-A defaults (GRU/8-step/delta-state/Huber/30 Hz).")
+    parser.add_argument("--real_defaults", action="store_true", help="Use frozen SO101 Model-A defaults (GRU/16-step/delta-state/Huber/30 Hz).")
     parser.add_argument("--test_group_ids", default=None, help="Comma-separated split_group_ids held out from both training and validation.")
     parser.add_argument("--validation_group_ids", default=None,
-                        help="Comma-separated split_group_ids used only for validation (required for real 8/2/2).")
+                        help="Comma-separated split_group_ids used only for validation (required for real data).")
     parser.add_argument("--val_fraction", default=0.1, type=float)
     parser.add_argument("--train_sample_stride", default=1, type=int)
     parser.add_argument("--val_sample_stride", default=1, type=int)
@@ -536,7 +536,7 @@ def main() -> None:
     args = parse_args()
     if args.real_defaults:
         args.model_type = "gru"
-        args.history_len = 8
+        args.history_len = 16
         args.target_mode = "delta_state"
         args.control_dt = 1.0 / 30.0
         args.loss_type = "huber"
@@ -613,24 +613,27 @@ def main() -> None:
     test_group_ids = parse_group_ids(args.test_group_ids, "--test_group_ids")
     validation_group_ids = parse_group_ids(args.validation_group_ids, "--validation_group_ids")
     if robot.source.get("domain") == "real":
-        if test_group_ids is None or test_group_ids.size != 2:
-            raise ValueError("Real Model-A training requires exactly two --test_group_ids for the 8/2/2 session split")
-        if validation_group_ids is None or validation_group_ids.size != 2:
-            raise ValueError("Real Model-A training requires exactly two --validation_group_ids for the 8/2/2 session split")
+        # The real Model-A corpus is one split_group_id per session.  Unlike the
+        # earlier fixed 12-session E3 plan (8 train / 2 validation / 2 test), the
+        # 48-session plan allows the operator to hold out any subset of sessions
+        # for validation and test.  Validation and test groups must be explicit,
+        # disjoint, and present in the dataset; every other group trains.
+        if test_group_ids is None or test_group_ids.size < 1:
+            raise ValueError("Real Model-A training requires at least one --test_group_ids")
+        if validation_group_ids is None or validation_group_ids.size < 1:
+            raise ValueError("Real Model-A training requires at least one --validation_group_ids")
         if np.intersect1d(test_group_ids, validation_group_ids).size:
             raise ValueError("test and validation group IDs must be disjoint")
         with np.load(data_path, allow_pickle=False) as raw_dataset:
             if "split_group_ids" not in raw_dataset.files:
-                raise KeyError("Real Model-A 8/2/2 split requires split_group_ids")
+                raise KeyError("Real Model-A training requires split_group_ids")
             all_group_ids = np.unique(np.asarray(raw_dataset["split_group_ids"], dtype=np.int64))
-        if all_group_ids.size != 12:
-            raise ValueError(f"Real Model-A 8/2/2 split requires exactly 12 session groups, got {all_group_ids.size}")
         selected = np.union1d(test_group_ids, validation_group_ids)
         missing = np.setdiff1d(selected, all_group_ids)
         if missing.size:
             raise ValueError(f"requested split groups are absent from dataset: {missing.tolist()}")
-        if np.setdiff1d(all_group_ids, selected).size != 8:
-            raise ValueError("real group split must leave exactly eight training sessions")
+        if np.setdiff1d(all_group_ids, selected).size == 0:
+            raise ValueError("at least one split_group_id must remain for training")
     if not args.no_require_q_ref_dataset:
         validate_q_ref_dataset(data_path, args.model_type)
 

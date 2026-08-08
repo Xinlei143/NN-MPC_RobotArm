@@ -71,6 +71,11 @@ class ReferenceConfig:
     figure8_axis_b: float = 0.02
     square_half_side: float = 0.025
     rounded_square_corner_radius: float = 0.006
+    # Start phase (rad) of the closed shape traversal.  The approach target
+    # and every lap's start land on the phase-shifted start point, so the
+    # trajectory stays continuous for any offset (used for randomized-start
+    # repeated trials of the same shape).
+    start_phase: float = 0.0
 
     safe_departure_mode: str = "auto"
     safe_sigma_threshold: float = 0.10
@@ -132,6 +137,8 @@ class ReferenceConfig:
             raise ValueError("max_joint_velocity values must all be positive")
         if any(float(value) <= 0.0 for value in self.max_joint_acceleration):
             raise ValueError("max_joint_acceleration values must all be positive")
+        if not np.isfinite(float(self.start_phase)):
+            raise ValueError("start_phase must be finite")
 
 
 @dataclass(frozen=True)
@@ -476,6 +483,7 @@ def build_reference(
         lap_duration=config.lap_duration,
         return_duration=config.return_duration,
         repeat_count=config.repeat_count,
+        start_phase=config.start_phase,
         circle_radius=config.circle_radius,
         ellipse_axis_a=config.ellipse_axis_a,
         ellipse_axis_b=config.ellipse_axis_b,
@@ -584,6 +592,7 @@ def build_reference(
     metadata: dict[str, Any] = {
         "format_version": REFERENCE_FORMAT_VERSION,
         "shape_name": config.shape_name.lower(),
+        "start_phase": float(config.start_phase),
         "control_dt": float(control_dt),
         "horizon_padding_steps": int(padding.shape[0]),
         "lookahead_steps": int(lookahead_steps),
@@ -683,7 +692,10 @@ def validate_reference_bundle(
                     "FK position validation failed: "
                     f"max task error={max_position_error:.6g} m"
                 )
-            if max_orientation_error > config.ik_config.orientation_tolerance * 10.0:
+            if (
+                config.ik_config.orientation_mode == "full"
+                and max_orientation_error > config.ik_config.orientation_tolerance * 10.0
+            ):
                 raise RuntimeError(
                     "FK orientation validation failed: "
                     f"max task error={max_orientation_error:.6g} rad"

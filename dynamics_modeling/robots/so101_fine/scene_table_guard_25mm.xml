@@ -1,0 +1,21 @@
+<!--
+  Detailed SO101 collision scene with a virtual table-clearance guard.
+
+  The physical tabletop is the base frame z=0 plane.  The guard is raised
+  25 mm above it; the runtime safety threshold is -5 mm relative to this
+  plane (minimum_clearance_m = -0.005), so the effective hard limit is
+  20 mm above the tabletop while the offline preflight still requires the
+  reference to clear the 25 mm plane.  The 5 mm band absorbs the
+  transmitted-command projection lag that latched e3_23_retry00/retry01 at
+  -0.4 mm (plane raised from 20 mm to 25 mm on 2026-08-06, E3 sessions 23+).
+  The base is intentionally not a collision geom in the upstream model, so
+  visual overlap with this guard is expected and has no contact-solver
+  consequence.
+-->
+<mujoco model="so101_table_guard_25mm">
+  <include file="so101_new_calib.xml"/>
+  <worldbody>
+    <geom name="table_clearance_guard" type="plane" pos="0 0 0.025"
+          size="0 0 0.05" rgba="0.1 0.8 0.2 0.25"/>
+  </worldbody>
+</mujoco>

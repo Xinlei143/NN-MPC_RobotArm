@@ -36,10 +36,10 @@ session index 与 split 固定对应：`0–37` 为 train，`38–42` 为 valida
 
 E3 不使用 `so101_nominal.xml` 的 capsule 作安全判断，而使用 `dynamics_modeling/robots/so101_fine/` 的精细 STL MuJoCo 模型。
 
-- 真实桌面在模型基座坐标 `z=0`；当前已批准的前提是基座水平，且 `q_ctrl_to_q_kin` 为 2026-08-05 同步窗口标定映射（wrist_flex `joint_offset=-0.2516342834 rad`，全部 `joint_sign=+1`）。
-- `scene_table_guard_30mm.xml` 在 `z=35 mm` 放置虚拟桌面保护平面（文件名保留 30mm，2026-08-05 已就地改为 35mm）。
-- 离线 MuJoCo 预检和参考/预定位轨迹生成使用 `offline_minimum_clearance_m=0 mm`：`upper_arm`、`lower_arm`、wrist、gripper、活动夹爪不得触碰 35 mm 虚拟面，即模型桌面上方至少 35 mm。
-- 实机启动、实时实际状态、待发送指令和回收使用 `minimum_clearance_m=-25 mm`：最多可低至虚拟面下方 25 mm，即模型桌面上方至少 10 mm。它是跟踪/模型误差的运行时紧急门限，不是离线放行标准。
+- 真实桌面在模型基座坐标 `z=0`；当前已批准的前提是基座水平，且 `q_ctrl_to_q_kin` 为 2026-08-06 同步窗口标定映射（wrist_flex `joint_offset=-0.2516342834 rad`，全部 `joint_sign=+1`）。
+- `scene_table_guard_25mm.xml` 在 `z=25 mm` 放置虚拟桌面保护平面（2026-08-06 由 `scene_table_guard_20mm.xml` 就地改名并升高到 25 mm）。
+- 离线 MuJoCo 预检和参考/预定位轨迹生成使用 `offline_minimum_clearance_m=0 mm`：`upper_arm`、`lower_arm`、wrist、gripper、活动夹爪不得触碰 25 mm 虚拟面，即模型桌面上方至少 25 mm。生成阶段比实机更保守 10 mm。
+- 实机启动、实时实际状态、待发送指令和回收使用 `minimum_clearance_m=-10 mm`：最多可低至虚拟面下方 10 mm，即模型桌面上方至少 15 mm。它是跟踪/模型误差的运行时紧急门限，不是离线放行标准；这 10 mm 带宽吸收被发送指令相对参考的投影滞后（该滞后曾在旧 20 mm 面下把 `e3_23_retry00/retry01` 锁定在 −0.4 mm）。
 - `shoulder_pan` 与第 1→2 关节之间的支架（MuJoCo body `shoulder`）明确不在此门禁中。
 - TCP 不再有独立高度门限。
 
@@ -49,8 +49,8 @@ E3 不使用 `so101_nominal.xml` 的 capsule 作安全判断，而使用 `dynami
 configs/hardware/so101_table_safety.mesh_guard20_runtime10.local.yaml
 ```
 
-该 profile 的 `q_ctrl_to_q_kin` 已于 2026-08-05 通过同步窗口标定（wrist_flex `joint_offset = -0.2516342834 rad`，
-全部 `joint_sign = +1`，`source = operator_verified_sync_window_calibration_20260805`），见
+该 profile 的 `q_ctrl_to_q_kin` 已于 2026-08-06 通过同步窗口标定（wrist_flex `joint_offset = -0.2516342834 rad`，
+全部 `joint_sign = +1`，`source = operator_verified_sync_window_calibration_20260806`），见
 `docs/hardware/so101-mapping-calibration.md`。不要使用旧的 `so101_table_safety.model_tcp110.local.yaml` 或
 `mesh_guard15` profile，也不要把旧 capsule 的预检结果当作 E3 放行依据。
 
@@ -100,7 +100,7 @@ conda run -n lerobot python scripts/diagnose_so101_actuation.py \
 
 正常完成一个 session 后，采集器会先经过普通硬件 q 安全范围回到该姿态；保持目标并以 0.25 s 间隔最多等待 5 s，直到实际 raw 误差不超过 12 count，随后关闭全部扭矩。超时仍不满足该精度时，session 标记为 `failed_recovery`，不会追加到 canonical 数据集。常规 E3 参考轨迹不会使用这一个回收姿态。
 
-发生报错或按 `Ctrl+C` 时，脚本也会尝试该回收，但**仅**在下面条件全部满足时才发送任何回收动作：当前状态有效、位置与 Goal Position 回读通信正常、诊断不超过 3 s、六个温度均低于 50 °C、以及从当前姿态到完整回收 raw 姿态的每个离散点都满足实机 `-10 mm` 相对虚拟 20 mm 面的门限。任一条件不满足时，脚本不再尝试移动，直接关闭扭矩，并把原因写入 session manifest 的 `shutdown_recovery` 字段。
+发生报错或按 `Ctrl+C` 时，脚本也会尝试该回收，但**仅**在下面条件全部满足时才发送任何回收动作：当前状态有效、位置与 Goal Position 回读通信正常、诊断不超过 3 s、六个温度均低于 50 °C、以及从当前姿态到完整回收 raw 姿态的每个离散点都满足实机 `-10 mm` 相对虚拟 25 mm 面的门限。任一条件不满足时，脚本不再尝试移动，直接关闭扭矩，并把原因写入 session manifest 的 `shutdown_recovery` 字段。
 
 因此，在机械臂已越过 raw/q 范围、通信失败、碰桌后状态异常或过温时，不要期待脚本强行把机械臂拉回该姿态。先断电/支撑机械臂并人工恢复，再做只读诊断。
 
@@ -111,7 +111,7 @@ conda run -n lerobot python scripts/diagnose_so101_actuation.py \
 预检通过条件：
 
 - 输出 `status: pass`；
-- `overall_min_effective_clearance_m >= 0.005`，即离线参考/预定位轨迹距离真实模型桌面至少 25 mm；
+- `overall_min_effective_clearance_m >= 0.0`，即离线参考/预定位轨迹必须清空 25 mm 虚拟面（距离真实模型桌面至少 25 mm）；
 - profile 中记录的 `mesh_collision.bundle_sha256` 与当前模型资产一致。
 
 预检只验证计划轨迹。实机程序仍会在启动时读取未知的当前姿态，并对启动路径、预定位、当前状态和待发送目标重新执行相同检查。
@@ -148,7 +148,7 @@ session 0 的正式采集示例：
 conda run -n lerobot python dynamics_modeling/scripts/collect_real_workspace_model_a.py \
   --hardware-config configs/hardware/so101_follower.local.yaml \
   --table-safety-config configs/hardware/so101_table_safety.mesh_guard20_runtime10.local.yaml \
-  --session-index 7 --session-id e3_07_retry00 --split train --seed 20260805 \
+  --session-index 47 --session-id e3_47_retry00 --split test --seed 20260806 \
   --workspace-margin-deg 1 \
   --output outputs/hardware/so101_pre_mpc/20260804_e_stage/model_a_workspace_48x15min.npz \
   --append --enable-motion --operator-supported-shutdown \

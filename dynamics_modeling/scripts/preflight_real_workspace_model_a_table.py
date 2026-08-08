@@ -18,6 +18,7 @@ from robot_runtime.config import load_hardware_config
 from robot_runtime.kinematics import gripper_model_angle_rad
 from robot_runtime.table_safety import load_table_safety_profile, make_table_clearance_checker
 from robot_runtime.workspace_model_a import (
+    MODEL_A_EXTENSION_FIRST_INDEX,
     build_workspace_reference,
     effective_workspace_bounds,
     expected_model_a_split,
@@ -68,37 +69,69 @@ def main() -> None:
                                            np.deg2rad(args.workspace_margin_deg))
     checker.require_safe(config.home_q_ctrl)
     rng = np.random.default_rng(args.seed + args.session_index * 1009)
+    # Must mirror the collector's call exactly (same rng, same retry order,
+    # same kwargs) so the preflighted sequence is the one collection would
+    # generate.  Extension sessions anchor their excitation around home.
+    center = config.home_q_ctrl if args.session_index >= MODEL_A_EXTENSION_FIRST_INDEX else None
     current = config.home_q_ctrl.copy()
     report_segments = []
     overall = checker.evaluate(current)
     for segment in session_program(args.session_index):
         last_error: Exception | None = None
-        for attempt in range(1, args.max_resamples + 1):
-            candidate = build_workspace_reference(
-                rng=rng, mode=segment.mode, start_q=current, low=low, high=high,
-                steps=int(round(segment.seconds / config.control_dt)), dt=config.control_dt,
-                velocity_limit=.70 * config.command_velocity_limit,
-                acceleration_limit=.70 * config.command_acceleration_limit,
-                single_joint_index=segment.single_joint_index,
-            )
-            try:
-                preposition = checker.require_safe_sequence(
-                    cosine_path(current, candidate[0], args.preposition_seconds, config.control_dt)
+        found = False
+        # Endpoint-frozen single-joint sine first (historical behavior), then a
+        # fresh random center posture when the endpoint cannot host the full
+        # sweep above the table.
+        for fresh_center in (False, True):
+            for attempt in range(1, args.max_resamples + 1):
+                candidate = build_workspace_reference(
+                    rng=rng, mode=segment.mode, start_q=current, low=low, high=high,
+                    steps=int(round(segment.seconds / config.control_dt)), dt=config.control_dt,
+                    velocity_limit=.70 * config.command_velocity_limit,
+                    acceleration_limit=.70 * config.command_acceleration_limit,
+                    single_joint_index=segment.single_joint_index,
+                    fresh_center_for_sine=fresh_center,
+                    center=center,
                 )
-                trajectory = checker.require_safe_sequence(candidate)
-                segment_min = min((preposition, trajectory), key=lambda result: result.effective_clearance_m)
-                overall = min((overall, segment_min), key=lambda result: result.effective_clearance_m)
-                report_segments.append({
-                    "name": segment.name, "mode": segment.mode, "attempt": attempt,
-                    "min_predicted_clearance_m": segment_min.predicted_clearance_m,
-                    "min_effective_clearance_m": segment_min.effective_clearance_m,
-                    "nearest_component": segment_min.nearest_component,
-                })
-                current = candidate[-1]
+                try:
+                    preposition = checker.require_safe_sequence(
+                        cosine_path(current, candidate[0], args.preposition_seconds, config.control_dt)
+                    )
+                    trajectory = checker.require_safe_sequence(candidate)
+                    segment_min = min((preposition, trajectory), key=lambda result: result.effective_clearance_m)
+                    overall = min((overall, segment_min), key=lambda result: result.effective_clearance_m)
+                    # Command-dynamics statistics on the accepted sequence: the
+                    # excitation strength the network will actually see.  du is
+                    # the per-tick command change, ddq the command second
+                    # difference (position targets after the rate limiter).
+                    anchor_ref = np.asarray(center, dtype=np.float64) if center is not None else candidate[0]
+                    du = np.diff(candidate, axis=0)
+                    ddq = np.diff(candidate, axis=0, n=2)
+                    step_limit = np.asarray(.70 * config.command_velocity_limit) * config.control_dt
+                    corr = [0.0] * candidate.shape[1]
+                    for joint in range(candidate.shape[1]):
+                        if ddq[:, joint].std() > 1e-9:
+                            corr[joint] = float(np.corrcoef(du[:-1, joint], ddq[:, joint])[0, 1])
+                    report_segments.append({
+                        "name": segment.name, "mode": segment.mode, "attempt": attempt,
+                        "fresh_center_for_sine": fresh_center,
+                        "min_predicted_clearance_m": segment_min.predicted_clearance_m,
+                        "min_effective_clearance_m": segment_min.effective_clearance_m,
+                        "nearest_component": segment_min.nearest_component,
+                        "max_dev_from_anchor_deg": float(np.max(np.abs(candidate - anchor_ref)) * 180.0 / np.pi),
+                        "corr_du_ddq": [round(value, 3) for value in corr],
+                        "command_step_std_deg": [round(float(value) * 180.0 / np.pi, 3) for value in du.std(axis=0)],
+                        "rate_limited_fraction": float(np.mean(np.any(
+                            np.abs(du) >= step_limit[None, :] * (1 - 1e-3), axis=1))),
+                    })
+                    current = candidate[-1]
+                    found = True
+                    break
+                except ValueError as exc:
+                    last_error = exc
+            if found:
                 break
-            except ValueError as exc:
-                last_error = exc
-        else:
+        if not found:
             raise SystemExit(f"unable to generate a table-safe {segment.name} segment: {last_error}")
     return_path = checker.require_safe_sequence(cosine_path(current, config.home_q_ctrl,
                                                             args.preposition_seconds, config.control_dt))

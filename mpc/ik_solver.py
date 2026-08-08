@@ -17,6 +17,9 @@ class IKConfig:
     step_gain: float = 0.5
     max_joint_step: float = 0.05
     orientation_weight: float = 0.3
+    # "full": 6-D pose target (position + full rotation).
+    # "position_only": position only (e.g. 5-DOF arms with unreachable roll).
+    orientation_mode: str = "full"
     joint_limit_margin: float = 0.05
     sigma_warning: float = 0.02
     max_backtracking_steps: int = 8
@@ -34,6 +37,8 @@ class IKConfig:
             raise ValueError("max_joint_step must be positive")
         if self.orientation_weight <= 0.0:
             raise ValueError("orientation_weight must be positive")
+        if self.orientation_mode not in ("full", "position_only"):
+            raise ValueError(f"orientation_mode must be 'full' or 'position_only', got {self.orientation_mode!r}")
         if self.joint_limit_margin < 0.0:
             raise ValueError("joint_limit_margin must be non-negative")
         if self.sigma_warning < 0.0:
@@ -119,9 +124,12 @@ class MujocoDLSIKSolver:
         orientation_vector = orientation_error(target_rotation, rotation)
         position_norm = float(np.linalg.norm(position_vector))
         orientation_norm = float(np.linalg.norm(orientation_vector))
-        weighted_error_norm = float(
-            np.linalg.norm(np.concatenate([position_vector, self.config.orientation_weight * orientation_vector]))
-        )
+        if self.config.orientation_mode == "position_only":
+            weighted_error_norm = position_norm
+        else:
+            weighted_error_norm = float(
+                np.linalg.norm(np.concatenate([position_vector, self.config.orientation_weight * orientation_vector]))
+            )
         return (
             position_vector,
             orientation_vector,
@@ -184,17 +192,24 @@ class MujocoDLSIKSolver:
             ) = self._evaluate(q, target_position, target_rotation)
             if (
                 position_norm <= self.config.position_tolerance
-                and orientation_norm <= self.config.orientation_tolerance
+                and (
+                    self.config.orientation_mode == "position_only"
+                    or orientation_norm <= self.config.orientation_tolerance
+                )
             ):
                 return self._result(q, True, iteration, target_position, target_rotation)
             if iteration == self.config.max_iterations:
                 break
 
-            weighted_jacobian = jacobian.copy()
-            weighted_jacobian[3:] *= float(self.config.orientation_weight)
-            weighted_error = np.concatenate(
-                [position_vector, float(self.config.orientation_weight) * orientation_vector]
-            )
+            if self.config.orientation_mode == "position_only":
+                weighted_jacobian = jacobian[:3]
+                weighted_error = position_vector
+            else:
+                weighted_jacobian = jacobian.copy()
+                weighted_jacobian[3:] *= float(self.config.orientation_weight)
+                weighted_error = np.concatenate(
+                    [position_vector, float(self.config.orientation_weight) * orientation_vector]
+                )
             normal_matrix = weighted_jacobian @ weighted_jacobian.T
             normal_matrix += float(self.config.damping) ** 2 * np.eye(weighted_jacobian.shape[0])
             try:

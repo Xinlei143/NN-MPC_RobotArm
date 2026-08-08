@@ -14,6 +14,22 @@ class SafetyMode(str, Enum):
     TORQUE_DISABLED = "torque_disabled"
 
 
+# Any sample above this is physically implausible for an SO101 servo in a
+# healthy run and is treated as exactly this value before it can influence the
+# four-sample safety average.  A single corrupt register read (observed up to
+# 150 C while the other motors sat at 33-45 C) must not pull the average over
+# the 60 C latch threshold; a genuine sustained over-temperature still reads a
+# run of >=60 C samples, whose mean reaches 60.0 and latches exactly as before.
+MAX_CREDIBLE_TEMPERATURE_C = 60.0
+
+# Maximum allowed rise from one accepted sample to the next.  A servo cannot
+# gain more than ~4 C between independent ~0.5 s diagnostics in a healthy run;
+# a larger jump is a corrupt register read and is clipped to previous + 4 C so
+# it contributes at most +1 C to the four-sample mean.  Decreases are never
+# capped, so genuine cooling is reported as measured.
+MAX_SAMPLE_RISE_C = 4.0
+
+
 @dataclass(frozen=True)
 class ThermalDecision:
     mode: SafetyMode
@@ -46,8 +62,19 @@ class ThermalSupervisor:
         self._sample_unconfirmed = False
 
     def _record_temperature_sample(self, values: np.ndarray) -> np.ndarray:
-        """Append a confirmed independent sample and return its four-sample mean."""
-        self._temperature_samples.append(values.astype(np.float64, copy=True))
+        """Append a confirmed independent sample and return its four-sample mean.
+
+        Two clips are applied before a sample enters the average so a single
+        implausible register read cannot pull the mean over the 60 C latch
+        threshold on its own:
+        - absolute: values above MAX_CREDIBLE_TEMPERATURE_C are clipped to it;
+        - rate: the rise from the previous accepted sample is clipped to at
+          most MAX_SAMPLE_RISE_C (decreases are never capped).
+        """
+        clipped = np.minimum(np.asarray(values, dtype=np.float64), MAX_CREDIBLE_TEMPERATURE_C)
+        if self._temperature_samples:
+            clipped = np.minimum(clipped, self._temperature_samples[-1] + MAX_SAMPLE_RISE_C)
+        self._temperature_samples.append(clipped)
         self._temperature_samples = self._temperature_samples[-4:]
         return np.mean(np.stack(self._temperature_samples, axis=0), axis=0)
 

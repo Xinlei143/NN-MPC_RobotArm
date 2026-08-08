@@ -731,7 +731,7 @@ conda run -n lerobot python dynamics_modeling/scripts/collect_real_workspace_mod
 | 8–9 | `validation` | `e3_08`, `e3_09` |
 | 10–11 | `test` | `e3_10`, `e3_11` |
 
-完成12次后，训练使用：validation group `8,9`，test group `10,11`。训练程序会明确拒绝随机transition切分、validation/test重叠，或不是12个独立session group的数据集。
+完成12次后，训练使用：validation group `8,9`，test group `10,11`。训练程序会拒绝随机transition切分或validation/test重叠；validation 与 test group 必须是数据集中真实存在的独立 session group，其余 session 全部参与训练。该 E3.4 小节已由 48×15 min 协议（本文件第 628 行）替代。
 
 推荐激励覆盖：
 
@@ -823,7 +823,9 @@ q_kin = sign * q_ctrl + offset
 
 shadow 模式运行完整 GRU、CEM、ASAP packet、feedback correction 和 OOD 记录，但实际发送 nominal，不发送 residual。
 
-调用入口：
+调用入口（shadow 播放集 2026-08-08 冻结：circle_p0 + figure8_p0 + circle_p1，
+3 次 ≈3150 events；`--reference_file`（下划线，继承自 sim CLI）是
+`so101_make_mpc_reference.py` 派生的 ctrl 空间播放文件）：
 
 ```bash
 conda run -n lerobot python scripts/run_real_cem_mpc.py \
@@ -832,14 +834,19 @@ conda run -n lerobot python scripts/run_real_cem_mpc.py \
   --checkpoint <MODEL_A_CHECKPOINT> \
   --normalizer <MODEL_A_NORMALIZER> \
   --reference_mode joint_file \
-  --reference_file <FROZEN_JOINT_REFERENCE> \
-  --save_dir outputs/hardware/so101_pre_mpc/<RUN>/shadow \
+  --reference_file <MPC_JOINT_REFERENCE_NPZ> \
+  --reference-manifest <MPC_MANIFEST_JSON> \
+  --save_dir outputs/hardware/so101_pre_mpc/<RUN>/shadow/<label> \
   <其余已冻结CEM参数> \
   --enable-motion \
   --operator-supported-shutdown
 ```
 
-运行前用 `--help` 核对继承自 simulation CLI 的参数名称，不得盲目照抄其他机器人命令。
+运行前用 `--help` 核对继承自 simulation CLI 的参数名称（`--reference_mode`/`--save_dir`
+是下划线，实机 CLI 的 `--hardware-config`/`--real-mode`/`--reference-manifest` 是连字符），
+不得盲目照抄其他机器人命令。每次运行前自动执行：manifest SHA-256 匹配 + JointFilePlayer
+三 gate（hardware 包络 / home 起点 / 每样本步进），播放包络 = hardware（与 Direct baseline
+一致，±3° 只是首轮授权语义）。
 
 shadow 至少收集2,000次有效 planner publication。审查：
 
@@ -855,9 +862,19 @@ shadow 至少收集2,000次有效 planner publication。审查：
 
 ### H1. 延迟校准
 
+多段 shadow（≥2000 events 合计）先合并：
+
+```bash
+conda run -n lerobot python scripts/assemble_real_mpc_evidence.py \
+  outputs/hardware/so101_pre_mpc/<RUN>/shadow/{circle_p0,figure8_p0,circle_p1} \
+  --output-dir outputs/hardware/so101_pre_mpc/<RUN>/shadow
+```
+
+再标定：
+
 ```bash
 conda run -n lerobot python scripts/calibrate_real_delay.py \
-  <SHADOW_EVENTS.npz> \
+  outputs/hardware/so101_pre_mpc/<RUN>/shadow/merged_shadow.npz \
   --control-dt 0.03333333333333333 \
   --guard-ms 5 \
   --output outputs/hardware/so101_pre_mpc/<RUN>/delay_calibration.json
@@ -876,15 +893,29 @@ packet_expiry_rate < 1%
 
 ### H2. OOD包络
 
-准备包含以下数组的 NPZ：
+由 `scripts/assemble_real_mpc_evidence.py` 生成（shadow rollout NPZ + Model A collection）：
+
+```bash
+conda run -n lerobot python scripts/assemble_real_mpc_evidence.py \
+  outputs/hardware/so101_pre_mpc/<RUN>/shadow/{circle_p0,figure8_p0,circle_p1} \
+  --output-dir outputs/hardware/so101_pre_mpc/<RUN>/shadow
+```
+
+生成包含以下数组的 NPZ（OOD_TOKENS.npz）：
 
 ```text
-training_tokens
-validation_tokens
-executed_tokens
-selected_action_tokens
-predicted_state_tokens
+training_tokens          collection 中 groups 0..37、stride 2、valid_target 行，
+                         [states[t], actions[t]]（15维；actions == q_ref，position control）
+validation_tokens        groups 38..42、stride 1（与 gate config.yaml 分组一致；
+                         test groups 43..47 排除）
+executed_tokens          shadow 每 tick [measured state, previous transmitted q_ref]
+selected_action_tokens   [predicted_state; q_ref] 未来窗（运行时 OOD 检查的同一数组，
+                         H=6 时每个 packet 6 行）
+predicted_state_tokens   同上（与 selected_action_tokens 相同——一个分布两个名字）
 ```
+
+token 记录由 run_real_cem_mpc.py / ASAPStorePlannerAdapter 在 shadow 运行时完成
+（executed_tokens/future_tokens 缓冲），即使未加载 --ood-envelope 也记录。
 
 执行：
 
@@ -922,15 +953,18 @@ active门禁：executed history、selected action 和 predicted state coverage �
 - 有独立断电和机械支撑；
 - active数据写入独立目录，不进入Model A训练/测试集。
 
-首轮权限：
+首轮权限（2026-08-08 冻结：H=6；nominal 播放包络 = hardware，与 Direct baseline 一致——
+4cm circle 需要 pan ±6.5°，±3° 只是首轮启动授权语义，不是 MPC 播放约束。nominal 是
+manifest SHA-256 匹配 + JointFilePlayer 三 gate（hardware 包络 / home 起点 / 每样本步进）
+验证过的冻结 reference；residual 独立受 ≤2° 限制）：
 
 ```text
 residual max       <= 2 deg
 feedback max       <= 0.5 deg
 kdq                0
-nominal envelope   <= home附近3 deg
+nominal envelope   hardware（JointFilePlayer 预验证）
 control rate       30 Hz
-horizon            8..12
+horizon            6
 samples            64..128
 CEM iterations     2
 ```
@@ -944,7 +978,8 @@ conda run -n lerobot python scripts/run_real_cem_mpc.py \
   --checkpoint <MODEL_A_CHECKPOINT> \
   --normalizer <MODEL_A_NORMALIZER> \
   --reference_mode joint_file \
-  --reference_file <FROZEN_JOINT_REFERENCE> \
+  --reference_file <MPC_JOINT_REFERENCE_NPZ> \
+  --reference-manifest <MPC_MANIFEST_JSON> \
   --delay-calibration <DELAY_JSON> \
   --ood-envelope <OOD_JSON> \
   --save_dir outputs/hardware/so101_pre_mpc/<RUN>/active_smoke \
@@ -952,6 +987,13 @@ conda run -n lerobot python scripts/run_real_cem_mpc.py \
   --enable-motion \
   --operator-supported-shutdown
 ```
+
+- `<MPC_JOINT_REFERENCE_NPZ>` 是 `scripts/so101_make_mpc_reference.py` 派生的
+  ctrl 空间播放文件（execution_steps + 20 hold 行）；`--reference-manifest` 指向同目录
+  `mpc_manifest.json`（SHA-256 匹配 + JointFilePlayer 三 gate 在开力矩前执行）。
+- `--reference_mode`/`--reference_file`/`--save_dir` 是 sim CLI 的下划线拼写，
+  `--hardware-config`/`--real-mode`/`--reference-manifest` 等是实机 CLI 的连字符拼写，
+  两者必须按此混用，不能相互替换。
 
 第一次 active 只证明安全、时序和语义正确，不要求优于 direct。任何一次以下事件立即停止晋级：
 
@@ -986,6 +1028,55 @@ active smoke还必须进行“运行中人工请求停止”测试：停止plann
 - 失败运行不删除；
 - active相对direct有控制收益，或在相近tracking下显著改善平滑性/振动；
 - 若只能安全运行但没有收益，只能报告“安全可运行”，不能宣称MPC性能优越。
+
+## 13.5 阶段 J2：TCP 轨迹追踪实验协议（2026-08-07 grill 定案）
+
+正式 Direct vs Active 比较实验的冻结协议：
+
+**轨迹**：正式 6+6 实验文件在 `outputs/hardware/so101_pre_mpc/20260808_refs_6phase/`
+（manifest.json SHA-256 冻结，12 个 artifact = 2 shapes × 6 起始相位）。
+circle r=0.04 @9.0s/圈 + figure8 a=0.045,b=0.025 @8.2s/圈，各 3 圈，approach/return 2s，
+center=home TCP；position-only 方向策略；YZ 竖直面。圈时是管线 quintic lap 剖面实测
+复核的结果（匀速假设下 5s/圈 的峰值角速度超采集 P99，用户 2026-08-07 确认放慢圈时，
+circle 余量 4.5%）。
+
+**起始随机（6 相位）**：`start_phase` 均匀取 {0,60,…,300}°，每个相位独立生成完整
+reference（approach 终点与圈起点对齐，管线 `ReferenceConfig.start_phase`，生成器
+`--start-phase/--phase-index`，输出 label `{shape}_p{i}`）。正式序列第 i 对 D_i/A_i 共用
+`{shape}_p{i}` 同一文件。**figure8 圈时 7.2→8.2s（用户 2026-08-08 确认）**：Gerono
+lemniscate 参数化弧长不均匀（ds/dθ 随 θ 变），相位偏移把高 ds/dθ 区移入 quintic 高速段，
+7.2s 下 60/120/240/300° 相位 pan 峰值 11.82°/s 超采集 P99 10.89（8.5%）；放慢到 8.2s 后
+全部 6 相位峰值 ≤10.38°/s（余量 4.7%），与 circle 冻结余量同级。7.2s 冻结文件保留在
+`20260808_refs/` 作历史，不再用于正式实验（circle_p0 与 `20260808_refs/circle/` 播放文件
+SHA 逐位一致，验证 phase 机制不改变 phase-0 语义）。
+
+**速度/位置包络**：速度上限 = 采集实测 per-sample P99
+（[10.89, 11.46, 10.89, 10.31, 10.89]°/s，冻结于 manifest）；位置 gate = 参考轨迹逐关节
+范围 ⊂ 集采实测 P0.1..P99.9（集采本身在全工作空间/hardware 包络进行）。
+
+**播放包络**（用户 2026-08-07 确认）：joint-file reference 播放使用
+`command_envelope="hardware"`（与集采一致）。`joint_low/high`（home ±3°）是**首轮实验
+授权**（first-motion authority），不是 MPC 实验期的位置约束：reference（4cm 圆几何上
+需 pan ±6.5°/elbow ±9.6°）按设计超出它，但完全在集采实测位置分布内。±3° 首轮授权
+保留给启动收敛与未来首轮测试，不复用于 reference 播放。
+
+**Direct 播放器**：`scripts/run_real_direct_control.py --reference-mode joint_file
+--reference-file <q_des_ctrl.npy> --reference-manifest <manifest.json>`；构造时校验
+hardware 包络、首行 = home、per-sample 步进 ≤ 命令限速；manifest SHA-256 不匹配即拒绝
+运行。与 Active 使用完全相同的 q_des（joint_file）。
+
+**重复结构**：6+6 交替、起始随机、shape-blocked（先完成 circle 全部 trial，再 figure8）。
+
+**指标**：primary = TCP position RMSE（圈段窗口，FK(fine model, to_kin(q_meas_ctrl)) vs
+task_positions_des）；secondary = 全程 RMSE + command acceleration RMS。
+
+**排除规则（预先定义）**：仅以下事件排除该 trial 并重跑——通信故障（tx_local_success
+=False / goal_readback_mismatch / packet 门禁失效）、急停（operator 或 fault）、采集错误
+（样本缺失/时间戳异常）；真实控制器表现差的 trial 不排除、保留在统计中。
+
+**统计口径**：正文报 mean±std（与 ABB/UR5e 正文一致）；推断用 paired improvement
+Δ_i = RMSE_Active,i − RMSE_Direct,i + paired bootstrap CI；图中展示全部 N=6 trial 点；
+median+IQR 仅作附表补充。
 
 ## 14. 一页式晋级清单
 

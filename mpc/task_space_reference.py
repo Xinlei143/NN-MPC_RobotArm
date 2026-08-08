@@ -133,6 +133,7 @@ def shape_start_position(
     axis_u: np.ndarray,
     axis_v: np.ndarray,
     *,
+    start_phase: float = 0.0,
     circle_radius: float = 0.03,
     ellipse_axis_a: float = 0.04,
     ellipse_axis_b: float = 0.025,
@@ -141,7 +142,12 @@ def shape_start_position(
     square_half_side: float = 0.025,
     rounded_square_corner_radius: float = 0.006,
 ) -> np.ndarray:
-    """Return the fixed start point used for one closed shape traversal."""
+    """Return the fixed start point used for one closed shape traversal.
+
+    ``start_phase`` (rad) rotates the start point along the closed traversal:
+    the approach target must land on the same point the first lap begins at.
+    Phase 0 is the canonical start (outer right end of the circle / figure-8).
+    """
 
     name = str(shape_name).lower()
     center = _as_vector("center", center)
@@ -157,12 +163,20 @@ def shape_start_position(
         rounded_square_corner_radius=rounded_square_corner_radius,
     )
     if name == "circle":
-        return center + float(circle_radius) * u
+        return center + float(circle_radius) * (
+            np.cos(start_phase) * u + np.sin(start_phase) * v
+        )
     if name == "ellipse":
-        return center + float(ellipse_axis_a) * u
+        return center + (
+            float(ellipse_axis_a) * np.cos(start_phase) * u
+            + float(ellipse_axis_b) * np.sin(start_phase) * v
+        )
     if name == "figure8":
         # Gerono lemniscate with theta_0 = pi / 2 starts at the outer right end.
-        return center + float(figure8_axis_a) * u
+        theta_0 = np.pi / 2.0 + start_phase
+        return center + float(figure8_axis_a) * np.sin(theta_0) * u + float(
+            figure8_axis_b
+        ) * np.sin(theta_0) * np.cos(theta_0) * v
     if name == "square":
         return center + float(square_half_side) * (u + v)
     if name == "rounded_square":
@@ -221,6 +235,7 @@ def _smooth_shape_positions(
     *,
     repeat_count: int,
     lap_samples: int,
+    start_phase: float = 0.0,
     circle_radius: float,
     ellipse_axis_a: float,
     ellipse_axis_b: float,
@@ -258,7 +273,7 @@ def _smooth_shape_positions(
     positions_by_lap: list[np.ndarray] = []
     lap_ids_by_lap: list[np.ndarray] = []
     tau = np.linspace(0.0, 1.0, lap_samples + 1, dtype=np.float64)
-    phase = 2.0 * np.pi * quintic_time_scaling(tau)
+    phase = start_phase + 2.0 * np.pi * quintic_time_scaling(tau)
     for lap_index in range(repeat_count):
         if shape_name == "circle":
             positions = center[None, :] + float(circle_radius) * (
@@ -369,6 +384,7 @@ def generate_task_space_trajectory(
     lap_duration: float,
     return_duration: float,
     repeat_count: int = 3,
+    start_phase: float = 0.0,
     circle_radius: float = 0.03,
     ellipse_axis_a: float = 0.04,
     ellipse_axis_b: float = 0.025,
@@ -420,6 +436,7 @@ def generate_task_space_trajectory(
         center_array,
         u,
         v,
+        start_phase=start_phase,
         circle_radius=circle_radius,
         ellipse_axis_a=ellipse_axis_a,
         ellipse_axis_b=ellipse_axis_b,
@@ -437,6 +454,7 @@ def generate_task_space_trajectory(
         v,
         repeat_count=repeat_count,
         lap_samples=lap_samples,
+        start_phase=start_phase,
         circle_radius=circle_radius,
         ellipse_axis_a=ellipse_axis_a,
         ellipse_axis_b=ellipse_axis_b,
@@ -466,6 +484,7 @@ def generate_task_space_trajectory(
     metadata: dict[str, Any] = {
         "control_dt": float(control_dt),
         "repeat_count": repeat_count,
+        "start_phase": float(start_phase),
         "center": center_array.tolist(),
         "plane_axis_u": u.tolist(),
         "plane_axis_v": v.tolist(),

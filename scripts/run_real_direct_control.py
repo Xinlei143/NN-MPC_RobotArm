@@ -41,7 +41,85 @@ class SingleJointStep:
         return self.target.copy()
 
 
-def save_evidence(path: str | Path, records: list, config, *, motion_mode: str) -> None:
+class JointFilePlayer:
+    """Play a frozen ctrl-space joint reference (T, n_joints) at the control rate.
+
+    Row ``tick`` of the reference is emitted on tick ``tick``: the frozen
+    bundle's execution window already includes the start hold (home), so
+    playback starts exactly at home after ``startup_to_home``.  After the last
+    row the player holds the final configuration, so a stopped run never
+    produces an undefined target.
+
+    Construction validates that the reference could pass the backend projector
+    without distortion.  The envelope gate is the *hardware* envelope
+    (hardware_joint_low/high), the same envelope used during data collection:
+    the frozen references deliberately exceed the first-motion +/-3 deg
+    authority (joint_low/high) - the 4 cm circle needs pan +/-6.5 deg and
+    elbow +/-9.6 deg - but their per-joint ranges lie inside the measured
+    collection distribution (verified against the frozen dataset's
+    P0.1..P99.9 when the bundle was generated).  The per-sample step gate keeps
+    the lap peaks below the command velocity limit, so the projector applies
+    no velocity-limit clipping either.
+    """
+
+    def __init__(self, q_ref: np.ndarray, *, config, atol_home: float = 1e-4,
+                 step_tolerance_scale: float = 1.001):
+        q = np.asarray(q_ref, dtype=np.float32)
+        n_joints = len(config.joint_names)
+        if q.ndim != 2 or q.shape[1] != n_joints or q.shape[0] < 1:
+            raise ValueError(f"joint reference must have shape (T, {n_joints}), got {q.shape}")
+        if not np.all(np.isfinite(q)):
+            raise ValueError("joint reference contains non-finite values")
+        hw_low = getattr(config, "hardware_joint_low", None)
+        hw_high = getattr(config, "hardware_joint_high", None)
+        if hw_low is None or hw_high is None:
+            raise RuntimeError("hardware_joint_low/high are not configured; a joint-file reference "
+                               "requires the hardware envelope used during data collection")
+        low = np.asarray(hw_low, dtype=np.float64)
+        high = np.asarray(hw_high, dtype=np.float64)
+        if np.any(q.min(axis=0) < low - 1e-9) or np.any(q.max(axis=0) > high + 1e-9):
+            raise ValueError("joint reference leaves the hardware envelope "
+                             "(hardware_joint_low/high); refusing to play it back")
+        if np.max(np.abs(q[0] - np.asarray(config.home_q_ctrl, dtype=np.float32))) > atol_home:
+            raise ValueError("joint reference first row is not the configured home "
+                             f"(max |dq0| = {np.max(np.abs(q[0] - config.home_q_ctrl)):.6f} rad)")
+        vmax_step = np.asarray(config.command_velocity_limit, dtype=np.float64) * config.control_dt
+        max_step = np.max(np.abs(np.diff(q, axis=0)), axis=0)
+        if np.any(max_step > vmax_step * step_tolerance_scale + 1e-9):
+            raise ValueError("joint reference per-sample steps exceed the command velocity limit; "
+                             "the backend projector would clip the peaks")
+        self.q_ref = q
+        self.n_joints = int(n_joints)
+
+    def __call__(self, tick: int, state: object) -> np.ndarray:
+        return self.q_ref[min(int(tick), self.q_ref.shape[0] - 1)]
+
+
+def find_reference_manifest_entry(manifest_path: str | Path, reference_file: str | Path) -> tuple[str, dict, str]:
+    """Match the reference file's SHA-256 against a frozen manifest.
+
+    Returns (shape_name, artifact_entry, sha256).  Refuses a file that does
+    not match any frozen artifact, so a stale or corrupted reference can never
+    silently run on hardware.
+    """
+    import hashlib
+    digest = hashlib.sha256()
+    with open(reference_file, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    sha = digest.hexdigest()
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    for shape, entry in manifest.get("artifacts", {}).items():
+        frozen = entry.get("q_des_ctrl.npy", {}).get("sha256")
+        if frozen == sha:
+            return shape, entry, sha
+    raise SystemExit(
+        f"reference file {reference_file} does not match any frozen artifact in "
+        f"{manifest_path} (sha256={sha[:16]}...); refusing to run on hardware")
+
+
+def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
+                  reference_metadata: dict | None = None) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     arrays = {
@@ -70,6 +148,8 @@ def save_evidence(path: str | Path, records: list, config, *, motion_mode: str) 
         "dataset": target.name, "action_semantics": "software_transmitted_absolute_position_target",
         "motor_acknowledged": False,
     }
+    if reference_metadata:
+        summary["reference"] = reference_metadata
     target.with_suffix(".manifest.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -110,7 +190,20 @@ def build_mirror(args: argparse.Namespace, config) -> object | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run conservative joint-space direct control on SO101.")
     parser.add_argument("--hardware-config", required=True)
-    parser.add_argument("--seconds", type=float, default=10.0)
+    parser.add_argument("--seconds", type=float, default=None,
+                        help="Playback length in seconds; default for joint_file is the full frozen "
+                             "reference, for excitation 10.0.  A joint_file run is capped at the "
+                             "reference length.")
+    parser.add_argument("--reference-mode", choices=["excitation", "joint_file"], default="excitation",
+                        help="Source of the nominal command. excitation keeps the existing "
+                             "multi/single-joint generators; joint_file plays a frozen ctrl-space "
+                             "reference for the Direct/Active comparison trials.")
+    parser.add_argument("--reference-file",
+                        help="Path to a (T, 5) q_ctrl reference (q_des_ctrl.npy from the frozen bundle) "
+                             "with --reference-mode joint_file.")
+    parser.add_argument("--reference-manifest",
+                        help="Frozen manifest.json whose artifacts.q_des_ctrl.npy SHA-256 must match the "
+                             "reference file (recommended for formal trials).")
     parser.add_argument("--amplitude-deg", type=float, default=2.0)
     parser.add_argument("--joint", choices=["all", "shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"],
                         default="all", help="Use one named joint for B4; all is only permitted after B4.")
@@ -133,6 +226,16 @@ def main() -> None:
     if not args.enable_motion: raise SystemExit("refusing motion without --enable-motion")
     if not args.operator_supported_shutdown: raise SystemExit("refusing torque enable without --operator-supported-shutdown")
     config = load_hardware_config(args.hardware_config)
+    if args.reference_mode == "joint_file":
+        if not args.reference_file:
+            raise SystemExit("--reference-mode joint_file requires --reference-file")
+        if args.joint != "all" or args.direction != "oscillate":
+            raise SystemExit("--joint/--direction apply only to --reference-mode excitation")
+        if args.amplitude_deg != 2.0:
+            raise SystemExit("--amplitude-deg applies only to --reference-mode excitation")
+    else:
+        if args.reference_file or args.reference_manifest:
+            raise SystemExit("--reference-file/--reference-manifest require --reference-mode joint_file")
     if args.amplitude_deg <= 0 or args.amplitude_deg > 3.0: raise SystemExit("initial direct-control amplitude must be in (0, 3] degrees")
     if args.joint != "all" and args.amplitude_deg > 2.0:
         raise SystemExit("single-joint direction testing is limited to 2 degrees")
@@ -143,7 +246,28 @@ def main() -> None:
     if args.mapping_preview_offset_rad is not None and not args.visualize_mujoco:
         raise SystemExit("--mapping-preview-offset-rad requires --visualize-mujoco")
     backend = make_so101_backend(args.hardware_config)
-    if args.joint == "all":
+    reference_metadata: dict | None = None
+    if args.reference_mode == "joint_file":
+        q_ref = np.load(args.reference_file)
+        shape_name = None
+        if args.reference_manifest:
+            shape_name, entry, sha = find_reference_manifest_entry(args.reference_manifest, args.reference_file)
+            env = entry["envelope"]
+            print(f"reference matched frozen artifact [{shape_name}] sha256={sha[:16]}...")
+            print(f"  design: lap={entry['lap_duration_s']}s  max lap |dq| deg/s = "
+                  + " ".join(f"{env['max_dq_lap_deg_s'][j]:.2f}" for j in
+                             ["pan", "lift", "elbow", "wrist_flex", "wrist_roll"])
+                  + f"  (P99 pass: {env['all_joints_at_or_below_p99']})")
+        nominal = JointFilePlayer(q_ref, config=config)
+        print(f"joint reference: {q_ref.shape[0]} rows @ {config.control_dt:.4f}s = "
+              f"{q_ref.shape[0] * config.control_dt:.2f}s (envelope-validated)")
+        reference_metadata = {
+            "file": str(args.reference_file),
+            "sha256": sha,
+            "shape": shape_name,
+            "rows": int(q_ref.shape[0]),
+        }
+    elif args.joint == "all":
         nominal = SafeExcitation(config.home_q_ctrl, config.control_dt, np.deg2rad(args.amplitude_deg))
     elif args.direction == "oscillate":
         nominal = SingleJointExcitation(config.home_q_ctrl, config.control_dt,
@@ -166,12 +290,31 @@ def main() -> None:
     try:
         backend.connect()
         backend.startup_to_home(args.startup_seconds)
-        records = RealTimeRunner(backend, nominal, mode=RealControlMode.DIRECT).run(
-            int(args.seconds / config.control_dt), on_tick=on_tick if mirror is not None else None)
+        if args.reference_mode == "joint_file":
+            steps = q_ref.shape[0]
+            if args.seconds is not None:
+                steps = min(steps, max(1, int(round(args.seconds / config.control_dt))))
+                print(f"playback capped by --seconds: {steps} steps ({steps * config.control_dt:.2f}s)")
+            print(f"starting playback: {steps} steps ({steps * config.control_dt:.2f}s)")
+        else:
+            seconds = args.seconds if args.seconds is not None else 10.0
+            steps = int(seconds / config.control_dt)
+        records = RealTimeRunner(
+            backend, nominal, mode=RealControlMode.DIRECT,
+            # Joint-file references span the data-collection envelope (e.g. the
+            # 4 cm circle needs pan +/-6.5 deg), not the first-motion +/-3 deg
+            # authority; hardware is the envelope used during collection, so
+            # playback stays inside the model's measured distribution.
+            command_envelope="hardware" if args.reference_mode == "joint_file" else "experiment",
+        ).run(steps, on_tick=on_tick if mirror is not None else None)
         backend.move_to_configuration(config.home_q_ctrl, 3.0)
         if args.output:
-            mode = "multi_joint_sine" if args.joint == "all" else f"single_joint_{args.joint}_{args.direction}"
-            save_evidence(args.output, records, config, motion_mode=mode)
+            if args.reference_mode == "joint_file":
+                mode = "joint_file_reference"
+            else:
+                mode = "multi_joint_sine" if args.joint == "all" else f"single_joint_{args.joint}_{args.direction}"
+            save_evidence(args.output, records, config, motion_mode=mode,
+                          reference_metadata=reference_metadata)
     finally:
         if mirror is not None:
             mirror.close()

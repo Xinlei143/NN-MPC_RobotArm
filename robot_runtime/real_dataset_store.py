@@ -9,12 +9,20 @@ from typing import Any
 import numpy as np
 
 from robot_runtime.config import file_sha256
+from robot_runtime.workspace_model_a import model_a_collection_plan_identity
 
 
 _INVARIANT_KEYS = (
     "schema_version", "action_semantics", "robot_identity",
-    "collection_mode", "collection_plan", "workspace_bounds",
+    "collection_mode", "workspace_bounds",
 )
+
+# Audited plant-identity exceptions (user-approved 2026-08-08, plan B).
+# Voltage thresholds and the hardware-config hash are power-supervision
+# settings; they do not change the dynamics plant.  Every physical key
+# (calibration, pid, acceleration, control_dt, joint names, ...) stays strict.
+_PLANT_IDENTITY_AUDITED_KEYS = ("table_safety", "voltage_warning", "voltage_hard",
+                                "hardware_config_sha256")
 
 
 def _read_manifest(path: Path) -> dict[str, Any]:
@@ -59,11 +67,38 @@ def _validate_arrays(arrays: dict[str, np.ndarray]) -> int:
     return int(samples)
 
 
-def _plant_identity_without_table_safety(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Keep real-plant identity strict while allowing audited safety profiles per run."""
+def _plant_identity_audited(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Keep real-plant identity strict while allowing audited per-run fields.
+
+    ``table_safety`` is a per-run safety profile (never a plant property);
+    ``voltage_warning``/``voltage_hard``/``hardware_config_sha256`` are the
+    power-supervision keys that changed between the v1 corpus (984e846) and
+    the extension block (4460c456).
+    """
     identity = dict(manifest.get("plant_identity", {}))
-    identity.pop("table_safety", None)
+    for key in _PLANT_IDENTITY_AUDITED_KEYS:
+        identity.pop(key, None)
     return identity
+
+
+def _collection_plan_compatible(canonical: dict[str, Any] | None, session: dict[str, Any] | None) -> bool:
+    """Allow exactly the documented corpus extension (v1 -> v2).
+
+    A session may carry a different plan only when it is the v2 extension
+    identity (train 38->48, total 48->58) appended to a v1 corpus.  Any other
+    plan difference -- a shrink, a grown test block, an unknown version -- is
+    a hard error.
+    """
+    if not isinstance(canonical, dict) or not isinstance(session, dict):
+        return False
+    if canonical == session:
+        return True
+    v2 = model_a_collection_plan_identity()
+    return (
+        session.get("version") == v2["version"] and session == v2
+        and canonical.get("version") == "so101_model_a_48x15min_v1"
+        and canonical.get("total_sessions") == 48
+    )
 
 
 def _table_profiles(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -102,8 +137,11 @@ def append_completed_session(canonical_path: str | Path, session_path: str | Pat
         for key in _INVARIANT_KEYS:
             if canonical_manifest.get(key) != session_manifest.get(key):
                 raise ValueError(f"append invariant differs for {key!r}")
-        if _plant_identity_without_table_safety(canonical_manifest) != _plant_identity_without_table_safety(session_manifest):
-            raise ValueError("append invariant differs for real plant identity outside table_safety")
+        if not _collection_plan_compatible(canonical_manifest.get("collection_plan"),
+                                           session_manifest.get("collection_plan")):
+            raise ValueError("append invariant differs for 'collection_plan'")
+        if _plant_identity_audited(canonical_manifest) != _plant_identity_audited(session_manifest):
+            raise ValueError("append invariant differs for real plant identity outside audited fields")
         with np.load(canonical, allow_pickle=False) as old_data:
             old_arrays = {name: old_data[name].copy() for name in old_data.files}
         _validate_arrays(old_arrays)
@@ -141,6 +179,7 @@ def append_completed_session(canonical_path: str | Path, session_path: str | Pat
     else:
         merged = new_arrays
         canonical_manifest = {key: session_manifest.get(key) for key in _INVARIANT_KEYS}
+        canonical_manifest["collection_plan"] = session_manifest.get("collection_plan")
         canonical_manifest["plant_identity"] = session_manifest.get("plant_identity")
         canonical_manifest["table_safety"] = session_manifest.get("table_safety")
         profiles = _table_profiles(session_manifest)

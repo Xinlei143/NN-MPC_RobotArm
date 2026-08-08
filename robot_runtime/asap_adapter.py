@@ -13,7 +13,7 @@ class ASAPStorePlannerAdapter:
     """Connect the real tick loop to the existing CUDA ASAP worker stores."""
 
     def __init__(self, snapshots: LatestSnapshotStore, packets: PlanPacketStore, n_joints: int,
-                 ood_envelope: RobustEnvelope | None = None):
+                 ood_envelope: RobustEnvelope | None = None, record_ood_tokens: bool = True):
         self.snapshots, self.packets, self.n_joints = snapshots, packets, int(n_joints)
         self.request_id = 0
         self.current_tick = 0
@@ -23,6 +23,14 @@ class ASAPStorePlannerAdapter:
         self._zeros = np.zeros(n_joints, dtype=np.float32)
         self.ood_envelope = ood_envelope
         self._executed_ood_valid = True
+        # OOD-token recording for calibrate_real_ood.py: executed tokens are
+        # the per-tick [state, previous q_ref] pairs (15-dim), future tokens
+        # the per-packet [predicted_state; q_ref] windows ((6,15) at H=6).
+        # Recorded even when no envelope is set so shadow runs can calibrate
+        # the envelope offline.  Memory is trivial (~100 KB per run).
+        self.record_ood_tokens = bool(record_ood_tokens)
+        self.executed_tokens: list[np.ndarray] = []
+        self.future_tokens: list[np.ndarray] = []
 
     def submit(self, tick_index: int, state_timestamp_ns: int, states: np.ndarray, commands: np.ndarray,
                history_generation: int) -> None:
@@ -31,8 +39,14 @@ class ASAPStorePlannerAdapter:
             new_q = np.asarray(commands[-1], dtype=np.float32)
             self.previous_velocity = new_q - self.previous_q_ref
             self.previous_q_ref = new_q.copy()
+        if self.record_ood_tokens:
+            executed_token = np.concatenate((np.asarray(states[-1], dtype=np.float32), self.previous_q_ref))
+            self.executed_tokens.append(executed_token)
         if self.ood_envelope is not None:
-            token = np.concatenate((np.asarray(states[-1]), self.previous_q_ref))
+            if self.record_ood_tokens:
+                token = executed_token
+            else:
+                token = np.concatenate((np.asarray(states[-1]), self.previous_q_ref))
             self._executed_ood_valid = bool(self.ood_envelope.contains(token))
         self.snapshots.publish(PlanningSnapshot(
             request_id=self.request_id, launch_step=self.current_tick, launch_time_ns=int(state_timestamp_ns),
@@ -52,10 +66,14 @@ class ASAPStorePlannerAdapter:
         if index is None:
             return None
         ood_valid = self._executed_ood_valid
-        if self.ood_envelope is not None and packet.q_ref_sequence.size and packet.predicted_state_sequence.size:
+        future_tokens = None
+        if packet.q_ref_sequence.size and packet.predicted_state_sequence.size:
             length = min(len(packet.q_ref_sequence), len(packet.predicted_state_sequence))
             future_tokens = np.concatenate((packet.predicted_state_sequence[:length], packet.q_ref_sequence[:length]), axis=1)
-            ood_valid = ood_valid and bool(np.all(self.ood_envelope.contains(future_tokens)))
+            if self.ood_envelope is not None:
+                ood_valid = ood_valid and bool(np.all(self.ood_envelope.contains(future_tokens)))
+        if self.record_ood_tokens and future_tokens is not None:
+            self.future_tokens.append(future_tokens)
         return PlannerCommand(packet.residual_sequence[index].copy(), packet.history_generation,
                               packet.activation_step, packet.publication_tick, ood_valid)
 

@@ -100,7 +100,11 @@ def validate_dataset(dataset: str | Path, *, manifest: str | Path | None = None,
                "all_fields_same_length": same_length, "finite": finite, "dt_in_nominal_window": dt_in_window,
                "diagnostic_fresh": diagnostic_fresh, "session_fields_valid": session_valid,
                "manifest_hash_valid": manifest_valid, "table_clearance_valid": table_clearance_valid}
-    if not all(summary[key] for key in summary if key not in {"samples", "valid_samples"}):
+    # Gate only on the boolean verdicts.  The integer counts (samples,
+    # valid_samples, invalid_audit_samples) are informational: in particular a
+    # clean session has invalid_audit_samples == 0, which is falsy and must not
+    # trip the all() gate.
+    if not all(value for key, value in summary.items() if isinstance(value, bool)):
         raise ValueError(json.dumps(summary, indent=2))
     return summary
 

@@ -9,7 +9,8 @@ import numpy as np
 
 from robot_runtime.history import PendingActionHistory
 from robot_runtime.interfaces import CommandResult, RobotBackend, RobotState
-from robot_runtime.safety import SafetyMode, ThermalSupervisor, TimingSupervisor, evaluate_voltage
+from robot_runtime.safety import (SafetyMode, ThermalDecision, ThermalSupervisor,
+                                  TimingSupervisor, VoltageDecision, evaluate_voltage)
 from robot_runtime.timing import advance_absolute_deadline, sleep_until_ns
 
 
@@ -57,15 +58,28 @@ class RealTimeRunner:
                  history_len: int = 8, residual_limit_rad: float = np.deg2rad(2.0),
                  command_envelope: str = "experiment",
                  state_validator: Callable[[np.ndarray], object] | None = None,
-                 command_validator: Callable[[np.ndarray], object] | None = None):
+                 command_validator: Callable[[np.ndarray], object] | None = None,
+                 mpc_reference_prevalidated: bool = False):
         if mode is not RealControlMode.DIRECT and planner is None:
             raise ValueError("shadow_mpc and active_mpc require a planner")
-        if command_envelope not in {"experiment", "hardware"}:
-            raise ValueError("command_envelope must be 'experiment' or 'hardware'")
-        if command_envelope == "hardware" and mode is not RealControlMode.DIRECT:
-            raise ValueError("the hardware envelope is allowed only for direct data collection")
+        if command_envelope not in {"experiment", "hardware", "workspace"}:
+            raise ValueError("command_envelope must be 'experiment', 'hardware', or 'workspace'")
+        if command_envelope in {"hardware", "workspace"} and mode is not RealControlMode.DIRECT:
+            # MPC references span the data-collection envelope (e.g. the 4 cm
+            # circle needs pan +/-6.5 deg), not the first-motion +/-3 deg
+            # authority.  The caller may relax the envelope only after the
+            # joint reference passed its manifest SHA-256 match and the
+            # JointFilePlayer gates (hardware envelope / home start / per-sample
+            # step); the residual itself stays bounded by residual_limit_rad.
+            if not (mpc_reference_prevalidated and mode in
+                    {RealControlMode.SHADOW_MPC, RealControlMode.ACTIVE_MPC}):
+                raise ValueError("the hardware/workspace envelopes are allowed for direct data collection, "
+                                 "or for shadow/active MPC only after the joint reference passed its "
+                                 "manifest + JointFilePlayer gates (mpc_reference_prevalidated=True)")
         if command_envelope == "hardware" and not hasattr(backend, "send_hardware_joint_targets"):
             raise TypeError("backend does not provide the explicitly verified hardware command envelope")
+        if command_envelope == "workspace" and not hasattr(backend, "send_workspace_joint_targets"):
+            raise TypeError("backend does not provide the workspace-bounded command envelope")
         self.backend, self.nominal, self.mode, self.planner = backend, nominal, mode, planner
         self.command_envelope = command_envelope
         self.state_validator = state_validator
@@ -75,9 +89,39 @@ class RealTimeRunner:
         self.timing = TimingSupervisor(backend.control_dt)
         self.thermal = ThermalSupervisor()
         self.safety_mode = SafetyMode.RUNNING
+        # Populated only when run() stops before exhausting its step budget; a
+        # human-readable reason for the early stop.  None on a full run.
+        self.last_stop_reason: str | None = None
+
+    def _describe_stop(self, *, safety_guard_failure: str | None, thermal: ThermalDecision,
+                       voltage: VoltageDecision, tx_ok: bool,
+                       filtered_temperature: np.ndarray | None) -> str:
+        """Build a concise, specific reason for an early loop stop.
+
+        Thermal faults deliberately do not set safety_guard_failure, so the
+        reason must be reconstructed from the supervisor decisions that were in
+        scope when the loop broke.  Guard failures (which already embed their
+        trigger in the message) take priority, then thermal, voltage, and a
+        local transmission failure.
+        """
+        if safety_guard_failure:
+            return safety_guard_failure
+        if thermal.request_torque_disable or thermal.mode is SafetyMode.FAULT_LATCHED:
+            description = f"thermal({thermal.reason or 'fault_latched'})"
+            values = np.asarray(filtered_temperature, dtype=np.float64).reshape(-1)
+            if values.size and np.any(np.isfinite(values)):
+                hottest = int(np.nanargmax(values))
+                description += f" hottest_motor={hottest} Tmax={float(values[hottest]):.1f}C"
+            return description
+        if voltage.mode is SafetyMode.FAULT_LATCHED:
+            return f"voltage({voltage.reason or 'hard_limit'})"
+        if not tx_ok:
+            return "tx_local_success=False"
+        return f"safety_mode={self.safety_mode.value}"
 
     def run(self, steps: int, *, on_tick: Callable[[TickRecord], None] | None = None) -> list[TickRecord]:
         if steps <= 0: return []
+        self.last_stop_reason = None
         period_ns = int(round(self.backend.control_dt * 1e9))
         first = self.backend.read_state(tick_index=0)
         if not first.valid: raise RuntimeError(f"invalid initial hardware state: {first.validity_flags}")
@@ -163,6 +207,11 @@ class RealTimeRunner:
             if thermal.request_torque_disable:
                 self.backend.disable_torque()
                 self.safety_mode = SafetyMode.TORQUE_DISABLED
+                # command is not yet defined this tick, so a transmission check
+                # is not meaningful; the thermal decision fully explains this.
+                self.last_stop_reason = self._describe_stop(
+                    safety_guard_failure=safety_guard_failure, thermal=thermal, voltage=voltage,
+                    tx_ok=True, filtered_temperature=current.diagnostics.get("motor_temperature_filtered"))
                 break
             if thermal.mode is SafetyMode.HOLDING:
                 safety_guard_failure = thermal.reason
@@ -189,6 +238,8 @@ class RealTimeRunner:
                 # SO101 backend and uses hardware_joint_low/high, never the
                 # narrower MPC experiment envelope.
                 command = self.backend.send_hardware_joint_targets(requested, tick_index=tick)  # type: ignore[attr-defined]
+            elif self.command_envelope == "workspace":
+                command = self.backend.send_workspace_joint_targets(requested, tick_index=tick)  # type: ignore[attr-defined]
             else:
                 command = self.backend.send_joint_targets(requested, tick_index=tick)
             history.record_transmission(command.transmitted_q_ref, tick)
@@ -212,5 +263,9 @@ class RealTimeRunner:
             deadline = advance.next_deadline_ns
             sleep_until_ns(deadline)
             if self.safety_mode in {SafetyMode.FAULT_LATCHED, SafetyMode.TORQUE_DISABLED}:
+                self.last_stop_reason = self._describe_stop(
+                    safety_guard_failure=safety_guard_failure, thermal=thermal, voltage=voltage,
+                    tx_ok=command.tx_local_success,
+                    filtered_temperature=current.diagnostics.get("motor_temperature_filtered"))
                 break
         return records

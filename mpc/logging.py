@@ -679,8 +679,8 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
     q_des = arrays["q_des"]
     actuator_q_ref = arrays["actuator_q_ref"]
     nominal_q_ref = np.asarray(arrays.get("nominal_q_ref", np.empty((0,))))
-    planning_time = np.asarray(arrays.get("replan_time", arrays["planning_time"]))
-    best_cost = arrays["best_cost"]
+    planning_time = np.asarray(arrays.get("replan_time", arrays.get("planning_time", np.empty((0,)))))
+    best_cost = np.asarray(arrays.get("best_cost", np.empty((0,))))
     n_joints = q_des.shape[1]
     time = np.arange(q_des.shape[0])
 
@@ -730,9 +730,11 @@ def plot_mpc_run(save_dir: Path, arrays: dict[str, np.ndarray]) -> None:
     plt.close(fig_ctrl)
 
     fig_diag, axes_diag = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-    axes_diag[0].plot(time, planning_time)
+    if planning_time.size == time.size:
+        axes_diag[0].plot(time, planning_time)
     axes_diag[0].set_ylabel("replan_time_s")
-    axes_diag[1].plot(time, best_cost)
+    if best_cost.size == time.size:
+        axes_diag[1].plot(time, best_cost)
     axes_diag[1].set_ylabel("best_cost")
     axes_diag[1].set_xlabel("step")
     fig_diag.tight_layout()

@@ -75,6 +75,13 @@ class SO101Backend:
             config.hardware_joint_low, config.hardware_joint_high,
             config.command_velocity_limit, config.command_acceleration_limit,
             config.hardware_joint_high - config.hardware_joint_low, config.control_dt))
+        # Configured by the data-collection script via configure_workspace_projector.
+        # Unlike _hardware_projector it clips at the operator-chosen workspace
+        # bounds (hardware range inset by the workspace margin), so a
+        # velocity-saturated projector that overshoots a reference turning
+        # around near the workspace floor stays inside the workspace instead of
+        # being pushed to the absolute hardware boundary.
+        self._workspace_projector: CommandProjector | None = None
         self._last_state: RobotState | None = None
         self._last_command = config.home_q_ctrl.astype(np.float32).copy()
         self._gripper_raw: int | None = config.gripper_hold_raw
@@ -488,7 +495,39 @@ class SO101Backend:
         # projector so its first acceleration-limited command is continuous.
         self._last_command = state.q_ctrl.copy()
         self._hardware_projector.reset()
+        if self._workspace_projector is not None:
+            self._workspace_projector.reset()
         return state
+
+    def configure_workspace_projector(self, workspace_low: np.ndarray, workspace_high: np.ndarray) -> None:
+        """Bound the data-collection projector to the operator workspace.
+
+        The reference generator already clips every generated trajectory to
+        these bounds, but the hardware projector clips only at the absolute
+        hardware_joint_low/high.  A velocity-saturated projector that overshoots
+        a reference which turns around near the workspace floor can therefore be
+        pushed all the way to the hardware boundary even though the reference
+        never left the workspace (e3_41 pinned shoulder_lift at
+        hardware_joint_low).  This projector keeps the transmitted command inside
+        the workspace so the margin is preserved on the wire, not only on paper.
+        """
+        self._assert_owner()
+        low = np.asarray(workspace_low, dtype=np.float64)
+        high = np.asarray(workspace_high, dtype=np.float64)
+        if low.shape != (self.n_joints,) or high.shape != (self.n_joints,):
+            raise ValueError("workspace bounds must have one value per controlled joint")
+        if self._hardware_projector is None:
+            raise RuntimeError("workspace projector requires verified hardware_joint_low/high in the hardware config")
+        if np.any(low < self._hardware_projector.low) or np.any(high > self._hardware_projector.high):
+            raise ValueError("workspace bounds must lie inside the hardware envelope")
+        if np.any(low >= high):
+            raise ValueError("workspace bounds must be ordered (low < high)")
+        self._workspace_projector = CommandProjector(
+            low, high, self.config.command_velocity_limit, self.config.command_acceleration_limit,
+            high - low, self.config.control_dt,
+        )
+        self._workspace_projector.reset()
+        self._last_command = self._last_state.q_ctrl.copy() if self._last_state is not None else self._last_command
 
     def send_hardware_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0) -> CommandResult:
         """Send a target under the wide verified startup envelope only."""
@@ -500,6 +539,24 @@ class SO101Backend:
         if self._last_state is None:
             raise RuntimeError("prepare_hardware_motion or read_state must run before hardware targets")
         return self._send_joint_targets(q_ref, tick_index=tick_index, projector=self._hardware_projector)
+
+    def send_workspace_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0) -> CommandResult:
+        """Send a target under the workspace-bounded data-collection envelope.
+
+        Identical to the hardware envelope except the projector clips at the
+        operator workspace (hardware range inset by the workspace margin).
+        This is the envelope the real Model-A collector uses for its runner, so
+        the transmitted command can never be pushed to the absolute hardware
+        boundary by a velocity-saturated projector overshoot.
+        """
+        self._assert_owner()
+        if self._read_only:
+            raise RuntimeError("read-only SO101 connection cannot send workspace targets")
+        if self._workspace_projector is None:
+            raise RuntimeError("workspace collection envelope is not configured")
+        if self._last_state is None:
+            raise RuntimeError("prepare_hardware_motion or read_state must run before workspace targets")
+        return self._send_joint_targets(q_ref, tick_index=tick_index, projector=self._workspace_projector)
 
     def move_selected_joints_to_configuration(self, target_q: np.ndarray, active_mask: np.ndarray,
                                                duration_s: float) -> None:
@@ -770,6 +827,8 @@ class SO101Backend:
         self._projector.reset()
         if self._hardware_projector is not None:
             self._hardware_projector.reset()
+        if self._workspace_projector is not None:
+            self._workspace_projector.reset()
 
     def close(self) -> None:
         self._assert_owner()

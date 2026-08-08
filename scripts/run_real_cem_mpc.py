@@ -26,6 +26,7 @@ from robot_runtime.config import load_hardware_config
 from robot_runtime.factory import make_so101_backend
 from robot_runtime.ood import RobustEnvelope
 from robot_runtime.runner import RealControlMode, RealTimeRunner
+from scripts.run_real_direct_control import JointFilePlayer, find_reference_manifest_entry
 
 
 def parser() -> argparse.ArgumentParser:
@@ -37,6 +38,10 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--operator-supported-shutdown", action="store_true")
     value.add_argument("--delay-calibration", default=None)
     value.add_argument("--ood-envelope", default=None)
+    value.add_argument("--reference-manifest", required=True,
+                       help="mpc_manifest.json whose artifacts.q_des_ctrl.npy SHA-256 must match the "
+                            "reference file; also gates playback through JointFilePlayer (hardware "
+                            "envelope / home start / per-sample step) before torque is enabled.")
     return value
 
 
@@ -48,6 +53,12 @@ def main() -> None:
     if not args.checkpoint or not args.normalizer: raise SystemExit("real MPC requires --checkpoint and --normalizer")
     args.multirate_mode = "threaded_asap"
     args.controller_mode = "mpc"
+    # The real path only ever plays a joint-space reference, so the sim
+    # parser's task-space final-pool cost (default "on") has no targets to
+    # score and would abort worker init.  The sim CLI rejects this combination
+    # in its argument validation; the real CLI mirrors that here by forcing
+    # the joint-only cost (paper workflow "joint_only_two_stage" variant).
+    args.exact_task_space_cost = "off"
     args.n_joints = 5
     args.robot_config = "configs/robots/so101.yaml"
     robot = simulation_cli._resolve_robot_from_args(args)
@@ -69,6 +80,15 @@ def main() -> None:
     required_reference = execution_steps + args.horizon + args.anticipation_delay_steps + int(args.mpc_preview_nominal_steps) + 1
     if reference.shape[0] < required_reference:
         raise SystemExit(f"joint reference needs at least {required_reference} rows for horizon+delay padding")
+    # Freeze the reference identity before any torque: SHA-256 must match the
+    # derived MPC manifest, and the JointFilePlayer gates (hardware envelope /
+    # home start / per-sample step) must pass on the full padded playback file.
+    # mpc_reference_prevalidated=True is only ever set after both succeed.
+    shape_name, entry, sha = find_reference_manifest_entry(args.reference_manifest, args.reference_file)
+    print(f"reference matched frozen MPC artifact [{shape_name}] sha256={sha[:16]}...")
+    player = JointFilePlayer(reference, config=hardware)
+    print(f"joint reference: {reference.shape[0]} rows @ {hardware.control_dt:.4f}s = "
+          f"{reference.shape[0] * hardware.control_dt:.2f}s (envelope-validated)")
     snapshots, packets, results = LatestSnapshotStore(), PlanPacketStore(), PlannerResultStore()
     stop = threading.Event()
     envelope = None
@@ -85,8 +105,9 @@ def main() -> None:
     backend = make_so101_backend(args.hardware_config)
     adapter = ASAPStorePlannerAdapter(snapshots, packets, 5, ood_envelope=envelope)
     worker = None
-    def nominal(tick, state):
-        return reference[min(tick, reference.shape[0] - 1)]
+    # Nominal playback = the manifest-matched, gate-validated joint reference;
+    # holds the final pose after the last row (JointFilePlayer semantics).
+    nominal = player
     try:
         backend.connect()
         backend.startup_to_home()
@@ -104,11 +125,30 @@ def main() -> None:
             stop.set(); snapshots.wake()
             raise RuntimeError(worker.status().failure_reason or "planner worker initialization timeout")
         runner = RealTimeRunner(backend, nominal, mode=RealControlMode(args.real_mode), planner=adapter,
-                                history_len=worker.history_len or 8, residual_limit_rad=np.deg2rad(2.0))
+                                history_len=worker.history_len or 8, residual_limit_rad=np.deg2rad(2.0),
+                                # The reference spans the data-collection envelope (e.g. the 4 cm
+                                # circle needs pan +/-6.5 deg), not the first-motion +/-3 deg
+                                # authority; JointFilePlayer validated it above, so hardware
+                                # envelope playback keeps commands inside the measured distribution.
+                                command_envelope="hardware", mpc_reference_prevalidated=True)
         records = runner.run(min(execution_steps, args.max_execution_steps or execution_steps))
         packet_available = np.asarray([record.planner_packet_available for record in records], dtype=bool)
         ever_packet = np.maximum.accumulate(packet_available) if packet_available.size else packet_available
         event_rows = results.drain()
+        # Per-tick planner duration for the shared diagnostic plot.  Events
+        # are published about once per control tick and drained in
+        # publication order, so event i aligns with tick i; ticks beyond the
+        # event count are left at zero (no plan was produced there).
+        planning_times = np.zeros(len(records), dtype=np.float32)
+        for index, event in enumerate(event_rows[:len(records)]):
+            planning_times[index] = float(event.planning_time_s)
+        # OOD tokens for calibrate_real_ood.py: executed = per-tick
+        # [state, previous q_ref] (15-dim); selected_action/predicted_state =
+        # flattened [predicted_state; q_ref] future windows the runtime
+        # OOD-checks per activated packet ((6,15) at H=6 -> M*6 rows).
+        executed_tokens = np.asarray(adapter.executed_tokens, dtype=np.float32) if adapter.executed_tokens else np.empty((0, 10 + 5), dtype=np.float32)
+        future_rows = [row for window in adapter.future_tokens for row in window]
+        future_tokens = np.asarray(future_rows, dtype=np.float32) if future_rows else np.empty((0, 10 + 5), dtype=np.float32)
         arrays = {
             "actual_states": np.asarray([record.state.vector for record in records], dtype=np.float32),
             "observed_states": np.asarray([record.state.vector for record in records], dtype=np.float32),
@@ -122,6 +162,12 @@ def main() -> None:
             "planner_end_to_end_latency_s": np.asarray([event.end_to_end_latency_s for event in event_rows]),
             "planner_late_drop": np.asarray([event.result_type == "success_late_dropped" for event in event_rows]),
             "planner_ood_valid": np.asarray([record.planner_ood_valid for record in records]),
+            "planning_time": planning_times,
+            "executed_tokens": executed_tokens,
+            # Both future arrays are the same [predicted_state; q_ref] window
+            # that the runtime OOD gate checks -- one distribution, two names.
+            "selected_action_tokens": future_tokens,
+            "predicted_state_tokens": future_tokens.copy(),
             "controller_mode": np.asarray(args.real_mode),
             "multirate_mode": np.asarray("threaded_asap"),
             "action_semantics": np.asarray("software_transmitted_absolute_position_target"),
