@@ -13,12 +13,16 @@ class ASAPStorePlannerAdapter:
     """Connect the real tick loop to the existing CUDA ASAP worker stores."""
 
     def __init__(self, snapshots: LatestSnapshotStore, packets: PlanPacketStore, n_joints: int,
-                 ood_envelope: RobustEnvelope | None = None, record_ood_tokens: bool = True):
+                 ood_envelope: RobustEnvelope | None = None, record_ood_tokens: bool = True,
+                 control_dt: float = 1.0 / 30.0):
         self.snapshots, self.packets, self.n_joints = snapshots, packets, int(n_joints)
         self.request_id = 0
         self.current_tick = 0
         self.generation = 0
-        self.previous_q_ref = np.zeros(n_joints, dtype=np.float32)
+        if control_dt <= 0:
+            raise ValueError("control_dt must be positive")
+        self.control_dt = float(control_dt)
+        self.previous_q_ref: np.ndarray | None = None
         self.previous_velocity = np.zeros(n_joints, dtype=np.float32)
         self._zeros = np.zeros(n_joints, dtype=np.float32)
         self.ood_envelope = ood_envelope
@@ -37,8 +41,19 @@ class ASAPStorePlannerAdapter:
         self.current_tick, self.generation = int(tick_index), int(history_generation)
         if commands.size:
             new_q = np.asarray(commands[-1], dtype=np.float32)
-            self.previous_velocity = new_q - self.previous_q_ref
+            if new_q.shape != (self.n_joints,):
+                raise ValueError(f"commands must end with shape ({self.n_joints},)")
+            if self.previous_q_ref is None:
+                # The first snapshot is anchored at the measured home command;
+                # it is not a movement from an artificial all-zero command.
+                self.previous_velocity.fill(0.0)
+            else:
+                # Command history stores positions.  Convert the one-tick
+                # difference to rad/s before passing it to the planner.
+                self.previous_velocity = (new_q - self.previous_q_ref) / self.control_dt
             self.previous_q_ref = new_q.copy()
+        if self.previous_q_ref is None:
+            self.previous_q_ref = np.zeros(self.n_joints, dtype=np.float32)
         if self.record_ood_tokens:
             executed_token = np.concatenate((np.asarray(states[-1], dtype=np.float32), self.previous_q_ref))
             self.executed_tokens.append(executed_token)
@@ -66,16 +81,23 @@ class ASAPStorePlannerAdapter:
         if index is None:
             return None
         ood_valid = self._executed_ood_valid
+        absolute_q_ref = None
         future_tokens = None
         if packet.q_ref_sequence.size and packet.predicted_state_sequence.size:
             length = min(len(packet.q_ref_sequence), len(packet.predicted_state_sequence))
+            if packet.q_ref_sequence.shape == packet.residual_sequence.shape:
+                # q_ref_sequence is the absolute command sequence scored by
+                # the planner.  Preserve it through the adapter so the real
+                # runner does not rebuild a different command from the live
+                # nominal reference and a raw residual.
+                absolute_q_ref = packet.q_ref_sequence[index].copy()
             future_tokens = np.concatenate((packet.predicted_state_sequence[:length], packet.q_ref_sequence[:length]), axis=1)
             if self.ood_envelope is not None:
                 ood_valid = ood_valid and bool(np.all(self.ood_envelope.contains(future_tokens)))
         if self.record_ood_tokens and future_tokens is not None:
             self.future_tokens.append(future_tokens)
         return PlannerCommand(packet.residual_sequence[index].copy(), packet.history_generation,
-                              packet.activation_step, packet.publication_tick, ood_valid)
+                              packet.activation_step, packet.publication_tick, ood_valid, absolute_q_ref)
 
     def clear(self, history_generation: int) -> None:
         self.generation = int(history_generation)

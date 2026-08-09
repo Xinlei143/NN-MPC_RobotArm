@@ -20,6 +20,9 @@ class ASAPPlanPacket:
     anchor_state: np.ndarray
     selection_mode: str
     selected_cost: float
+    # Absolute command sequence after the same kinematic projection used by
+    # the CEM scorer.  Real adapters should prefer this over rebuilding a
+    # command from ``residual_sequence`` and a live nominal reference.
     q_ref_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     requested_residual_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     planned_projection_offset_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))

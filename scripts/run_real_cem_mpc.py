@@ -87,6 +87,15 @@ def main() -> None:
     shape_name, entry, sha = find_reference_manifest_entry(args.reference_manifest, args.reference_file)
     print(f"reference matched frozen MPC artifact [{shape_name}] sha256={sha[:16]}...")
     player = JointFilePlayer(reference, config=hardware)
+    # The padded beginning of the formal reference is deliberately static.
+    # Keep active MPC disabled until the reference has moved by at least 1e-3
+    # rad from its first pose; otherwise CEM can inject arbitrary residuals
+    # into the home hold and build up projector velocity before the task starts.
+    reference_origin = np.asarray(reference[0], dtype=np.float32)
+    motion_rows = np.flatnonzero(np.max(np.abs(reference - reference_origin), axis=1) > 1e-3)
+    active_start_tick = int(motion_rows[0]) if motion_rows.size else 0
+    if args.real_mode == "active_mpc":
+        print(f"active MPC startup gate: direct IK until tick {active_start_tick}")
     print(f"joint reference: {reference.shape[0]} rows @ {hardware.control_dt:.4f}s = "
           f"{reference.shape[0] * hardware.control_dt:.2f}s (envelope-validated)")
     snapshots, packets, results = LatestSnapshotStore(), PlanPacketStore(), PlannerResultStore()
@@ -103,7 +112,8 @@ def main() -> None:
                ("executed_history_coverage", "selected_action_coverage", "predicted_state_coverage")):
             raise SystemExit("active MPC requires >=99% executed/action/predicted-state OOD coverage")
     backend = make_so101_backend(args.hardware_config)
-    adapter = ASAPStorePlannerAdapter(snapshots, packets, 5, ood_envelope=envelope)
+    adapter = ASAPStorePlannerAdapter(snapshots, packets, 5, ood_envelope=envelope,
+                                      control_dt=hardware.control_dt)
     worker = None
     # Nominal playback = the manifest-matched, gate-validated joint reference;
     # holds the final pose after the last row (JointFilePlayer semantics).
@@ -130,7 +140,8 @@ def main() -> None:
                                 # circle needs pan +/-6.5 deg), not the first-motion +/-3 deg
                                 # authority; JointFilePlayer validated it above, so hardware
                                 # envelope playback keeps commands inside the measured distribution.
-                                command_envelope="hardware", mpc_reference_prevalidated=True)
+                                command_envelope="hardware", mpc_reference_prevalidated=True,
+                                active_start_tick=active_start_tick)
         records = runner.run(min(execution_steps, args.max_execution_steps or execution_steps))
         packet_available = np.asarray([record.planner_packet_available for record in records], dtype=bool)
         ever_packet = np.maximum.accumulate(packet_available) if packet_available.size else packet_available
@@ -155,6 +166,7 @@ def main() -> None:
             "q_des": np.asarray([record.nominal for record in records], dtype=np.float32),
             "actuator_q_ref": np.asarray([record.command.transmitted_q_ref for record in records], dtype=np.float32),
             "requested_absolute_command": np.asarray([record.command.requested_q_ref for record in records], dtype=np.float32),
+            "projected_absolute_command": np.asarray([record.command.projected_q_ref for record in records], dtype=np.float32),
             "planner_requested_residual": np.asarray([record.planner_residual for record in records], dtype=np.float32),
             "control_wakeup_lateness_s": np.asarray([record.wake_lateness_s for record in records]),
             "control_deadline_miss": np.asarray([record.skipped_ticks > 0 for record in records]),
@@ -175,11 +187,13 @@ def main() -> None:
             "plant_identity_sha256": np.asarray(hardware.config_sha256),
             "tau_actuator_available": np.asarray(False),
             "true_state_available": np.asarray(False),
+            "active_start_tick": np.asarray(active_start_tick, dtype=np.int64),
         }
         rows = [{"tick": index, "safety_mode": record.safety_mode.value,
                  "planner_applied": record.planner_applied,
                  "tx_local_success": record.command.tx_local_success,
-                 "command_delivery_uncertain": record.command.command_delivery_uncertain}
+                 "command_delivery_uncertain": record.command.command_delivery_uncertain,
+                 "projection_flags": "|".join(record.command.projection_flags)}
                 for index, record in enumerate(records)]
         planner_events = [asdict(event) for event in event_rows]
         backend.move_to_configuration(robot.home_q, 3.0)

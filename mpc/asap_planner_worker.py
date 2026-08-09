@@ -16,7 +16,7 @@ from mpc.asap_shared import LatestSnapshotStore, PlanPacketStore, PlannerResultS
 from mpc.asap_types import ASAPPlanPacket, PlannerResultEvent, PlanningSnapshot
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
-from mpc.delay_aware import project_executable_command_np
+from mpc.delay_aware import project_executable_command_np, project_packet_command_sequence_np
 from mpc.history import future_history_tokens, history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTaskSpaceCost
@@ -204,6 +204,21 @@ class ASAPPlannerWorker(threading.Thread):
             sequence = selected.requested_residual_sequence
         return sequence[index].astype(np.float32, copy=True)
 
+    def _packet_absolute_q_ref(self, schedule: tuple[ASAPPlanPacket, ...], step: int) -> np.ndarray | None:
+        """Return the projected absolute target for a scheduled packet step."""
+        candidates = [
+            packet for packet in schedule
+            if packet.activation_step <= step
+            and packet.index_at(step) is not None
+            and packet.q_ref_sequence.shape == packet.residual_sequence.shape
+        ]
+        if not candidates:
+            return None
+        selected = max(candidates, key=lambda packet: (packet.activation_step, packet.plan_id))
+        index = selected.index_at(step)
+        assert index is not None
+        return selected.q_ref_sequence[index].astype(np.float32, copy=True)
+
     def _forecast_anchor(self, snapshot: PlanningSnapshot, bundle: Any, device: torch.device, velocity_limit: np.ndarray, acceleration_limit: np.ndarray) -> tuple[torch.Tensor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         delay = self.args.anticipation_delay_steps
         previous_command, previous_velocity = snapshot.previous_q_ref.copy(), snapshot.previous_q_ref_velocity.copy()
@@ -214,7 +229,6 @@ class ASAPPlannerWorker(threading.Thread):
         for offset in range(delay):
             step = snapshot.launch_step + offset
             nominal = nominal_command(self.reference, step, int(self.args.mpc_preview_nominal_steps))
-            payload_residual = self._packet_residual(snapshot.packet_schedule, step, requested=False)
             requested_residual = self._packet_residual(snapshot.packet_schedule, step, requested=True)
             execution_nominal = nominal
             if self.args.nominal_command_semantics == "executable_ik":
@@ -223,9 +237,19 @@ class ASAPPlannerWorker(threading.Thread):
                     self.joint_low, self.joint_high, self.args.joint_limit_margin,
                     velocity_limit, acceleration_limit, bundle.control_dt,
                 )
-            command, _, velocity = project_executable_command_np(execution_nominal, payload_residual, previous_command, previous_velocity, self.joint_low, self.joint_high, self.args.joint_limit_margin, velocity_limit, acceleration_limit, bundle.control_dt)
+            scheduled_command = self._packet_absolute_q_ref(snapshot.packet_schedule, step)
+            if scheduled_command is not None:
+                # The packet already contains the projected absolute command
+                # that the real control loop will request.  Forecast that
+                # command directly instead of reconstructing it from the raw
+                # residual, which would reintroduce the old semantic mismatch.
+                command = scheduled_command
+                velocity = ((command - previous_command) / bundle.control_dt).astype(np.float32)
+            else:
+                payload_residual = self._packet_residual(snapshot.packet_schedule, step, requested=False)
+                command, _, velocity = project_executable_command_np(execution_nominal, payload_residual, previous_command, previous_velocity, self.joint_low, self.joint_high, self.args.joint_limit_margin, velocity_limit, acceleration_limit, bundle.control_dt)
             actions.append(command)
-            payload_residuals.append(payload_residual)
+            payload_residuals.append((command - execution_nominal).astype(np.float32))
             requested_residuals.append(requested_residual)
             command_nominal_offsets.append((command - execution_nominal).astype(np.float32))
             previous_command, previous_velocity = command, velocity.astype(np.float32)
@@ -455,6 +479,7 @@ class ASAPPlannerWorker(threading.Thread):
                 residual_sequence = result.selected_residual_sequence.copy()
                 predicted_sequence = result.selected_predicted_state_sequence.copy()
                 selection_mode = result.selection_mode
+                residual_was_modified = False
                 if ensemble is not None and not result.failure:
                     candidates, primary_predictions = selected_cem_candidates(
                         result, horizon=self.args.uncertainty_horizon
@@ -515,13 +540,53 @@ class ASAPPlannerWorker(threading.Thread):
                             uncertainty_state = "monitor"
                     if uncertainty_gate:
                         residual_sequence = np.zeros_like(residual_sequence)
+                        residual_was_modified = True
                         selection_mode = "uncertainty_budget_fallback" if report.timed_out else "uncertainty_nominal_fallback"
                         controller.reset()
                         mean_anchor_step = None
                     elif self.args.uncertainty_mode == "ensemble_soft_gate":
                         residual_sequence *= uncertainty_residual_scale
                         if uncertainty_residual_scale < 1.0:
+                            residual_was_modified = True
                             selection_mode = "uncertainty_limited"
+                planner_nominal_np = planner_nominal.detach().cpu().numpy().astype(np.float32)
+                if residual_was_modified:
+                    # Keep the post-CEM safety decision and its prediction in
+                    # lockstep.  A scaled/fallback residual must not reuse the
+                    # state rollout belonging to the pre-gate candidate.
+                    q_ref_sequence, _ = project_packet_command_sequence_np(
+                        planner_nominal_np,
+                        residual_sequence,
+                        anchor_command,
+                        anchor_velocity,
+                        self.joint_low,
+                        self.joint_high,
+                        self.args.joint_limit_margin,
+                        velocity_limit,
+                        acceleration_limit,
+                        bundle.control_dt,
+                    )
+                    predicted_sequence = rollout_dynamics_batch(
+                        model=bundle.model,
+                        normalizer=bundle.normalizer,
+                        model_type=bundle.model_type,
+                        initial_history=future_history,
+                        future_q_ref=torch.as_tensor(
+                            q_ref_sequence, dtype=torch.float32, device=device
+                        ).unsqueeze(0),
+                        state_dim=bundle.state_dim,
+                        target_mode=bundle.target_mode,
+                        control_dt=bundle.control_dt,
+                    )[0].detach().cpu().numpy().astype(np.float32)
+                else:
+                    # This is the exact projected command sequence selected by
+                    # the final CEM evaluation (including the exact final
+                    # pool in the two-stage planner).
+                    q_ref_sequence = result.selected_q_ref_sequence.copy().astype(np.float32)
+                projected_offset_sequence = (q_ref_sequence - planner_nominal_np).astype(np.float32)
+                planned_projection_offset = (
+                    q_ref_sequence - (planner_nominal_np + residual_sequence)
+                ).astype(np.float32)
                 publish_ns = time.perf_counter_ns()
                 activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
                 late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))
@@ -580,20 +645,15 @@ class ASAPPlannerWorker(threading.Thread):
                 if result.failure or late_dropped:
                     continue
                 requested_residual_sequence = residual_sequence.copy()
-                planner_nominal_np = planner_nominal.detach().cpu().numpy()
-                # Soft gating changes the residual after CEM selection.  The
-                # threaded runner uses requested semantics and applies the
-                # common physical projection at each execution tick.
-                q_ref_sequence = (planner_nominal_np + requested_residual_sequence).astype(np.float32)
-                projected_offset_sequence = (q_ref_sequence - planner_nominal_np).astype(np.float32)
+                # q_ref_sequence is already projected and is the absolute
+                # command consumed by the real-time adapter.  Keep the raw
+                # requested residual separately for diagnostics and legacy
+                # packet semantics.
                 packet_residual_sequence = (
                     requested_residual_sequence
                     if self.args.packet_residual_semantics == "requested"
                     else projected_offset_sequence
                 )
-                planned_projection_offset = (
-                    q_ref_sequence - (planner_nominal_np + requested_residual_sequence)
-                ).astype(np.float32)
                 packet = ASAPPlanPacket(
                     plan_id=plan_id, launch_step=snapshot.launch_step, launch_time_ns=snapshot.launch_time_ns,
                     activation_step=anchor, activation_time_ns=activation_ns, publish_time_ns=publish_ns,

@@ -20,6 +20,11 @@ class RealControlMode(str, Enum):
     ACTIVE_MPC = "active_mpc"
 
 
+def active_mpc_gate_open(mode: RealControlMode, tick: int, active_start_tick: int) -> bool:
+    """Whether active MPC is allowed to apply a planner packet this tick."""
+    return mode is not RealControlMode.ACTIVE_MPC or int(tick) >= int(active_start_tick)
+
+
 @dataclass(frozen=True)
 class PlannerCommand:
     residual: np.ndarray
@@ -27,6 +32,31 @@ class PlannerCommand:
     activation_tick: int
     publication_tick: int
     ood_valid: bool = True
+    # When present, this is the planner's already projected absolute target
+    # for the current packet index.  Real execution must prefer it over
+    # reconstructing ``nominal + residual``: the latter can differ from the
+    # command sequence that the CEM rollout actually scored.
+    absolute_q_ref: np.ndarray | None = None
+
+
+def compose_requested_command(
+    nominal: np.ndarray,
+    residual: np.ndarray,
+    planner_command: PlannerCommand | None,
+    *,
+    applied: bool,
+) -> np.ndarray:
+    """Select the command passed to the backend before its final safety gate.
+
+    An active planner packet with an absolute target is already projected in
+    the same command space used by the rollout.  Reconstructing it from the
+    live nominal and a raw residual would silently change the command.
+    """
+    if applied and planner_command is not None and planner_command.absolute_q_ref is not None:
+        absolute = np.asarray(planner_command.absolute_q_ref, dtype=np.float32)
+        if absolute.shape == np.asarray(nominal).shape and np.all(np.isfinite(absolute)):
+            return absolute.copy()
+    return (np.asarray(nominal, dtype=np.float32) + np.asarray(residual, dtype=np.float32)).astype(np.float32)
 
 
 class Planner(Protocol):
@@ -59,7 +89,8 @@ class RealTimeRunner:
                  command_envelope: str = "experiment",
                  state_validator: Callable[[np.ndarray], object] | None = None,
                  command_validator: Callable[[np.ndarray], object] | None = None,
-                 mpc_reference_prevalidated: bool = False):
+                 mpc_reference_prevalidated: bool = False,
+                 active_start_tick: int = 0):
         if mode is not RealControlMode.DIRECT and planner is None:
             raise ValueError("shadow_mpc and active_mpc require a planner")
         if command_envelope not in {"experiment", "hardware", "workspace"}:
@@ -86,6 +117,9 @@ class RealTimeRunner:
         self.command_validator = command_validator
         self.history_len = int(history_len)
         self.residual_limit = float(residual_limit_rad)
+        if active_start_tick < 0:
+            raise ValueError("active_start_tick must be non-negative")
+        self.active_start_tick = int(active_start_tick)
         self.timing = TimingSupervisor(backend.control_dt)
         self.thermal = ThermalSupervisor()
         self.safety_mode = SafetyMode.RUNNING
@@ -165,13 +199,20 @@ class RealTimeRunner:
                         safety_guard_failure = f"state_guard: {exc}"
                         self.safety_mode = SafetyMode.FAULT_LATCHED
             states, commands, generation = history.snapshot()
+            active_gate_open = active_mpc_gate_open(self.mode, tick, self.active_start_tick)
             if self.planner and self.safety_mode is SafetyMode.RUNNING:
-                self.planner.submit(tick, current.timestamp_ns, states, commands, generation)
+                if active_gate_open:
+                    self.planner.submit(tick, current.timestamp_ns, states, commands, generation)
+                else:
+                    # Do not let CEM packets accumulated during a static
+                    # startup hold leak into the first moving reference.
+                    self.planner.clear(generation)
             nominal = np.asarray(self.nominal(tick, current), dtype=np.float32)
             residual = np.zeros(self.backend.n_joints, dtype=np.float32)
             applied = False
             packet_available = False
             packet_ood_valid = True
+            packet: PlannerCommand | None = None
             temperatures = current.diagnostics.get("motor_temperature")
             confirmation_reader = getattr(self.backend, "confirm_temperature_samples", None)
             thermal = self.thermal.evaluate(
@@ -216,7 +257,7 @@ class RealTimeRunner:
             if thermal.mode is SafetyMode.HOLDING:
                 safety_guard_failure = thermal.reason
                 self.safety_mode = SafetyMode.HOLDING
-            if self.planner:
+            if self.planner and active_gate_open:
                 packet = self.planner.latest()
                 if packet is not None and packet.history_generation == generation and tick >= packet.activation_tick:
                     packet_available = True
@@ -224,7 +265,17 @@ class RealTimeRunner:
                     residual = np.clip(packet.residual, -self.residual_limit, self.residual_limit).astype(np.float32)
                     applied = (self.mode is RealControlMode.ACTIVE_MPC and self.safety_mode is SafetyMode.RUNNING
                                and thermal.residual_allowed and voltage.residual_allowed and packet.ood_valid)
-            requested = nominal + residual if applied else nominal
+            # The planner may provide the absolute, kinematically projected
+            # target that was used during CEM scoring.  Use it directly in
+            # active mode so the command sent to the backend is aligned with
+            # the rollout.  The backend still applies its final hardware
+            # safety projector; this is the last safety boundary, not a
+            # second residual re-anchoring step.
+            requested = (
+                compose_requested_command(nominal, residual, packet, applied=True)
+                if applied
+                else np.asarray(nominal, dtype=np.float32).copy()
+            )
             if self.safety_mode is SafetyMode.RUNNING and self.command_validator is not None:
                 try:
                     self.command_validator(requested)

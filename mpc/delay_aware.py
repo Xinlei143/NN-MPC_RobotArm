@@ -165,6 +165,49 @@ def project_executable_command_np(
     return command.astype(np.float32), (command - nominal).astype(np.float32), velocity.astype(np.float32)
 
 
+def project_packet_command_sequence_np(
+    nominal_q_ref: np.ndarray,
+    requested_residual: np.ndarray,
+    previous_command: np.ndarray,
+    previous_velocity: np.ndarray,
+    joint_low: np.ndarray,
+    joint_high: np.ndarray,
+    joint_limit_margin: float,
+    velocity_limit: np.ndarray,
+    acceleration_limit: np.ndarray,
+    control_dt: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build the absolute command sequence carried by a planner packet.
+
+    This is the NumPy counterpart of the projection used by the CEM rollout.
+    Keeping it in the shared delay-aware module lets the worker and tests use
+    exactly one command-projection implementation.
+    """
+    nominal = np.asarray(nominal_q_ref, dtype=np.float32)
+    residual = np.asarray(requested_residual, dtype=np.float32)
+    if nominal.ndim != 2 or residual.shape != nominal.shape:
+        raise ValueError("nominal_q_ref and requested_residual must have shape [horizon, n_joints]")
+    previous = np.asarray(previous_command, dtype=np.float32).copy()
+    velocity = np.asarray(previous_velocity, dtype=np.float32).copy()
+    commands: list[np.ndarray] = []
+    for nominal_step, residual_step in zip(nominal, residual, strict=True):
+        command, _, velocity = project_executable_command_np(
+            nominal_step,
+            residual_step,
+            previous,
+            velocity,
+            joint_low,
+            joint_high,
+            joint_limit_margin,
+            velocity_limit,
+            acceleration_limit,
+            control_dt,
+        )
+        commands.append(command)
+        previous = command
+    return np.stack(commands).astype(np.float32), velocity.astype(np.float32)
+
+
 def feedback_correction(
     predicted_state: np.ndarray,
     measured_state: np.ndarray,

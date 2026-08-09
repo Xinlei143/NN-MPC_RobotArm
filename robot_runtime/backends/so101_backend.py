@@ -212,9 +212,13 @@ class SO101Backend:
             self._connected = True
         except Exception:
             try:
-                self.bus.disable_torque()
+                if self.bus.is_connected:
+                    self.bus.disable_torque()
             finally:
-                self.bus.disconnect(False)
+                if self.bus.is_connected:
+                    self.bus.disconnect(False)
+                self._connected = False
+                self._torque_enabled = False
             raise
 
     def connect_read_only(self) -> None:
@@ -833,9 +837,10 @@ class SO101Backend:
     def close(self) -> None:
         self._assert_owner()
         if self.bus is not None:
-            if self._torque_enabled:
+            if self._torque_enabled and self.bus.is_connected:
                 self.bus.disable_torque()
-            self.bus.disconnect(False)
+            if self.bus.is_connected:
+                self.bus.disconnect(False)
         self._connected = False
         self._torque_enabled = False
         self._read_only = False
