@@ -21,6 +21,7 @@ specification, XML, control period, normalizer, and target definition.
 
 ```bash
 conda run -n pendulum-rl python dynamics_modeling/scripts/train_dynamics.py \
+  --action_input_mode absolute_q_ref \
   --robot_config configs/robots/abb_irb2400.yaml \
   --data_path dynamics_modeling/outputs/datasets/abb_model_a.npz \
   --model_type gru --history_len 16 --target_mode delta_dq --control_dt 0.01 \
@@ -88,10 +89,12 @@ Representative commands are:
 
 ```bash
 conda run -n pendulum-rl python dynamics_modeling/scripts/train_dynamics.py \
+  --action_input_mode absolute_q_ref \
   --robot_config configs/robots/abb_irb2400.yaml --data_path <DATASET>.npz \
   --model_type mlp --target_mode delta_dq --save_dir dynamics_modeling/outputs/checkpoints
 
 conda run -n pendulum-rl python dynamics_modeling/scripts/train_dynamics.py \
+  --action_input_mode absolute_q_ref \
   --robot_config configs/robots/abb_irb2400.yaml --data_path <DATASET>.npz \
   --model_type transformer --history_len 16 --target_mode delta_dq \
   --save_dir dynamics_modeling/outputs/checkpoints

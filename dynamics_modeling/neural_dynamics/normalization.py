@@ -7,8 +7,13 @@ import torch
 
 
 class StandardNormalizer:
-    def __init__(self, eps: float = 1e-8) -> None:
+    ACTION_INPUT_MODES = {"absolute_q_ref", "q_ref_minus_q"}
+
+    def __init__(self, eps: float = 1e-8, action_input_mode: str = "absolute_q_ref") -> None:
+        if action_input_mode not in self.ACTION_INPUT_MODES:
+            raise ValueError(f"Unsupported action_input_mode: {action_input_mode!r}")
         self.eps = eps
+        self.action_input_mode = action_input_mode
         self.metadata: dict[str, Any] = {}
         self.state_mean: torch.Tensor | None = None
         self.state_std: torch.Tensor | None = None
@@ -20,8 +25,9 @@ class StandardNormalizer:
     def fit(self, states: torch.Tensor, actions: torch.Tensor, deltas: torch.Tensor) -> None:
         self.state_mean = states.mean(dim=0)
         self.state_std = states.std(dim=0, unbiased=False).clamp_min(self.eps)
-        self.action_mean = actions.mean(dim=0)
-        self.action_std = actions.std(dim=0, unbiased=False).clamp_min(self.eps)
+        encoded_actions = self.encode_action(states, actions)
+        self.action_mean = encoded_actions.mean(dim=0)
+        self.action_std = encoded_actions.std(dim=0, unbiased=False).clamp_min(self.eps)
         self.delta_mean = deltas.mean(dim=0)
         self.delta_std = deltas.std(dim=0, unbiased=False).clamp_min(self.eps)
 
@@ -45,6 +51,15 @@ class StandardNormalizer:
             self._require("action_std"), actions
         )
 
+    def encode_action(self, states: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+        if actions.shape[-1] * 2 != states.shape[-1]:
+            raise ValueError(
+                "states must contain [q, dq] with twice the final dimension of actions"
+            )
+        if self.action_input_mode == "absolute_q_ref":
+            return actions
+        return actions - states[..., : actions.shape[-1]]
+
     def normalize_delta(self, deltas: torch.Tensor) -> torch.Tensor:
         return (deltas - self._to_device(self._require("delta_mean"), deltas)) / self._to_device(
             self._require("delta_std"), deltas
@@ -56,16 +71,19 @@ class StandardNormalizer:
         )
 
     def normalize_single_input(self, states: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
-        return torch.cat([self.normalize_state(states), self.normalize_action(actions)], dim=-1)
+        encoded_action = self.encode_action(states, actions)
+        return torch.cat([self.normalize_state(states), self.normalize_action(encoded_action)], dim=-1)
 
     def normalize_sequence_input(self, sequence: torch.Tensor, state_dim: int) -> torch.Tensor:
         states = sequence[..., :state_dim]
         actions = sequence[..., state_dim:]
-        return torch.cat([self.normalize_state(states), self.normalize_action(actions)], dim=-1)
+        encoded_action = self.encode_action(states, actions)
+        return torch.cat([self.normalize_state(states), self.normalize_action(encoded_action)], dim=-1)
 
     def state_dict(self) -> dict[str, Any]:
         return {
             "eps": self.eps,
+            "action_input_mode": self.action_input_mode,
             "state_mean": self._require("state_mean").cpu(),
             "state_std": self._require("state_std").cpu(),
             "action_mean": self._require("action_mean").cpu(),
@@ -77,6 +95,10 @@ class StandardNormalizer:
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.eps = float(state.get("eps", self.eps))
+        action_input_mode = str(state.get("action_input_mode", "absolute_q_ref"))
+        if action_input_mode not in self.ACTION_INPUT_MODES:
+            raise ValueError(f"Unsupported action_input_mode: {action_input_mode!r}")
+        self.action_input_mode = action_input_mode
         metadata = state.get("metadata", {})
         if not isinstance(metadata, dict):
             raise ValueError("Normalizer metadata must be a mapping")

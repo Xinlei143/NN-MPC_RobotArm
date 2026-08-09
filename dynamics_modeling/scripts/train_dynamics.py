@@ -50,6 +50,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_type", choices=["mlp", "gru", "transformer"], default="transformer", type=str)
     parser.add_argument("--history_len", default=1, type=int)
     parser.add_argument("--batch_size", default=1024, type=int)
+    parser.add_argument(
+        "--micro_batch_size", default=None, type=int,
+        help="Training-only micro-batch size. Gradients are summed and the optimizer steps once per --batch_size.",
+    )
     parser.add_argument("--epochs", default=100, type=int)
     parser.add_argument("--lr", default=1e-3, type=float)
     parser.add_argument("--save_dir", default="outputs/checkpoints", type=str)
@@ -68,6 +72,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--q_extra_weights", default=None, type=str)
     parser.add_argument("--dq_extra_weights", default=None, type=str)
     parser.add_argument("--target_mode", choices=["delta_state", "delta_dq"], default="delta_dq", type=str)
+    parser.add_argument(
+        "--action_input_mode", choices=["absolute_q_ref", "q_ref_minus_q"], required=True,
+        help="Required model input semantics: [q,dq,u] or [q,dq,u-q].",
+    )
     parser.add_argument("--control_dt", default=0.01, type=float)
     parser.add_argument("--loss_type", choices=["mse", "huber"], default="mse", type=str)
     parser.add_argument("--huber_delta", default=1.0, type=float)
@@ -93,12 +101,13 @@ def validate_checkpoint_config(checkpoint: dict, expected: dict, expected_state_
     config = checkpoint.get("config", {})
     if not isinstance(config, dict):
         raise ValueError("Checkpoint config must be a mapping")
-    for key in ("model_type", "history_len", "state_dim", "action_dim", "output_dim", "target_mode", "control_dt"):
-        if key not in config:
+    for key in ("model_type", "history_len", "state_dim", "action_dim", "output_dim", "target_mode", "control_dt", "action_input_mode"):
+        actual = config.get(key, "absolute_q_ref" if key == "action_input_mode" else None)
+        if key not in config and key != "action_input_mode":
             raise ValueError(f"Checkpoint config is missing required compatibility field {key!r}")
-        if config[key] != expected[key]:
+        if actual != expected[key]:
             raise ValueError(
-                f"Checkpoint {key}={config[key]!r} does not match current {key}={expected[key]!r}"
+                f"Checkpoint {key}={actual!r} does not match current {key}={expected[key]!r}"
             )
     if expected.get("plant_identity") is not None and config.get("plant_identity") != expected["plant_identity"]:
         raise ValueError("Checkpoint plant_identity does not match current real plant")
@@ -356,6 +365,7 @@ def predict_rollout_states(
     state_dim: int,
     target_mode: str,
     control_dt: float,
+    track_grad: bool = False,
 ) -> torch.Tensor:
     if rollout_actions.ndim != 3:
         raise ValueError(f"rollout_actions must have shape [batch, steps, action_dim], got {rollout_actions.shape}")
@@ -369,6 +379,7 @@ def predict_rollout_states(
         state_dim=state_dim,
         target_mode=target_mode,
         control_dt=control_dt,
+        track_grad=track_grad,
     )
     return pred_states[:, 1:]
 
@@ -410,9 +421,10 @@ def fit_normalizer_with_progress(
         progress.update()
         normalizer.state_std = states.std(dim=0, unbiased=False).clamp_min(normalizer.eps)
         progress.update()
-        normalizer.action_mean = actions.mean(dim=0)
+        encoded_actions = normalizer.encode_action(states, actions)
+        normalizer.action_mean = encoded_actions.mean(dim=0)
         progress.update()
-        normalizer.action_std = actions.std(dim=0, unbiased=False).clamp_min(normalizer.eps)
+        normalizer.action_std = encoded_actions.std(dim=0, unbiased=False).clamp_min(normalizer.eps)
         progress.update()
         normalizer.delta_mean = deltas.mean(dim=0)
         progress.update()
@@ -440,6 +452,7 @@ def run_epoch(
     huber_delta: float = 1.0,
     rollout_loss_weight: float = 0.0,
     rollout_loss_discount: float = 1.0,
+    micro_batch_size: int | None = None,
 ) -> tuple[float, torch.Tensor, float]:
     training = optimizer is not None
     model.train(training)
@@ -457,76 +470,69 @@ def run_epoch(
             x, y, rollout_actions, rollout_next_states = batch
         else:
             raise ValueError(f"Expected batch with 2 or 4 tensors, got {len(batch)}")
-        x = x.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
-        if rollout_actions is not None:
-            rollout_actions = rollout_actions.to(device, non_blocking=True)
-        if rollout_next_states is not None:
-            rollout_next_states = rollout_next_states.to(device, non_blocking=True)
-        x_norm, y_norm = normalize_batch(x, y, normalizer, state_dim, model_type)
-
         if training:
             optimizer.zero_grad(set_to_none=True)
-        with torch.set_grad_enabled(training):
-            with torch.amp.autocast(device_type=device.type, enabled=use_amp):
-                pred = model(x_norm)
-                one_step_loss = weighted_delta_loss(
-                    pred,
-                    y_norm,
-                    state_dim // 2,
-                    q_weight,
-                    dq_weight,
-                    q_extra_weights,
-                    dq_extra_weights,
-                    loss_type,
-                    huber_delta,
-                )
-                rollout_loss_value = torch.zeros((), dtype=one_step_loss.dtype, device=one_step_loss.device)
-                if (
-                    rollout_loss_weight > 0.0
-                    and rollout_actions is not None
-                    and rollout_next_states is not None
-                    and rollout_actions.shape[1] > 1
-                ):
-                    rollout_pred_states = predict_rollout_states(
-                        model,
-                        normalizer,
-                        model_type,
-                        x,
-                        rollout_actions,
-                        state_dim,
-                        target_mode,
-                        control_dt,
+        effective_batch_size = int(y.shape[0])
+        chunk_size = effective_batch_size
+        if training and micro_batch_size is not None:
+            chunk_size = min(int(micro_batch_size), effective_batch_size)
+        for start in range(0, effective_batch_size, chunk_size):
+            end = min(start + chunk_size, effective_batch_size)
+            x_micro = x[start:end].to(device, non_blocking=True)
+            y_micro = y[start:end].to(device, non_blocking=True)
+            rollout_actions_micro = (
+                None if rollout_actions is None else rollout_actions[start:end].to(device, non_blocking=True)
+            )
+            rollout_next_states_micro = (
+                None if rollout_next_states is None else rollout_next_states[start:end].to(device, non_blocking=True)
+            )
+            x_norm, y_norm = normalize_batch(x_micro, y_micro, normalizer, state_dim, model_type)
+            with torch.set_grad_enabled(training):
+                with torch.amp.autocast(device_type=device.type, enabled=use_amp):
+                    pred = model(x_norm)
+                    one_step_loss = weighted_delta_loss(
+                        pred, y_norm, state_dim // 2, q_weight, dq_weight,
+                        q_extra_weights, dq_extra_weights, loss_type, huber_delta,
                     )
-                    rollout_loss_value = rollout_state_loss(
-                        rollout_pred_states,
-                        rollout_next_states,
-                        normalizer,
-                        rollout_loss_discount,
-                    )
-                loss = one_step_loss + rollout_loss_weight * rollout_loss_value
-            if training:
-                if scaler is not None and use_amp:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    optimizer.step()
+                    rollout_loss_value = torch.zeros((), dtype=one_step_loss.dtype, device=one_step_loss.device)
+                    if (
+                        rollout_loss_weight > 0.0
+                        and rollout_actions_micro is not None
+                        and rollout_next_states_micro is not None
+                        and rollout_actions_micro.shape[1] > 1
+                    ):
+                        rollout_pred_states = predict_rollout_states(
+                            model, normalizer, model_type, x_micro, rollout_actions_micro,
+                            state_dim, target_mode, control_dt, track_grad=training,
+                        )
+                        rollout_loss_value = rollout_state_loss(
+                            rollout_pred_states, rollout_next_states_micro, normalizer,
+                            rollout_loss_discount,
+                        )
+                    loss = one_step_loss + rollout_loss_weight * rollout_loss_value
+                if training:
+                    if scaler is not None and use_amp:
+                        scaler.scale(loss).backward()
+                    else:
+                        loss.backward()
 
-        pred_target = normalizer.denormalize_delta(pred.detach())
-        current_state = x[:, :state_dim] if model_type == "mlp" else x[:, -1, :state_dim]
-        pred_next = reconstruct_next_state(current_state, pred_target, target_mode, control_dt, state_dim // 2)
-        if target_mode == "delta_state":
-            true_next = current_state + y
-        else:
-            true_next = reconstruct_next_state(current_state, y, target_mode, control_dt, state_dim // 2)
-        batch_squared_error = torch.square(pred_next - true_next).sum(dim=0).detach().cpu().double()
-        squared_error_sum += batch_squared_error
-        batch_samples = int(y.shape[0])
-        total_loss += float(loss.detach().cpu())
-        total_rollout_loss += float(rollout_loss_value.detach().cpu())
-        total_samples += batch_samples
+            pred_target = normalizer.denormalize_delta(pred.detach())
+            current_state = x_micro[:, :state_dim] if model_type == "mlp" else x_micro[:, -1, :state_dim]
+            pred_next = reconstruct_next_state(current_state, pred_target, target_mode, control_dt, state_dim // 2)
+            if target_mode == "delta_state":
+                true_next = current_state + y_micro
+            else:
+                true_next = reconstruct_next_state(current_state, y_micro, target_mode, control_dt, state_dim // 2)
+            squared_error_sum += torch.square(pred_next - true_next).sum(dim=0).detach().cpu().double()
+            total_loss += float(loss.detach().cpu())
+            total_rollout_loss += float(rollout_loss_value.detach().cpu())
+            total_samples += int(y_micro.shape[0])
+        if training:
+            if scaler is not None and use_amp:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
         progress.set_postfix(loss=total_loss / max(total_samples, 1))
     rmse = torch.sqrt(squared_error_sum / max(total_samples, 1)).float()
     return total_loss / max(total_samples, 1), rmse, total_rollout_loss / max(total_samples, 1)
@@ -591,6 +597,13 @@ def main() -> None:
         raise ValueError(f"rollout_loss_weight must be non-negative, got {args.rollout_loss_weight}")
     if args.rollout_loss_discount <= 0:
         raise ValueError(f"rollout_loss_discount must be positive, got {args.rollout_loss_discount}")
+    if args.batch_size <= 0:
+        raise ValueError("--batch_size must be positive")
+    if args.micro_batch_size is not None:
+        if args.micro_batch_size <= 0:
+            raise ValueError("--micro_batch_size must be positive")
+        if args.micro_batch_size > args.batch_size:
+            raise ValueError("--micro_batch_size cannot exceed --batch_size")
     if args.train_sample_stride <= 0:
         raise ValueError(f"train_sample_stride must be positive, got {args.train_sample_stride}")
     if args.steps_per_epoch is not None and args.steps_per_epoch <= 0:
@@ -689,6 +702,11 @@ def main() -> None:
     if args.freeze_normalizer:
         normalizer_source = Path(args.normalizer_path).expanduser().resolve()
         normalizer = StandardNormalizer.load(normalizer_source)
+        if normalizer.action_input_mode != args.action_input_mode:
+            raise ValueError(
+                "Frozen normalizer action_input_mode does not match training: "
+                f"{normalizer.action_input_mode!r} != {args.action_input_mode!r}"
+            )
         if normalizer.metadata.get("robot_identity") != robot.artifact_identity():
             raise ValueError("Frozen normalizer robot identity does not match RobotSpec")
         if normalizer.metadata.get("dataset_manifest_sha256") != dataset_manifest_sha256:
@@ -712,12 +730,13 @@ def main() -> None:
         deltas = dataset.next_states[train_rows] - train_states
         if args.target_mode == "delta_dq":
             deltas = deltas[:, dataset.state_dim // 2 :]
-        normalizer = StandardNormalizer()
+        normalizer = StandardNormalizer(action_input_mode=args.action_input_mode)
         fit_normalizer_with_progress(normalizer, train_states, train_actions, deltas)
         del deltas, train_states, train_actions
         print("normalizer ready", flush=True)
     normalizer.metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "action_input_mode": args.action_input_mode,
         "robot_identity": robot.artifact_identity(),
         "dataset_manifest_sha256": dataset_manifest_sha256,
         "plant_identity": plant_identity,
@@ -740,9 +759,17 @@ def main() -> None:
         "output_dim": dataset.target_dim,
         "history_len": args.history_len,
         "target_mode": args.target_mode,
+        "action_input_mode": args.action_input_mode,
         "control_dt": args.control_dt,
         "batch_size": args.batch_size,
+        "micro_batch_size": args.micro_batch_size,
+        "gradient_accumulation_steps": (
+            1 if args.micro_batch_size is None else int(np.ceil(args.batch_size / args.micro_batch_size))
+        ),
         "epochs": args.epochs,
+        "amp": bool(args.amp),
+        "pin_memory": bool(args.pin_memory),
+        "num_workers": args.num_workers,
         "lr": args.lr,
         "seed": args.seed,
         "q_weight": args.q_weight,
@@ -862,6 +889,7 @@ def main() -> None:
             args.huber_delta,
             args.rollout_loss_weight,
             args.rollout_loss_discount,
+            args.micro_batch_size,
         )
         val_loss, val_rmse, val_rollout_loss = run_epoch(
             model,

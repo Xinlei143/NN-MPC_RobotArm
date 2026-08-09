@@ -23,12 +23,14 @@
 
 ```bash
 conda run --no-capture-output -n lerobot python dynamics_modeling/scripts/train_dynamics.py \
+  --action_input_mode q_ref_minus_q \
   --data_path outputs/hardware/so101_pre_mpc/20260804_e_stage/model_a_workspace_48x15min.npz \
   --dataset_manifest outputs/hardware/so101_pre_mpc/20260804_e_stage/model_a_workspace_48x15min.manifest.json \
   --robot_config configs/robots/so101.yaml \
   --model_type gru \
   --history_len 16 \
   --batch_size 8192 \
+  --micro_batch_size 1024 \
   --epochs 200 \
   --lr 1e-5 \
   --pin_memory \
@@ -99,6 +101,7 @@ val_fraction      0.2   （被 --validation_group_ids 显式分割覆盖）
 | `--model_type` | `transformer` | `mlp` / `gru` / `transformer`。GRU 单层 hidden=256；Transformer 3 层 d_model=256。 |
 | `--history_len` | `1` | 递归窗口长度。GRU/Transformer 要求窗口内每条 transition 均 `valid_target=true`。 |
 | `--target_mode` | `delta_dq` | `delta_state`（10 维）/ `delta_dq`（5 维）。Model-A 用 `delta_state`。 |
+| `--action_input_mode` | **必填** | `absolute_q_ref` 使用 `[q,dq,u]`；`q_ref_minus_q` 使用 `[q,dq,u-q]`。旧 artifact 缺字段时仅在加载侧按 `absolute_q_ref` 兼容。 |
 | `--control_dt` | `0.01` | 名义 dt，用于 delta_state 积分与 rollout 推进。Model-A 用 `1/30`。 |
 
 ### 3.3 优化与损失
@@ -106,6 +109,7 @@ val_fraction      0.2   （被 --validation_group_ids 显式分割覆盖）
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `--batch_size` | `1024` | DataLoader batch。 |
+| `--micro_batch_size` | None | 训练微批；梯度按求和语义累计，完整 `batch_size` 后 optimizer 只更新一次。Model-A 配对实验用 `1024×8=8192`。 |
 | `--epochs` | `100` | 总 epoch 数。 |
 | `--lr` | `1e-3` | AdamW 学习率。 |
 | `--loss_type` | `mse` | `mse` / `huber`。 |

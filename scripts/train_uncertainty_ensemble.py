@@ -121,6 +121,7 @@ def main(argv: list[str] | None = None) -> None:
             "--model_type", "gru",
             "--history_len", "16",
             "--target_mode", "delta_dq",
+            "--action_input_mode", "absolute_q_ref",
             "--control_dt", "0.01",
             "--epochs", str(args.epochs),
             "--batch_size", str(args.batch_size),

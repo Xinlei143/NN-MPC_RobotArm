@@ -20,6 +20,7 @@ class DynamicsBundle:
     history_len: int
     state_dim: int
     action_dim: int
+    action_input_mode: str
     target_mode: str
     control_dt: float
     device: torch.device
@@ -90,6 +91,14 @@ def load_dynamics_bundle(
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     normalizer = StandardNormalizer.load(Path(normalizer_path), map_location=device)
+    action_input_mode = str(config.get("action_input_mode", "absolute_q_ref"))
+    if action_input_mode not in StandardNormalizer.ACTION_INPUT_MODES:
+        raise ValueError(f"Checkpoint has unsupported action_input_mode={action_input_mode!r}")
+    if normalizer.action_input_mode != action_input_mode:
+        raise ValueError(
+            "Checkpoint and normalizer action_input_mode mismatch: "
+            f"{action_input_mode!r} != {normalizer.action_input_mode!r}"
+        )
     if expected_robot_spec is not None:
         normalizer_identity = normalizer.metadata.get("robot_identity")
         if normalizer_identity is None:
@@ -119,6 +128,7 @@ def load_dynamics_bundle(
         history_len=resolved_history_len,
         state_dim=state_dim,
         action_dim=action_dim,
+        action_input_mode=action_input_mode,
         target_mode=str(config.get("target_mode", "delta_state")),
         control_dt=float(config.get("control_dt", 0.01)),
         device=device,
@@ -143,6 +153,7 @@ def _rollout_dynamics_batch_no_chunk(
     state_dim: int,
     target_mode: str,
     control_dt: float,
+    track_grad: bool,
 ) -> torch.Tensor:
     if future_q_ref.ndim != 3:
         raise ValueError(f"future_q_ref must have shape [batch, horizon, action_dim], got {tuple(future_q_ref.shape)}")
@@ -159,14 +170,14 @@ def _rollout_dynamics_batch_no_chunk(
     pred_states = [pred_state]
     n_joints = state_dim // 2
 
-    with torch.no_grad():
+    with torch.set_grad_enabled(track_grad):
         for step_idx in range(future_q_ref.shape[1]):
             action_i = future_q_ref[:, step_idx]
             if model_type == "mlp":
                 model_input = normalizer.normalize_single_input(pred_state, action_i)
             else:
-                # The learned model was trained on absolute q_ref actuator targets, so
-                # replace the last token action with this candidate absolute q_ref.
+                # Histories retain executable absolute q_ref values.  The normalizer
+                # applies the checkpoint's configured input encoding (u or u-q).
                 history = history.clone()
                 history[:, -1, :state_dim] = pred_state
                 history[:, -1, state_dim:] = action_i
@@ -191,6 +202,7 @@ def rollout_dynamics_batch(
     target_mode: str,
     control_dt: float,
     rollout_batch_size: int | None = None,
+    track_grad: bool = False,
 ) -> torch.Tensor:
     if rollout_batch_size is None or rollout_batch_size <= 0 or future_q_ref.shape[0] <= rollout_batch_size:
         return _rollout_dynamics_batch_no_chunk(
@@ -202,6 +214,7 @@ def rollout_dynamics_batch(
             state_dim,
             target_mode,
             control_dt,
+            track_grad,
         )
 
     history = _as_batched_history(initial_history)
@@ -219,6 +232,7 @@ def rollout_dynamics_batch(
                 state_dim,
                 target_mode,
                 control_dt,
+                track_grad,
             )
         )
     return torch.cat(chunks, dim=0)
