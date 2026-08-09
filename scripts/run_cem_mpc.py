@@ -520,6 +520,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="lowest_cost",
         help="Action selected from the CEM mean, best sample, or their lowest-cost comparison with the residual baseline.",
     )
+    parser.add_argument(
+        "--analytical_preview_steps",
+        default="",
+        type=str,
+        help=(
+            "Optional comma-separated preview candidates (e.g. 3,6) evaluated alongside CEM/baseline. "
+            "Disabled by default; intended for headroom/ranking diagnostics."
+        ),
+    )
+    parser.add_argument(
+        "--directional_residual_gate",
+        choices=["off", "same_as_dq_des"],
+        default="off",
+        help="Optional diagnostic gate that removes residual components opposing dq_des; default off.",
+    )
+    parser.add_argument(
+        "--directional_residual_gate_joints",
+        default="",
+        type=str,
+        help="Comma-separated joint names or indices for the directional diagnostic gate; empty means all joints.",
+    )
+    parser.add_argument(
+        "--directional_velocity_threshold_deg_s",
+        default=1.0,
+        type=float,
+        help="Velocity threshold used by the optional residual direction gate.",
+    )
 
     parser.add_argument(
         "--q_ref_velocity_limit",

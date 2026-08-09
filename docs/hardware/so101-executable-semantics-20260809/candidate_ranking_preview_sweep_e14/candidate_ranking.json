@@ -1,0 +1,169 @@
+{
+  "protocol": {
+    "horizon": 6,
+    "control_dt_s": 0.03333333333333333,
+    "history_semantics": "training_equivalent_[x_t,u_t]_current_action_overwritten",
+    "candidate_labels": [
+      "direct",
+      "preview:1",
+      "preview:2",
+      "preview:3",
+      "preview:4",
+      "preview:5",
+      "preview:6"
+    ],
+    "candidate_projector": "canonical_executable_command_numpy",
+    "target_cost": "mean_squared_q_error_over_t+1:t+H"
+  },
+  "base_rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_0/rollout.npz",
+  "anchors": [
+    200,
+    350,
+    500,
+    650,
+    800,
+    950
+  ],
+  "predicted_cost_mean": {
+    "direct": 0.0002304440956019486,
+    "preview:1": 0.0002079287041851785,
+    "preview:2": 0.00019618926671682857,
+    "preview:3": 0.0001874058713535002,
+    "preview:4": 0.0001851948242498717,
+    "preview:5": 0.00018198752635119794,
+    "preview:6": 0.0001784924582655852
+  },
+  "predictions": {
+    "u_minus_q_e14": {
+      "direct": [
+        0.00016090014833025634,
+        0.0002141500444849953,
+        0.00021880202984903008,
+        0.00015614359290339053,
+        0.0005202583852224052,
+        0.00011241037282161415
+      ],
+      "preview:1": [
+        0.00014249657397158444,
+        0.00019477905880194157,
+        0.0001964995317393914,
+        0.0001535848423372954,
+        0.00044776490540243685,
+        0.00011244731285842136
+      ],
+      "preview:2": [
+        0.00012700319348368794,
+        0.00018153137352783233,
+        0.00018660168279893696,
+        0.0001511046284576878,
+        0.0004182969278190285,
+        0.0001125977942137979
+      ],
+      "preview:3": [
+        0.00011003753024851903,
+        0.00015874826931394637,
+        0.00018193767755292356,
+        0.00014785998791921884,
+        0.0004130069282837212,
+        0.00011284483480267227
+      ],
+      "preview:4": [
+        0.00010304997704224661,
+        0.00015822044224478304,
+        0.00017971725901588798,
+        0.0001467050169594586,
+        0.0004103020182810724,
+        0.00011317423195578158
+      ],
+      "preview:5": [
+        9.296760254073888e-05,
+        0.00015254112076945603,
+        0.0001802728947950527,
+        0.00014523555000778288,
+        0.0004073120653629303,
+        0.00011359592463122681
+      ],
+      "preview:6": [
+        9.048194624483585e-05,
+        0.0001414977159583941,
+        0.00018049500067718327,
+        0.00014072470366954803,
+        0.00040364277083426714,
+        0.00011411261220928282
+      ]
+    }
+  },
+  "actual_cost_mean": {
+    "direct": 0.0002304824192833621,
+    "preview:1": 0.00020026814187682854,
+    "preview:2": 0.00015518270568766943,
+    "preview:3": 0.00014666497130140974,
+    "preview:4": 0.00010828640248898107,
+    "preview:5": 9.671929850204226e-05,
+    "preview:6": 8.592043741373345e-05
+  },
+  "models": {
+    "u_minus_q_e14": {
+      "metadata": {
+        "checkpoint": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/dynamics_modeling/outputs/checkpoints_real/u_minus_q_epoch14_20260809/gru_20260809_150038/best_rollout_model.pt",
+        "normalizer": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/dynamics_modeling/outputs/checkpoints_real/u_minus_q_epoch14_20260809/gru_20260809_150038/normalizer.pt",
+        "epoch": 14,
+        "action_input_mode": "q_ref_minus_q",
+        "target_mode": "delta_state",
+        "plant_identity_match": true
+      },
+      "ranking": {
+        "anchors": 6,
+        "spearman_mean": 0.7136303516273346,
+        "pairwise_accuracy_mean": 0.8145363408521303,
+        "top1_accuracy": 0.6666666666666666,
+        "per_anchor": [
+          {
+            "spearman": 0.6785714285714287,
+            "pairwise_accuracy": 0.7619047619047619,
+            "pairwise_count": 21,
+            "top1_correct": 1
+          },
+          {
+            "spearman": 1.0,
+            "pairwise_accuracy": 1.0,
+            "pairwise_count": 21,
+            "top1_correct": 1
+          },
+          {
+            "spearman": 0.9642857142857145,
+            "pairwise_accuracy": 0.9523809523809523,
+            "pairwise_count": 21,
+            "top1_correct": 1
+          },
+          {
+            "spearman": 0.8571428571428573,
+            "pairwise_accuracy": 0.8571428571428571,
+            "pairwise_count": 21,
+            "top1_correct": 0
+          },
+          {
+            "spearman": 1.0,
+            "pairwise_accuracy": 1.0,
+            "pairwise_count": 21,
+            "top1_correct": 1
+          },
+          {
+            "spearman": -0.21821789023599242,
+            "pairwise_accuracy": 0.3157894736842105,
+            "pairwise_count": 19,
+            "top1_correct": 0
+          }
+        ]
+      }
+    }
+  },
+  "selection": {
+    "primary_metric": "candidate_pairwise_accuracy_then_spearman_then_top1",
+    "kappa_role": "secondary_diagnostic_only",
+    "selected_label": "u_minus_q_e14",
+    "eligible": [
+      "u_minus_q_e14"
+    ]
+  }
+}

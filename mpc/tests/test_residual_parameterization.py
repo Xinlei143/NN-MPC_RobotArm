@@ -74,6 +74,22 @@ class _ExpandedPlanner:
         }
 
 
+class _FixedCandidatePlanner(_ExpandedPlanner):
+    def evaluate(self, action: torch.Tensor, **_kwargs) -> dict[str, torch.Tensor]:
+        expanded = self.expand_action(action)
+        target = torch.full_like(expanded, 0.7)
+        costs = torch.square(expanded - target).mean(dim=(1, 2))
+        batch = action.shape[0]
+        return {
+            "costs": costs,
+            "q_ref_sequences": expanded,
+            "residual_sequences": expanded,
+            "normalized_residual_sequences": expanded,
+            "cost_terms": {"total": costs},
+            "pred_states": torch.zeros((batch, 33, 12)),
+        }
+
+
 class ReducedHorizonControllerTests(unittest.TestCase):
     def test_controller_keeps_latent_and_rollout_shapes_separate(self) -> None:
         controller = CEMMPCController(
@@ -112,6 +128,34 @@ class ReducedHorizonControllerTests(unittest.TestCase):
                 np.full(6, -2.0, dtype=np.float32),
                 np.full(6, 2.0, dtype=np.float32),
             )
+
+    def test_fixed_analytical_candidate_can_win_final_selection(self) -> None:
+        controller = CEMMPCController(
+            CEMMPCConfig(
+                horizon=32,
+                decision_horizon=8,
+                action_dim=1,
+                num_samples=8,
+                cem_iters=1,
+                reset_std_each_step=True,
+                force_baseline_candidate=True,
+                execute="lowest_cost",
+                device="cpu",
+            ),
+            _FixedCandidatePlanner(),
+            np.full(1, -2.0, dtype=np.float32),
+            np.full(1, 2.0, dtype=np.float32),
+        )
+        fixed = torch.full((8, 1), 0.7)
+        result = controller.plan(
+            np.zeros(12, dtype=np.float32),
+            np.zeros(1, dtype=np.float32),
+            fixed_candidates={"preview:3": fixed},
+        )
+        self.assertFalse(result.failure, result.failure_reason)
+        self.assertEqual(result.selection_mode, "fixed:preview:3")
+        self.assertEqual(result.candidate_diagnostics["fixed_candidate_count"], 1)
+        np.testing.assert_allclose(result.selected_control_points, 0.7, atol=1e-6)
 
 
 if __name__ == "__main__":

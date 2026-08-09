@@ -1,0 +1,254 @@
+{
+  "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_executable_semantics/u_minus_q_e14_cuda_graph_active/rollout.npz",
+  "control_dt_s": 0.03333333333333333,
+  "active_start_tick": 83,
+  "reference_velocity_definition": "forward_difference_(q_des[t+1]-q_des[t])/dt",
+  "series": {
+    "planner_requested": {
+      "active_start_tick": 83,
+      "motion_samples": 767,
+      "velocity_threshold_rad_s": 0.017453292519943295,
+      "residual_threshold_rad": 0.0008726646259971648,
+      "per_joint": [
+        {
+          "joint": "shoulder_pan",
+          "joint_index": 0,
+          "samples": 493,
+          "pearson_corr": -0.8110696908303836,
+          "lead_slope_s": -0.0940215476385475,
+          "sign_agreement": 0.15010141987829614,
+          "opposite_sign_rate": 0.8498985801217038,
+          "residual_abs_rad": {
+            "count": 493,
+            "mean": 0.00878787525876616,
+            "p50": 0.007761762477457523,
+            "p95": 0.019887154921889298,
+            "max": 0.03145142272114754
+          },
+          "dq_des_abs_rad_s": {
+            "count": 493,
+            "mean": 0.08456018341940867,
+            "p50": 0.09078171104192734,
+            "p95": 0.12861613556742668,
+            "max": 0.13335144147276878
+          }
+        },
+        {
+          "joint": "shoulder_lift",
+          "joint_index": 1,
+          "samples": 260,
+          "pearson_corr": 0.5218834237463155,
+          "lead_slope_s": 0.07069941574654241,
+          "sign_agreement": 0.75,
+          "opposite_sign_rate": 0.25,
+          "residual_abs_rad": {
+            "count": 260,
+            "mean": 0.003715415005213939,
+            "p50": 0.0026701889000833035,
+            "p95": 0.010242014192044731,
+            "max": 0.01540064625442028
+          },
+          "dq_des_abs_rad_s": {
+            "count": 260,
+            "mean": 0.03414088359792144,
+            "p50": 0.03025934100151062,
+            "p95": 0.05830688774585724,
+            "max": 0.05919992923736572
+          }
+        },
+        {
+          "joint": "elbow_flex",
+          "joint_index": 2,
+          "samples": 540,
+          "pearson_corr": -0.3416308262561343,
+          "lead_slope_s": -0.030306607333914187,
+          "sign_agreement": 0.3351851851851852,
+          "opposite_sign_rate": 0.6648148148148149,
+          "residual_abs_rad": {
+            "count": 540,
+            "mean": 0.006049930539275347,
+            "p50": 0.0038964846171438694,
+            "p95": 0.01947892606258392,
+            "max": 0.024480506777763367
+          },
+          "dq_des_abs_rad_s": {
+            "count": 540,
+            "mean": 0.07987307048299247,
+            "p50": 0.0700334832072258,
+            "p95": 0.1774039871525019,
+            "max": 0.18157817423343658
+          }
+        },
+        {
+          "joint": "wrist_flex",
+          "joint_index": 3,
+          "samples": 406,
+          "pearson_corr": 0.4749718372697588,
+          "lead_slope_s": 0.026566164713842315,
+          "sign_agreement": 0.7660098522167488,
+          "opposite_sign_rate": 0.23399014778325122,
+          "residual_abs_rad": {
+            "count": 406,
+            "mean": 0.0031404754720694783,
+            "p50": 0.0025956665631383657,
+            "p95": 0.0073459993582218885,
+            "max": 0.014104404486715794
+          },
+          "dq_des_abs_rad_s": {
+            "count": 406,
+            "mean": 0.052392752519969284,
+            "p50": 0.04578843712806702,
+            "p95": 0.10915428400039673,
+            "max": 0.11090219020843506
+          }
+        },
+        {
+          "joint": "wrist_roll",
+          "joint_index": 4,
+          "samples": 0,
+          "pearson_corr": NaN,
+          "lead_slope_s": NaN,
+          "sign_agreement": NaN,
+          "opposite_sign_rate": NaN,
+          "residual_abs_rad": {
+            "count": 0,
+            "mean": NaN,
+            "p50": NaN,
+            "p95": NaN,
+            "max": NaN
+          },
+          "dq_des_abs_rad_s": {
+            "count": 0,
+            "mean": NaN,
+            "p50": NaN,
+            "p95": NaN,
+            "max": NaN
+          }
+        }
+      ]
+    },
+    "executed_qref_minus_qdes": {
+      "active_start_tick": 83,
+      "motion_samples": 767,
+      "velocity_threshold_rad_s": 0.017453292519943295,
+      "residual_threshold_rad": 0.0008726646259971648,
+      "per_joint": [
+        {
+          "joint": "shoulder_pan",
+          "joint_index": 0,
+          "samples": 503,
+          "pearson_corr": -0.8265081129331653,
+          "lead_slope_s": -0.1151321625811228,
+          "sign_agreement": 0.14512922465208747,
+          "opposite_sign_rate": 0.8548707753479126,
+          "residual_abs_rad": {
+            "count": 503,
+            "mean": 0.010612727424101376,
+            "p50": 0.009319119155406952,
+            "p95": 0.02348895324394107,
+            "max": 0.035747477784752846
+          },
+          "dq_des_abs_rad_s": {
+            "count": 503,
+            "mean": 0.08533827671651575,
+            "p50": 0.09117510169744492,
+            "p95": 0.1286161132156849,
+            "max": 0.13335144147276878
+          }
+        },
+        {
+          "joint": "shoulder_lift",
+          "joint_index": 1,
+          "samples": 310,
+          "pearson_corr": 0.4885683402077766,
+          "lead_slope_s": 0.09792170599789055,
+          "sign_agreement": 0.6967741935483871,
+          "opposite_sign_rate": 0.3032258064516129,
+          "residual_abs_rad": {
+            "count": 310,
+            "mean": 0.005143814710918964,
+            "p50": 0.0036371664609760046,
+            "p95": 0.015666536218486727,
+            "max": 0.021623874083161354
+          },
+          "dq_des_abs_rad_s": {
+            "count": 310,
+            "mean": 0.0337851817603223,
+            "p50": 0.03025459125638008,
+            "p95": 0.05869403947144747,
+            "max": 0.05920998752117157
+          }
+        },
+        {
+          "joint": "elbow_flex",
+          "joint_index": 2,
+          "samples": 556,
+          "pearson_corr": -0.306090263149764,
+          "lead_slope_s": -0.02806240162336631,
+          "sign_agreement": 0.34172661870503596,
+          "opposite_sign_rate": 0.658273381294964,
+          "residual_abs_rad": {
+            "count": 556,
+            "mean": 0.006283638252164388,
+            "p50": 0.0040125176310539246,
+            "p95": 0.01959669031202793,
+            "max": 0.022689519450068474
+          },
+          "dq_des_abs_rad_s": {
+            "count": 556,
+            "mean": 0.07919366669124193,
+            "p50": 0.06967127323150635,
+            "p95": 0.1773300615604967,
+            "max": 0.18157817423343658
+          }
+        },
+        {
+          "joint": "wrist_flex",
+          "joint_index": 3,
+          "samples": 430,
+          "pearson_corr": 0.5137112163187311,
+          "lead_slope_s": 0.0362434010344377,
+          "sign_agreement": 0.8093023255813954,
+          "opposite_sign_rate": 0.19069767441860466,
+          "residual_abs_rad": {
+            "count": 430,
+            "mean": 0.003831309634585713,
+            "p50": 0.0029846876859664917,
+            "p95": 0.009669224172830561,
+            "max": 0.014658153057098389
+          },
+          "dq_des_abs_rad_s": {
+            "count": 430,
+            "mean": 0.05177959383920182,
+            "p50": 0.045636892318725586,
+            "p95": 0.10833916068077087,
+            "max": 0.11090219020843506
+          }
+        },
+        {
+          "joint": "wrist_roll",
+          "joint_index": 4,
+          "samples": 0,
+          "pearson_corr": NaN,
+          "lead_slope_s": NaN,
+          "sign_agreement": NaN,
+          "opposite_sign_rate": NaN,
+          "residual_abs_rad": {
+            "count": 0,
+            "mean": NaN,
+            "p50": NaN,
+            "p95": NaN,
+            "max": NaN
+          },
+          "dq_des_abs_rad_s": {
+            "count": 0,
+            "mean": NaN,
+            "p50": NaN,
+            "p95": NaN,
+            "max": NaN
+          }
+        }
+      ]
+    }
+  }
+}

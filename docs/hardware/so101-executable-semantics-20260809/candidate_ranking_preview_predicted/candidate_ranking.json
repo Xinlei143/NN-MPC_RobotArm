@@ -1,0 +1,88 @@
+{
+  "protocol": {
+    "horizon": 6,
+    "control_dt_s": 0.03333333333333333,
+    "history_semantics": "training_equivalent_[x_t,u_t]_current_action_overwritten",
+    "candidate_labels": [
+      "direct",
+      "preview:1",
+      "preview:2",
+      "preview:3",
+      "active"
+    ],
+    "candidate_projector": "canonical_executable_command_numpy",
+    "target_cost": "mean_squared_q_error_over_t+1:t+H"
+  },
+  "base_rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_executable_semantics/u_minus_q_e14_cuda_graph_active/rollout.npz",
+  "anchors": [
+    200,
+    350,
+    500,
+    650,
+    800,
+    950
+  ],
+  "predicted_cost_mean": {
+    "direct": 0.0002670136218512198,
+    "preview:1": 0.0002566788789408747,
+    "preview:2": 0.00023892718005906013,
+    "preview:3": 0.0002247789434477454,
+    "active": 0.0002379663740915324
+  },
+  "predictions": {
+    "u_minus_q_e14": {
+      "direct": [
+        0.00027405936270952225,
+        0.00034514820436015725,
+        0.00018713134340941906,
+        0.0001683643931755796,
+        0.0005919122486375272,
+        3.546617881511338e-05
+      ],
+      "preview:1": [
+        0.0002576481783762574,
+        0.0003347819729242474,
+        0.00018512764654587954,
+        0.00016694466467015445,
+        0.0005600657896138728,
+        3.55050215148367e-05
+      ],
+      "preview:2": [
+        0.00024093974207062274,
+        0.00031684536952525377,
+        0.0001848327519837767,
+        0.0001636257948121056,
+        0.0004916925681754947,
+        3.562685378710739e-05
+      ],
+      "preview:3": [
+        0.0002292021963512525,
+        0.00031574617605656385,
+        0.00018368373275734484,
+        0.00016287901962641627,
+        0.0004213442443870008,
+        3.581829150789417e-05
+      ],
+      "active": [
+        0.00024996843421831727,
+        0.0003269934968557209,
+        0.0001982836110983044,
+        0.0001616189838387072,
+        0.00045541569124907255,
+        3.551802728907205e-05
+      ]
+    }
+  },
+  "actual_cost_mean": {},
+  "models": {
+    "u_minus_q_e14": {
+      "ranking": {}
+    }
+  },
+  "selection": {
+    "primary_metric": "candidate_pairwise_accuracy_then_spearman_then_top1",
+    "kappa_role": "secondary_diagnostic_only",
+    "selected_label": null,
+    "eligible": []
+  }
+}

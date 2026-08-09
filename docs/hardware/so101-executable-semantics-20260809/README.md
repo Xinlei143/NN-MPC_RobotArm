@@ -73,3 +73,20 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run --no-capture-output -n lerobot python
 ```
 
 测试覆盖 Torch/NumPy raw-count parity、quantised velocity state、Direct 与 zero-residual MPC 的 requested/transmitted 一致性。
+
+## predictive headroom / candidate ranking
+
+Direct preview/lead sweep、Active residual 方向分析和 candidate-ranking benchmark 记录在
+[`headroom_diagnostics.md`](headroom_diagnostics.md)。同一 frozen reference 的实机 preview sweep 已完成：
+`preview_0=0.8292°`，`preview_6=0.5872°`，相对改善 `29.19%`，证明当前任务存在明确的 predictive headroom。现有 Active 日志仍显示
+shoulder_pan residual 与 `dq_des` 反相关（`corr=-0.811`，同向率约 `15%`）；u-q epoch14 在 7 个 preview 候选、6 个 anchor 上的 candidate-ranking 为 Spearman `0.7136`、pairwise `0.8145`、top-1 `0.6667`。因此后续应优先修正 Active 的候选排序/lead 方向，并把 κ 降为辅助诊断，而不是继续以 scalar κ 单独选择 checkpoint。
+
+本轮新增两个默认关闭的诊断开关：
+
+```text
+--analytical_preview_steps 3,6
+--directional_residual_gate same_as_dq_des \
+--directional_residual_gate_joints shoulder_pan
+```
+
+前者把解析 preview 分支加入 CEM 的最终候选比较，后者只移除指定关节中与 `dq_des` 反向的 residual。两者都不改变默认配置，先用于 shadow/paired ablation。

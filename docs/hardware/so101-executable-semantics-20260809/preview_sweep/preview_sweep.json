@@ -1,0 +1,769 @@
+{
+  "control_dt_s": 0.03333333333333333,
+  "runs": {
+    "preview_0": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_0/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:33:14.471380+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "direct",
+            "lead_time_s": 0.0,
+            "preview_steps": 0
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.014472503172095766,
+        "position_rmse_deg": 0.8292133507507835,
+        "max_abs_error_deg": 2.5974387656423974,
+        "per_joint_rmse_deg": [
+          0.9101510605655302,
+          0.9447291801824318,
+          1.0114626520831758,
+          0.827750218650662,
+          0.09412017501381065
+        ],
+        "per_joint_bias_deg": [
+          -0.031622952337687464,
+          0.1899970465024451,
+          -0.13551874948701212,
+          0.52265095758651,
+          0.011779718926625077
+        ],
+        "command_offset_p95_deg": [
+          0.04215042071730038,
+          0.04395604258937407,
+          0.04126889942754561,
+          0.04108888125423346,
+          0.04395604258937407
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_1": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_1/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:33:59.278190+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.03333333333333333,
+            "preview_steps": 1
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.01327122524073713,
+        "position_rmse_deg": 0.7603851952617274,
+        "max_abs_error_deg": 2.6631963051549894,
+        "per_joint_rmse_deg": [
+          0.7407203180190861,
+          0.911537336429825,
+          0.9091657333828556,
+          0.8221437724218221,
+          0.09412017501381065
+        ],
+        "per_joint_bias_deg": [
+          0.07028065744160121,
+          0.19484959037144808,
+          -0.14012867063957488,
+          0.6053062444137133,
+          0.011779718926625077
+        ],
+        "command_offset_p95_deg": [
+          0.24079997337523915,
+          0.10565914179000681,
+          0.30968565415033233,
+          0.193983092711792,
+          0.04395604258937407
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_2": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_2/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:34:44.103447+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.06666666666666667,
+            "preview_steps": 2
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.01224607154213354,
+        "position_rmse_deg": 0.7016482149795154,
+        "max_abs_error_deg": 2.311547857718291,
+        "per_joint_rmse_deg": [
+          0.6166234336275975,
+          0.8871170479776254,
+          0.8175696408921835,
+          0.7855388260011545,
+          0.09412017501381065
+        ],
+        "per_joint_bias_deg": [
+          -0.0013753771270506134,
+          0.2163625827986759,
+          -0.14142268933821267,
+          0.6098352968255449,
+          0.011779718926625077
+        ],
+        "command_offset_p95_deg": [
+          0.48186151097917806,
+          0.19738365180047096,
+          0.6297185112847051,
+          0.38321408130854767,
+          0.04395604258937407
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_3": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_3/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:35:29.506794+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.1,
+            "preview_steps": 3
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.01165433495305906,
+        "position_rmse_deg": 0.6677442058420805,
+        "max_abs_error_deg": 2.216115494139521,
+        "per_joint_rmse_deg": [
+          0.5495624577172296,
+          0.9113552753086996,
+          0.7205309464925165,
+          0.7541888604422134,
+          0.09412017501381065
+        ],
+        "per_joint_bias_deg": [
+          -0.006551429340192128,
+          0.08315999799753117,
+          -0.18242675492075092,
+          0.6118572048313026,
+          0.011779718926625077
+        ],
+        "command_offset_p95_deg": [
+          0.7174637317403786,
+          0.2972183711200906,
+          0.9443053384287096,
+          0.5790637793431396,
+          0.04484006960889782
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_4": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_4/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:36:16.240606+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.13333333333333333,
+            "preview_steps": 4
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.011157709713542548,
+        "position_rmse_deg": 0.6392896756181108,
+        "max_abs_error_deg": 2.3437008665144203,
+        "per_joint_rmse_deg": [
+          0.5440124899178137,
+          0.9043449440527295,
+          0.6228373801664024,
+          0.7261023996991732,
+          0.12048229229968803
+        ],
+        "per_joint_bias_deg": [
+          0.09988127344837568,
+          0.0513757799972957,
+          -0.205152891464173,
+          0.6112102046372726,
+          -0.07613236625212307
+        ],
+        "command_offset_p95_deg": [
+          0.9576706686048462,
+          0.4064432345106437,
+          1.2664640305772679,
+          0.776962363374006,
+          0.04941805148714073
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_5": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_5/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:37:02.403694+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.16666666666666666,
+            "preview_steps": 5
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.010597795722572557,
+        "position_rmse_deg": 0.6072089670452042,
+        "max_abs_error_deg": 2.337580536770413,
+        "per_joint_rmse_deg": [
+          0.4674682588541036,
+          0.8850666457925151,
+          0.5702246760893033,
+          0.7084997839033406,
+          0.12048229229968803
+        ],
+        "per_joint_bias_deg": [
+          0.04553265987157174,
+          0.12198042440091747,
+          -0.15436283101450124,
+          0.6146878783956842,
+          -0.07613236625212307
+        ],
+        "command_offset_p95_deg": [
+          1.197244607015812,
+          0.5098790003154233,
+          1.584579789681793,
+          0.9741349836734646,
+          0.05392238448693892
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "preview_6": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_headroom/direct_preview/preview_6/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-09T14:37:50.550153+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "command_transform": {
+            "kind": "preview",
+            "preview_seconds": 0.2,
+            "preview_steps": 6
+          },
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.010248218283543682,
+        "position_rmse_deg": 0.5871796551758578,
+        "max_abs_error_deg": 1.9515322151049155,
+        "per_joint_rmse_deg": [
+          0.45450232550927583,
+          0.8687842504978174,
+          0.5089145423134104,
+          0.6993077329187392,
+          0.12048229229968803
+        ],
+        "per_joint_bias_deg": [
+          0.07060419649154791,
+          -0.0839295781999437,
+          -0.1473266274467175,
+          0.6173567646031423,
+          -0.07613236625212307
+        ],
+        "command_offset_p95_deg": [
+          1.4398406533385002,
+          0.613473077098559,
+          1.8946612106058456,
+          1.1664243602258229,
+          0.05806943589414333
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549440616496257,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    }
+  },
+  "best_by_rmse": "preview_6"
+}

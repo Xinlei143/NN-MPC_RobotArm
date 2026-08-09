@@ -24,6 +24,11 @@ from robot_runtime.executable_command import (
     step_executable_command_np,
 )
 from mpc.history import future_history_tokens, history_tokens
+from mpc.analytical_candidates import (
+    align_residual_to_velocity,
+    build_preview_residual_candidates,
+    parse_preview_steps,
+)
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTaskSpaceCost
 from mpc.budgeted_uncertainty import (
@@ -751,8 +756,30 @@ class ASAPPlannerWorker(threading.Thread):
                 if reset_mean_anchor:
                     controller.reset()
                     mean_anchor_step = None
+                fixed_candidates: dict[str, torch.Tensor] = {}
+                preview_steps = parse_preview_steps(getattr(self.args, "analytical_preview_steps", ""))
+                if preview_steps:
+                    nominal_np = planner_nominal.detach().cpu().numpy().astype(np.float32)
+                    normalized_candidates = build_preview_residual_candidates(
+                        self.reference,
+                        anchor=anchor,
+                        horizon=self.args.horizon,
+                        nominal=nominal_np,
+                        residual_max=np.asarray(residual_max, dtype=np.float32),
+                        preview_steps=preview_steps,
+                        nominal_preview_steps=int(self.args.mpc_preview_nominal_steps),
+                    )
+                    parameterizer = planner.residual_parameterizer()
+                    for name, normalized in normalized_candidates.items():
+                        action = torch.as_tensor(normalized, dtype=torch.float32, device=device)
+                        fixed_candidates[name] = parameterizer.compress(action)
                 cem_start_ns = time.perf_counter_ns()
-                result = controller.plan(anchor_state, anchor_command, warm_start_shift_steps=shift)
+                result = controller.plan(
+                    anchor_state,
+                    anchor_command,
+                    warm_start_shift_steps=shift,
+                    fixed_candidates=fixed_candidates or None,
+                )
                 cem_end_ns = time.perf_counter_ns()
                 mean_anchor_step = mean_anchor_after_plan(mean_anchor_step, anchor, result.failure)
                 planning_time = float(result.planning_time)
@@ -768,6 +795,35 @@ class ASAPPlannerWorker(threading.Thread):
                 predicted_sequence = result.selected_predicted_state_sequence.copy()
                 selection_mode = result.selection_mode
                 residual_was_modified = False
+                directional_gate = getattr(self.args, "directional_residual_gate", "off")
+                if directional_gate != "off" and not result.failure:
+                    if directional_gate != "same_as_dq_des":
+                        raise ValueError(f"unsupported directional_residual_gate={directional_gate!r}")
+                    gate_joints = getattr(self.args, "directional_residual_gate_joints", "")
+                    if gate_joints:
+                        indices: list[int] = []
+                        for item in str(gate_joints).split(","):
+                            item = item.strip()
+                            if not item:
+                                continue
+                            indices.append(int(item) if item.isdigit() else {
+                                "shoulder_pan": 0, "shoulder_lift": 1, "elbow_flex": 2,
+                                "wrist_flex": 3, "wrist_roll": 4,
+                            }[item])
+                        joint_indices = tuple(indices)
+                    else:
+                        joint_indices = None
+                    dq_window = self.dq_reference[anchor : anchor + self.args.horizon]
+                    gated, changed = align_residual_to_velocity(
+                        residual_sequence,
+                        dq_window,
+                        joint_indices=joint_indices,
+                        velocity_threshold=np.deg2rad(float(getattr(self.args, "directional_velocity_threshold_deg_s", 1.0))),
+                    )
+                    if np.any(changed):
+                        residual_sequence = gated
+                        residual_was_modified = True
+                        selection_mode = "directional_gate"
                 if ensemble is not None and not result.failure:
                     candidates, primary_predictions = selected_cem_candidates(
                         result, horizon=self.args.uncertainty_horizon

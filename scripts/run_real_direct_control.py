@@ -95,6 +95,68 @@ class JointFilePlayer:
         return self.q_ref[min(int(tick), self.q_ref.shape[0] - 1)]
 
 
+def transform_joint_reference(
+    q_ref: np.ndarray,
+    control_dt: float,
+    *,
+    preview_steps: int = 0,
+    lead_time_s: float | None = None,
+    lead_max_rad: float = np.deg2rad(2.0),
+) -> tuple[np.ndarray, np.ndarray, dict[str, float | int | str]]:
+    """Build a command reference while preserving the original target.
+
+    ``q_des[t]`` is always the evaluation target.  ``preview_steps`` changes
+    only the command sent at tick ``t`` to ``q_des[t + k]``.  ``lead_time_s``
+    applies the diagnostic feed-forward command
+    ``q_des + lead_time_s * dq_des`` and clips its correction to the same
+    two-degree authority used by residual MPC.  Both paths keep the original
+    number of rows and hold the final row, which makes runs directly
+    comparable and keeps the frozen-reference manifest unchanged.
+    """
+    base = np.asarray(q_ref, dtype=np.float32)
+    if base.ndim != 2 or base.shape[1] != 5 or base.shape[0] < 1:
+        raise ValueError(f"q_ref must have shape (T, 5), got {base.shape}")
+    if not np.isfinite(base).all():
+        raise ValueError("q_ref contains non-finite values")
+    if preview_steps < 0:
+        raise ValueError("preview_steps must be non-negative")
+    if lead_time_s is not None and lead_time_s < 0.0:
+        raise ValueError("lead_time_s must be non-negative")
+    if lead_time_s is not None and preview_steps:
+        raise ValueError("preview_steps and lead_time_s are mutually exclusive")
+    if lead_max_rad <= 0.0 or not np.isfinite(lead_max_rad):
+        raise ValueError("lead_max_rad must be positive and finite")
+    if preview_steps >= len(base):
+        raise ValueError("preview_steps must be smaller than the reference length")
+
+    if preview_steps:
+        command = np.concatenate(
+            (base[preview_steps:], np.repeat(base[-1:, :], preview_steps, axis=0)), axis=0
+        )
+        metadata: dict[str, float | int | str] = {
+            "kind": "preview",
+            "preview_steps": int(preview_steps),
+            "preview_seconds": float(preview_steps * control_dt),
+        }
+        return command.astype(np.float32), base.copy(), metadata
+
+    if lead_time_s is not None and lead_time_s > 0.0:
+        # np.gradient is only used to define the diagnostic command.  It is
+        # evaluated on the frozen reference, never on measured state, so the
+        # sweep remains a fixed open-loop baseline experiment.
+        dq_des = np.gradient(base.astype(np.float64), float(control_dt), axis=0, edge_order=1)
+        correction = np.clip(float(lead_time_s) * dq_des, -float(lead_max_rad), float(lead_max_rad))
+        command = base.astype(np.float64) + correction
+        metadata = {
+            "kind": "lead",
+            "lead_time_s": float(lead_time_s),
+            "lead_max_deg": float(np.rad2deg(lead_max_rad)),
+        }
+        return command.astype(np.float32), base.copy(), metadata
+
+    return base.copy(), base.copy(), {"kind": "direct", "preview_steps": 0, "lead_time_s": 0.0}
+
+
 def find_reference_manifest_entry(manifest_path: str | Path, reference_file: str | Path) -> tuple[str, dict, str]:
     """Match the reference file's SHA-256 against a frozen manifest.
 
@@ -119,7 +181,8 @@ def find_reference_manifest_entry(manifest_path: str | Path, reference_file: str
 
 
 def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
-                  reference_metadata: dict | None = None) -> None:
+                  reference_metadata: dict | None = None,
+                  evaluation_q_des: np.ndarray | None = None) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     arrays = {
@@ -141,6 +204,13 @@ def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
         "motor_load_raw": np.asarray([record.state.diagnostics.get("motor_load_raw", np.full(6, np.nan)) for record in records]),
         "diagnostic_sample_age_s": np.asarray([record.state.diagnostics.get("diagnostic_sample_age_s", np.nan) for record in records]),
     }
+    if evaluation_q_des is not None:
+        target_q_des = np.asarray(evaluation_q_des, dtype=np.float32)
+        if target_q_des.shape != (len(records), config.n_joints):
+            raise ValueError(
+                f"evaluation_q_des must have shape {(len(records), config.n_joints)}, got {target_q_des.shape}"
+            )
+        arrays["q_des"] = target_q_des
     np.savez_compressed(target, **arrays)
     summary = {
         "created_utc": datetime.now(timezone.utc).isoformat(), "motion_mode": motion_mode,
@@ -204,6 +274,12 @@ def main() -> None:
     parser.add_argument("--reference-manifest",
                         help="Frozen manifest.json whose artifacts.q_des_ctrl.npy SHA-256 must match the "
                              "reference file (recommended for formal trials).")
+    parser.add_argument("--preview-steps", type=int, default=0,
+                        help="Diagnostic Direct preview k: send q_des[t+k] while scoring against q_des[t].")
+    parser.add_argument("--lead-time-s", type=float, default=None,
+                        help="Diagnostic feed-forward lead time; mutually exclusive with --preview-steps.")
+    parser.add_argument("--lead-max-deg", type=float, default=2.0,
+                        help="Absolute cap on lead correction (degrees), default matches residual authority.")
     parser.add_argument("--amplitude-deg", type=float, default=2.0)
     parser.add_argument("--joint", choices=["all", "shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"],
                         default="all", help="Use one named joint for B4; all is only permitted after B4.")
@@ -233,9 +309,19 @@ def main() -> None:
             raise SystemExit("--joint/--direction apply only to --reference-mode excitation")
         if args.amplitude_deg != 2.0:
             raise SystemExit("--amplitude-deg applies only to --reference-mode excitation")
+        if args.preview_steps < 0:
+            raise SystemExit("--preview-steps must be non-negative")
+        if args.lead_time_s is not None and args.lead_time_s < 0.0:
+            raise SystemExit("--lead-time-s must be non-negative")
+        if args.lead_time_s is not None and args.preview_steps:
+            raise SystemExit("--preview-steps and --lead-time-s are mutually exclusive")
+        if args.lead_max_deg <= 0.0:
+            raise SystemExit("--lead-max-deg must be positive")
     else:
         if args.reference_file or args.reference_manifest:
             raise SystemExit("--reference-file/--reference-manifest require --reference-mode joint_file")
+        if args.preview_steps or args.lead_time_s is not None:
+            raise SystemExit("--preview-steps/--lead-time-s require --reference-mode joint_file")
     if args.amplitude_deg <= 0 or args.amplitude_deg > 3.0: raise SystemExit("initial direct-control amplitude must be in (0, 3] degrees")
     if args.joint != "all" and args.amplitude_deg > 2.0:
         raise SystemExit("single-joint direction testing is limited to 2 degrees")
@@ -247,6 +333,7 @@ def main() -> None:
         raise SystemExit("--mapping-preview-offset-rad requires --visualize-mujoco")
     backend = make_so101_backend(args.hardware_config)
     reference_metadata: dict | None = None
+    evaluation_q_des: np.ndarray | None = None
     if args.reference_mode == "joint_file":
         q_ref = np.load(args.reference_file)
         shape_name = None
@@ -258,14 +345,24 @@ def main() -> None:
                   + " ".join(f"{env['max_dq_lap_deg_s'][j]:.2f}" for j in
                              ["pan", "lift", "elbow", "wrist_flex", "wrist_roll"])
                   + f"  (P99 pass: {env['all_joints_at_or_below_p99']})")
-        nominal = JointFilePlayer(q_ref, config=config)
+        command_reference, evaluation_reference, transform_metadata = transform_joint_reference(
+            q_ref,
+            config.control_dt,
+            preview_steps=int(args.preview_steps),
+            lead_time_s=args.lead_time_s,
+            lead_max_rad=np.deg2rad(float(args.lead_max_deg)),
+        )
+        nominal = JointFilePlayer(command_reference, config=config)
+        evaluation_q_des = evaluation_reference
         print(f"joint reference: {q_ref.shape[0]} rows @ {config.control_dt:.4f}s = "
               f"{q_ref.shape[0] * config.control_dt:.2f}s (envelope-validated)")
+        print(f"direct diagnostic transform: {transform_metadata}")
         reference_metadata = {
             "file": str(args.reference_file),
-            "sha256": sha,
+            "sha256": sha if args.reference_manifest else None,
             "shape": shape_name,
             "rows": int(q_ref.shape[0]),
+            "command_transform": transform_metadata,
         }
     elif args.joint == "all":
         nominal = SafeExcitation(config.home_q_ctrl, config.control_dt, np.deg2rad(args.amplitude_deg))
@@ -314,7 +411,8 @@ def main() -> None:
             else:
                 mode = "multi_joint_sine" if args.joint == "all" else f"single_joint_{args.joint}_{args.direction}"
             save_evidence(args.output, records, config, motion_mode=mode,
-                          reference_metadata=reference_metadata)
+                          reference_metadata=reference_metadata,
+                          evaluation_q_des=(evaluation_q_des[:len(records)] if evaluation_q_des is not None else None))
     finally:
         if mirror is not None:
             mirror.close()

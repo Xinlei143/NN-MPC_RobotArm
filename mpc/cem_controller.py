@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Protocol
+from typing import Mapping, Protocol
 
 import numpy as np
 import torch
@@ -365,7 +365,14 @@ class CEMMPCController:
         evaluation["costs"] = torch.where(mask, costs, torch.full_like(costs, float("inf")))
         return pool, evaluation, roles, entry_to_unique
 
-    def plan(self, current_state: np.ndarray, previous_q_ref: np.ndarray, *, warm_start_shift_steps: int | None = None) -> CEMMPCResult:
+    def plan(
+        self,
+        current_state: np.ndarray,
+        previous_q_ref: np.ndarray,
+        *,
+        warm_start_shift_steps: int | None = None,
+        fixed_candidates: Mapping[str, torch.Tensor] | None = None,
+    ) -> CEMMPCResult:
         del current_state
         start_time = perf_counter()
         asynchronous_anchor = warm_start_shift_steps is not None
@@ -388,6 +395,10 @@ class CEMMPCController:
         valid_candidate_count = 0
         candidate_diagnostics: dict[str, int | float] = {}
         exact_role_evaluations: dict[
+            str,
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor],
+        ] = {}
+        fixed_evaluations: dict[
             str,
             tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, float], np.ndarray, torch.Tensor],
         ] = {}
@@ -586,6 +597,39 @@ class CEMMPCController:
             final_evaluation = exact
             final_samples = pool
             final_elite_indices = torch.as_tensor(elite_indices_in_pool, device=self.device)
+
+        # Analytical preview/lead branches are deliberately evaluated only
+        # after CEM sampling.  This keeps the learned distribution unchanged
+        # while allowing a physically interpretable candidate to compete with
+        # best/mean/baseline under exactly the same rollout and cost.
+        if fixed_candidates:
+            for name, candidate in fixed_candidates.items():
+                try:
+                    action = torch.as_tensor(candidate, dtype=torch.float32, device=self.device)
+                    if action.shape != (self.decision_horizon, self.config.action_dim):
+                        raise ValueError(f"expected {(self.decision_horizon, self.config.action_dim)}, got {tuple(action.shape)}")
+                    evaluator = getattr(self.planner, "evaluate_exact", None)
+                    evaluation = (evaluator or self.planner.evaluate)(action.unsqueeze(0))
+                    costs = evaluation.get("costs")
+                    q_ref = evaluation.get("q_ref_sequences")
+                    residual = evaluation.get("residual_sequences")
+                    predicted = evaluation.get("pred_states")
+                    if not all(isinstance(value, torch.Tensor) for value in (costs, q_ref, residual, predicted)):
+                        continue
+                    if costs.shape != (1,) or not bool(torch.isfinite(costs[0])):
+                        continue
+                    terms, predicted_next = self._diagnostics_from_evaluation(evaluation, 0)
+                    fixed_evaluations[str(name)] = (
+                        costs[0].to(self.device), q_ref[0].to(self.device), residual[0].to(self.device),
+                        terms, predicted_next, predicted[0].to(self.device),
+                    )
+                except (RuntimeError, ValueError):
+                    continue
+            candidate_count += len(fixed_evaluations)
+            valid_candidate_count += len(fixed_evaluations)
+            candidate_diagnostics["fixed_candidate_count"] = len(fixed_evaluations)
+            for name, item in fixed_evaluations.items():
+                candidate_diagnostics[f"fixed_candidate_{name}_cost"] = float(item[0].detach().cpu())
         if (
             not torch.all(torch.isfinite(best_sequence))
             or not self._valid_q_ref_sequence(best_q_ref_sequence.unsqueeze(0), batch_size=1)
@@ -672,6 +716,14 @@ class CEMMPCController:
                         baseline_predicted_state_sequence,
                     )
                 )
+            for name, fixed in fixed_evaluations.items():
+                fixed_cost, fixed_q, fixed_residual, fixed_terms, fixed_next, fixed_predicted = fixed
+                candidates.append(
+                    (
+                        f"fixed:{name}", torch.as_tensor(fixed_candidates[name], device=self.device), fixed_cost,
+                        fixed_q, fixed_residual, fixed_terms, fixed_next, fixed_predicted,
+                    )
+                )
             # Equal costs should prefer the deterministic baseline, then mean,
             # over a sampled action.  This makes the direct nominal fallback
             # stable instead of depending on population ordering.
@@ -686,10 +738,15 @@ class CEMMPCController:
                 selected_predicted_next_state,
                 selected_predicted_state_sequence,
             ) = min(
-                candidates, key=lambda item: (float(item[2].detach().cpu()), preference[item[0]])
+                candidates, key=lambda item: (float(item[2].detach().cpu()), preference.get(item[0], 3))
             )
             selection_mode = selected_name
             selected_action_sequence = self._expand_decisions(selected_raw_sequence)
+            if selected_name.startswith("fixed:"):
+                candidate_name = selected_name.split(":", 1)[1]
+                fixed_eval = fixed_evaluations.get(candidate_name)
+                if fixed_eval is not None:
+                    selected_predicted_state_sequence = fixed_eval[5]
 
         selected_expected_raw_sequence = np.empty((0, 0), dtype=np.int64)
         if final_evaluation is not None:

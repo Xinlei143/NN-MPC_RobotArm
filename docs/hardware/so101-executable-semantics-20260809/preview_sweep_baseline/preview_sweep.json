@@ -1,0 +1,148 @@
+{
+  "control_dt_s": 0.03333333333333333,
+  "runs": {
+    "direct": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260808_formal/direct_circle_p0/rollout.npz",
+      "metadata": {
+        "action_semantics": "software_transmitted_absolute_position_target",
+        "created_utc": "2026-08-07T16:05:35.566333+00:00",
+        "dataset": "rollout.npz",
+        "motion_mode": "joint_file_reference",
+        "motor_acknowledged": false,
+        "plant_identity": {
+          "acceleration": 32,
+          "auxiliary_joints": [
+            "gripper"
+          ],
+          "calibration_sha256": "e5420b6914b3c43a405556f68b6964f87bc4839991d590ee74789a34b61b0d04",
+          "control_dt": 0.03333333333333333,
+          "domain": "real",
+          "hardware": "SO101 follower 12V",
+          "hardware_config_sha256": "4460c456fffc4eb789222d023be5b6eb194ddd69a4c12a033f177429622e0689",
+          "hardware_startup_envelope_configured": true,
+          "joint_names": [
+            "shoulder_pan",
+            "shoulder_lift",
+            "elbow_flex",
+            "wrist_flex",
+            "wrist_roll"
+          ],
+          "lerobot_commit": "2aba372b4e217cc47db28e0f836859b20d1456c9",
+          "maximum_acceleration": 32,
+          "pid": [
+            20,
+            0,
+            32
+          ],
+          "pid_i_by_motor": {
+            "elbow_flex": 3,
+            "gripper": 0,
+            "shoulder_lift": 1,
+            "shoulder_pan": 0,
+            "wrist_flex": 0,
+            "wrist_roll": 0
+          },
+          "schema_version": 2,
+          "shutdown_recovery_raw": [
+            2048,
+            1296,
+            2173,
+            2830,
+            988,
+            2048
+          ],
+          "shutdown_recovery_seconds": 10.0,
+          "state_estimator": "backward_difference_causal_lpf_4hz_v1",
+          "voltage_hard": [
+            9.8,
+            13.5
+          ],
+          "voltage_warning": [
+            10.5,
+            12.8
+          ]
+        },
+        "reference": {
+          "file": "outputs/hardware/so101_pre_mpc/20260808_refs_6phase/circle_p0/q_des_ctrl.npy",
+          "rows": 1087,
+          "sha256": "04616bd8f8f0b07db4231541e62ac49b1aa911c902c1668e2892dded4f731031",
+          "shape": "circle_p0"
+        },
+        "sample_count": 1087
+      },
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.015238818281217507,
+        "position_rmse_deg": 0.8731199722805664,
+        "max_abs_error_deg": 2.5984281292158444,
+        "per_joint_rmse_deg": [
+          0.9017728088759355,
+          1.1320308008853148,
+          0.9902533042162349,
+          0.8529620643025347,
+          0.09412017501381065
+        ],
+        "per_joint_bias_deg": [
+          0.05936244043713237,
+          0.007055782077282168,
+          -0.19083785194143113,
+          0.5678605570014721,
+          0.011779718926625077
+        ],
+        "command_offset_p95_deg": [
+          0.08441403047575256,
+          0.08218565991469474,
+          0.0834624150366512,
+          0.08791136480723412,
+          0.0826949082137414
+        ],
+        "command_velocity_p95_deg_s": [
+          7.91208686567454,
+          2.637366557426411,
+          10.549447019798604,
+          5.274733114852822,
+          0.0
+        ]
+      }
+    },
+    "active": {
+      "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_executable_semantics/u_minus_q_e14_cuda_graph_active/rollout.npz",
+      "metadata": {},
+      "metrics": {
+        "samples": 1087,
+        "position_rmse_rad": 0.016249430427163064,
+        "position_rmse_deg": 0.931023782967906,
+        "max_abs_error_deg": 3.5793404107819367,
+        "per_joint_rmse_deg": [
+          1.3438449884229755,
+          0.8906729525688983,
+          1.0968412571793802,
+          0.7193157693270983,
+          0.11971984571711329
+        ],
+        "per_joint_bias_deg": [
+          0.1097480754237188,
+          -0.043734268382570295,
+          -0.19779318073041122,
+          0.4562517911754132,
+          -0.031165375121135055
+        ],
+        "command_offset_p95_deg": [
+          1.1441096624651335,
+          0.5929799002428144,
+          0.8989574820453439,
+          0.46312678233350935,
+          0.30812202374611836
+        ],
+        "command_velocity_p95_deg_s": [
+          7.912090067325713,
+          5.274726711550476,
+          7.912093268976887,
+          7.9120740590698455,
+          5.274725110724889
+        ]
+      }
+    }
+  },
+  "best_by_rmse": "direct"
+}
