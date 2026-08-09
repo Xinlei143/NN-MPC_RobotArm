@@ -31,18 +31,28 @@ def _load_checkpoint_epoch(path: Path) -> int | None:
 
 
 def _kappa_for_checkpoint(checkpoint_path: Path, normalizer_path: Path, ticks: list[int]) -> dict[str, object]:
-    """Measure the established six-step command sensitivity on CPU."""
-    # Imported here so the launcher can show train output immediately and so
-    # the tiny kappa probe never allocates training-sized CUDA tensors.
+    """Measure signed H=1..12 sensitivity with training-equivalent histories.
+
+    ``executed_tokens`` in old logs contain ``[x_t, u_{t-1}]`` and therefore
+    cannot be used as a training token window without an off-by-one shift.  The
+    current rollout stores ``actual_states`` and executable ``actuator_q_ref``
+    separately; this probe builds ``[x_t, u_t]`` windows from those fields and
+    perturbs one encoder joint at a time.
+    """
     sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "dynamics_modeling"))
-    from neural_dynamics.integration import reconstruct_next_state
+    from dynamics_modeling.scripts.evaluate_so101_sensitivity import (
+        _load_rollout_arrays, _run_model_sensitivity, _history_windows,
+    )
     from neural_dynamics.rollout import load_dynamics_bundle
     from mpc.robot_config import load_robot_spec
+    from robot_runtime.config import load_hardware_config
 
-    with np.load(ROLLOUT, allow_pickle=False) as recorded:
-        executed_tokens = np.asarray(recorded["executed_tokens"], dtype=np.float32)
-        q_des = np.asarray(recorded["q_des"], dtype=np.float32)[:, :5]
+    rollout_states, rollout_commands = _load_rollout_arrays(ROLLOUT)
+    hardware = load_hardware_config("configs/hardware/so101_follower.local.yaml")
+    calibration = json.loads(hardware.calibration_path.read_text(encoding="utf-8"))
+    cal_low = np.asarray([calibration[name]["range_min"] for name in hardware.joint_names], dtype=np.float64)
+    cal_high = np.asarray([calibration[name]["range_max"] for name in hardware.joint_names], dtype=np.float64)
     bundle = load_dynamics_bundle(
         checkpoint_path,
         normalizer_path,
@@ -51,52 +61,34 @@ def _kappa_for_checkpoint(checkpoint_path: Path, normalizer_path: Path, ticks: l
         torch.device("cpu"),
         expected_robot_spec=load_robot_spec("configs/robots/so101.yaml"),
     )
-    perturbation = float(np.deg2rad(0.5))
-    rows: list[dict[str, object]] = []
-    for tick in ticks:
-        history_window = executed_tokens[tick - bundle.history_len + 1:tick + 1]
-        history_states = history_window[:, :10]
-        history_actions = history_window[:-1, 10:15]
-        commands = q_des[tick + 1:tick + 7]
-
-        def rollout(command_sequence: np.ndarray) -> np.ndarray:
-            predicted_state = torch.as_tensor(history_states[-1:], device=bundle.device)
-            fixed_history = torch.cat([
-                torch.as_tensor(history_states[-(bundle.history_len - 1):], device=bundle.device),
-                torch.as_tensor(history_actions[-(bundle.history_len - 1):], device=bundle.device),
-            ], dim=-1)
-            predictions = []
-            for command in command_sequence:
-                current = torch.cat([
-                    predicted_state,
-                    torch.as_tensor(command, device=bundle.device).view(1, -1),
-                ], dim=-1)
-                model_input = bundle.normalizer.normalize_sequence_input(
-                    torch.cat([fixed_history, current], dim=0).unsqueeze(0), bundle.state_dim
-                )
-                with torch.no_grad():
-                    predicted_target = bundle.normalizer.denormalize_delta(bundle.model(model_input))
-                predicted_state = reconstruct_next_state(
-                    predicted_state, predicted_target, bundle.target_mode, bundle.control_dt, 5
-                )
-                predictions.append(predicted_state[0])
-            return torch.stack(predictions).cpu().numpy()
-
-        baseline = rollout(commands)[:, :5]
-        perturbed = rollout(commands + perturbation)[:, :5]
-        response = perturbed - baseline
-        rows.append({
-            "tick": tick,
-            "kappa_h6": float(np.linalg.norm(response[-1]) / np.linalg.norm(np.full(5, perturbation))),
-            "per_joint_terminal_gain": (np.abs(response[-1]) / perturbation).tolist(),
-            "per_joint_accumulated_gain": (np.linalg.norm(response, axis=0) / perturbation).tolist(),
-        })
-    values = [float(row["kappa_h6"]) for row in rows]
+    valid_ticks = [tick for tick in ticks if bundle.history_len - 1 <= tick < len(rollout_states) - 12]
+    if not valid_ticks:
+        raise ValueError(
+            f"none of the requested κ ticks {ticks} has a complete history/H=12 window "
+            f"for rollout length {len(rollout_states)}"
+        )
+    histories = _history_windows(rollout_states, rollout_commands, np.asarray(valid_ticks, dtype=np.int64), bundle.history_len)
+    sensitivity = _run_model_sensitivity(
+        bundle, histories, rollout_commands, np.asarray(valid_ticks, dtype=np.int64), 12,
+        cal_low, cal_high, hardware.raw_low[:5], hardware.raw_high[:5], 256,
+    )
+    held = np.asarray(sensitivity["held"]["median"], dtype=np.float64)
+    matrix_h6 = held[5] if len(held) >= 6 else np.full((5, 5), np.nan)
+    diag = np.diag(matrix_h6)
+    finite_abs = np.abs(diag)[np.isfinite(diag)]
+    scalar_h6 = float(np.mean(finite_abs)) if finite_abs.size else float("nan")
+    kappa_min = float(np.min(finite_abs)) if finite_abs.size else float("nan")
+    kappa_max = float(np.max(finite_abs)) if finite_abs.size else float("nan")
+    rows = [{"tick": int(tick), "per_joint_signed_gain_h6": matrix_h6.diagonal().tolist()} for tick in valid_ticks]
     return {
         "checkpoint": str(checkpoint_path.resolve()),
         "epoch": _load_checkpoint_epoch(checkpoint_path),
         "action_input_mode": bundle.action_input_mode,
-        "kappa_h6": {"rows": rows, "mean": float(np.mean(values)), "min": float(np.min(values)), "max": float(np.max(values))},
+        "protocol": "training_equivalent_[x_t,u_t]_signed_single_joint_encoder_perturbations",
+        "sensitivity": sensitivity,
+        # Compatibility scalar for the existing monitoring CSV.  It is the
+        # mean absolute diagonal gain at H=6, not the old all-joints L2 norm.
+        "kappa_h6": {"rows": rows, "mean": scalar_h6, "min": kappa_min, "max": kappa_max},
     }
 
 

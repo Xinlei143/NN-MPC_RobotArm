@@ -1,0 +1,39 @@
+{
+  "gate": "plant_identity_then_sensitivity_sign_then_heldout_rollout_rmse",
+  "evaluated": [
+    {
+      "label": "u_minus_q_e14",
+      "plant_identity_match": true,
+      "sign_gate": true,
+      "sign_matches": 5,
+      "h12_q_rmse": 0.0037803691811859608,
+      "sensitivity_relative_error": 0.3277205823385744
+    },
+    {
+      "label": "absolute_u_e45",
+      "plant_identity_match": false,
+      "sign_gate": true,
+      "sign_matches": 5,
+      "h12_q_rmse": 0.011233512312173843,
+      "sensitivity_relative_error": 0.27218585053466554
+    },
+    {
+      "label": "u_minus_q_e45",
+      "plant_identity_match": false,
+      "sign_gate": true,
+      "sign_matches": 5,
+      "h12_q_rmse": 0.003236639080569148,
+      "sensitivity_relative_error": 0.48707889846003966
+    }
+  ],
+  "eligible": [
+    {
+      "label": "u_minus_q_e14",
+      "h12_q_rmse": 0.0037803691811859608,
+      "sign_matches": 5,
+      "sensitivity_relative_error": 0.3277205823385744
+    }
+  ],
+  "selected_label": "u_minus_q_e14",
+  "active_authorized": true
+}

@@ -79,6 +79,9 @@ class CEMMPCResult:
     valid_candidate_count: int = 0
     candidate_diagnostics: dict[str, int | float] = field(default_factory=dict)
     branch_candidates: tuple[CEMCandidate, ...] = ()
+    selected_expected_raw_sequence: np.ndarray = field(
+        default_factory=lambda: np.empty((0, 0), dtype=np.int64)
+    )
 
 
 class CEMMPCController:
@@ -688,6 +691,18 @@ class CEMMPCController:
             selection_mode = selected_name
             selected_action_sequence = self._expand_decisions(selected_raw_sequence)
 
+        selected_expected_raw_sequence = np.empty((0, 0), dtype=np.int64)
+        if final_evaluation is not None:
+            final_q = final_evaluation.get("q_ref_sequences")
+            final_raw = final_evaluation.get("expected_raw_sequences")
+            if isinstance(final_q, torch.Tensor) and isinstance(final_raw, torch.Tensor):
+                matches = torch.all(final_q == selected_q_ref_sequence.unsqueeze(0), dim=(1, 2))
+                if bool(torch.any(matches)):
+                    selected_index = int(torch.nonzero(matches, as_tuple=False)[0, 0])
+                    selected_expected_raw_sequence = (
+                        final_raw[selected_index].detach().cpu().numpy().astype(np.int64)
+                    )
+
         saved_mean = (
             selected_raw_sequence
             if asynchronous_anchor
@@ -776,4 +791,5 @@ class CEMMPCController:
             valid_candidate_count=valid_candidate_count,
             candidate_diagnostics=candidate_diagnostics,
             branch_candidates=branch_candidates,
+            selected_expected_raw_sequence=selected_expected_raw_sequence,
         )

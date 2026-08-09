@@ -1,0 +1,47 @@
+{
+  "rollout": "/home/xinlei/Data/RL_Projects/NN-MPC_RobotArm/outputs/hardware/so101_pre_mpc/20260809_epoch14/active_projected_circle_v3/rollout.npz",
+  "ticks": 1087,
+  "raw_comparison_source": "inferred_from_float_actuator_q_ref",
+  "raw_exact": false,
+  "raw_max_abs_count_error": 27,
+  "raw_nonzero_tick_count": 1087,
+  "planner_expected_raw_count": 0,
+  "planner_expected_raw_exact": null,
+  "planner_expected_raw_nonzero_tick_count": 0,
+  "planner_expected_raw_max_abs_count_error": null,
+  "request_to_canonical_transmitted_p95_deg": [
+    0.08104773839277872,
+    0.07485939357165544,
+    0.0875285807290225,
+    0.0790570917653704,
+    0.06925227517053777
+  ],
+  "canonical_to_logged_transmitted_p95_deg": [
+    0.263736228855818,
+    0.9670330170075089,
+    0.43956045257416715,
+    0.527472457711636,
+    0.43956045257416715
+  ],
+  "canonical_to_logged_projected_p95_deg": [
+    0.26895820196098363,
+    1.007124093001368,
+    0.47062959572638,
+    0.5327449902249156,
+    0.4006949953299285
+  ],
+  "canonical_to_logged_transmitted_max_deg": 2.373626470565796,
+  "projection_flag_counts": {
+    "acceleration_limit": 923,
+    "encoder_quantization": 1087,
+    "velocity_limit": 17
+  },
+  "command_velocity_p95_rad_s": [
+    0.1380920261144638,
+    0.0920613706111908,
+    0.18412254750728607,
+    0.13809195160865784,
+    0.09206132590770721
+  ],
+  "state_machine": "hardware_bounds -> measured-relative -> velocity -> acceleration -> braking -> raw quantization -> transmitted velocity"
+}

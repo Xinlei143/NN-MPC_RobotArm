@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from neural_dynamics.rollout import rollout_dynamics_batch
+from neural_dynamics.rollout import rollout_dynamics_batch, rollout_dynamics_step
 from mpc.constraints import (
     clip_to_joint_limits,
     apply_command_kinematic_limits,
@@ -13,8 +13,14 @@ from mpc.constraints import (
     project_position_command_sequence,
 )
 from mpc.cost_functions import JointSpaceCostConfig, joint_space_tracking_cost
+from mpc.executable_rollout import ExecutableRolloutEngine
 from mpc.task_space_cost import ExactTaskSpaceCost, TorchTaskSpaceCost
 from mpc.residual_parameterization import ResidualParameterization
+from robot_runtime.executable_command import (
+    ExecutableCommandSpec,
+    ExecutableCommandState,
+    step_executable_command_torch,
+)
 
 
 def construct_actuator_q_ref_sequence(
@@ -220,8 +226,15 @@ class LearnedDynamicsPlanner:
     stage_one_task_space_cost: TorchTaskSpaceCost | None = None
     task_positions_des: np.ndarray | None = None
     task_rotations_des: np.ndarray | None = None
+    executable_command_spec: ExecutableCommandSpec | None = None
+    executable_command_state: ExecutableCommandState | None = None
+    executable_rollout_engine: ExecutableRolloutEngine | None = None
     _stage_task_positions: torch.Tensor | None = field(default=None, init=False, repr=False)
     _stage_task_rotations: torch.Tensor | None = field(default=None, init=False, repr=False)
+    _projection_vectors_cache: dict[tuple[str, torch.dtype], dict[str, torch.Tensor]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _exact_projection_fallbacks: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prepare this anchor's task window once; scorer geometry stays persistent."""
@@ -287,12 +300,110 @@ class LearnedDynamicsPlanner:
             joint_limit_margin=self.rollout_config.joint_limit_margin,
         )
 
+    def _projection_vectors(self, device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
+        """Cache the tiny runtime-envelope tensors across CEM evaluations."""
+        key = (str(device), dtype)
+        vectors = self._projection_vectors_cache.get(key)
+        if vectors is None:
+            if self.executable_command_spec is None:
+                raise RuntimeError("projection vectors requested without executable command spec")
+            vectors = self.executable_command_spec.torch_vectors(device=device, dtype=dtype)
+            self._projection_vectors_cache[key] = vectors
+        return vectors
+
+    def _fast_raw_matches_exact(self, evaluation: dict[str, torch.Tensor]) -> bool:
+        """Verify the fast candidate projection before using it as final output.
+
+        The float32 search path intentionally skips only the discrete
+        admissible-interval guard.  Replaying that guard on CPU for the small
+        selected pool is cheap; if a boundary case differs, the caller falls
+        back to the full float64 Torch path.
+        """
+        if self.executable_command_spec is None or self.executable_command_state is None:
+            return True
+        requested = evaluation.get("requested_absolute_q_ref_sequences")
+        predicted = evaluation.get("pred_states")
+        expected = evaluation.get("expected_raw_sequences")
+        if not all(isinstance(value, torch.Tensor) for value in (requested, predicted, expected)):
+            return False
+        device = requested.device
+        batch_size = requested.shape[0]
+        previous_q = torch.as_tensor(
+            self.executable_command_state.previous_transmitted_q_ref,
+            dtype=torch.float32, device=device,
+        ).view(1, -1).expand(batch_size, -1)
+        previous_velocity = torch.as_tensor(
+            self.executable_command_state.previous_command_velocity,
+            dtype=torch.float32, device=device,
+        ).view(1, -1).expand(batch_size, -1)
+        exact_vectors = self._projection_vectors(device, torch.float64)
+        mismatch = torch.zeros((), dtype=torch.bool, device=device)
+        for step_index in range(requested.shape[1]):
+            _, raw, transmitted, velocity = step_executable_command_torch(
+                requested[:, step_index],
+                predicted[:, step_index, : self.state_dim // 2],
+                previous_q,
+                previous_velocity,
+                self.executable_command_spec,
+                exact=True,
+                vectors=exact_vectors,
+            )
+            mismatch = mismatch | torch.any(raw != expected[:, step_index])
+            previous_q, previous_velocity = transmitted, velocity
+        return not bool(mismatch.detach().cpu())
+
+    def exact_executable_command_sequence(
+        self,
+        requested_absolute_sequence: torch.Tensor,
+        predicted_state_sequence: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Project a known rollout without running the dynamics model again.
+
+        The worker uses this after CEM has already produced the selected
+        predicted-state sequence.  It refreshes transmitted q_ref/raw counts
+        through the exact state machine while avoiding a redundant six-step
+        GRU rollout.
+        """
+        if self.executable_command_spec is None or self.executable_command_state is None:
+            raise RuntimeError("exact executable projection requires a command spec and state")
+        if requested_absolute_sequence.ndim != 3 or predicted_state_sequence.ndim != 3:
+            raise ValueError("requested and predicted sequences must be batched")
+        if predicted_state_sequence.shape[0] != requested_absolute_sequence.shape[0]:
+            raise ValueError("requested and predicted sequence batch sizes differ")
+        batch_size = requested_absolute_sequence.shape[0]
+        previous_q = torch.as_tensor(
+            self.executable_command_state.previous_transmitted_q_ref,
+            dtype=torch.float32, device=requested_absolute_sequence.device,
+        ).view(1, -1).expand(batch_size, -1)
+        previous_velocity = torch.as_tensor(
+            self.executable_command_state.previous_command_velocity,
+            dtype=torch.float32, device=requested_absolute_sequence.device,
+        ).view(1, -1).expand(batch_size, -1)
+        vectors = self._projection_vectors(requested_absolute_sequence.device, torch.float64)
+        transmitted_steps: list[torch.Tensor] = []
+        raw_steps: list[torch.Tensor] = []
+        for step_index in range(requested_absolute_sequence.shape[1]):
+            _, raw, transmitted, velocity = step_executable_command_torch(
+                requested_absolute_sequence[:, step_index],
+                predicted_state_sequence[:, step_index, : self.state_dim // 2],
+                previous_q,
+                previous_velocity,
+                self.executable_command_spec,
+                exact=True,
+                vectors=vectors,
+            )
+            transmitted_steps.append(transmitted)
+            raw_steps.append(raw)
+            previous_q, previous_velocity = transmitted, velocity
+        return torch.stack(transmitted_steps, dim=1), torch.stack(raw_steps, dim=1)
+
     def _evaluate_impl(
         self,
         candidate_action: torch.Tensor,
         *,
         project_kinematics_override: bool | None = None,
         include_stage_one_task_cost: bool,
+        exact_executable_projection: bool = False,
     ) -> dict[str, torch.Tensor]:
         if self.rollout_config.mpc_policy == "residual":
             if self.rollout_config.residual_max is None:
@@ -315,7 +426,7 @@ class LearnedDynamicsPlanner:
                 q_ref_velocity_limit=self.rollout_config.q_ref_velocity_limit,
                 q_ref_acceleration_limit=self.rollout_config.q_ref_acceleration_limit,
                 control_dt=self.control_dt,
-                project_kinematics=project_kinematics,
+                project_kinematics=(project_kinematics and self.executable_command_spec is None),
                 projection_backend=self.rollout_config.projection_backend,
                 enforce_projected_offset_bound=self.rollout_config.residual_feasibility_semantics == "projected_bound",
             )
@@ -349,17 +460,76 @@ class LearnedDynamicsPlanner:
             feasible = torch.ones(q_ref_sequences.shape[0], dtype=torch.bool, device=q_ref_sequences.device)
         else:
             raise ValueError("mpc_policy must be 'residual' or 'legacy_acceleration'")
-        pred_states = rollout_dynamics_batch(
-            model=self.model,
-            normalizer=self.normalizer,
-            model_type=self.model_type,
-            initial_history=self.initial_history,
-            future_q_ref=q_ref_sequences,
-            state_dim=self.state_dim,
-            target_mode=self.target_mode,
-            control_dt=self.control_dt,
-            rollout_batch_size=self.rollout_config.rollout_batch_size,
-        )
+        expected_raw_sequences = None
+        requested_absolute_sequences = None
+        if self.executable_command_spec is not None:
+            if self.executable_command_state is None:
+                raise ValueError("executable command spec requires executable command state")
+            # The real SO101 path must project the command before asking the
+            # model to predict it.  The predicted q is then the measured-q
+            # input to the next state-machine step.
+            nominal_for_request = self.nominal_sequence()
+            if nominal_for_request.ndim == 2:
+                nominal_for_request = nominal_for_request.unsqueeze(0).expand(
+                    requested_residual_sequences.shape[0], -1, -1
+                )
+            requested = nominal_for_request + requested_residual_sequences
+            batch_size, horizon, _ = requested.shape
+            history = self.initial_history
+            if history.ndim == 2:
+                history = history.unsqueeze(0)
+            if history.shape[0] == 1 and batch_size > 1:
+                history = history.expand(batch_size, -1, -1).clone()
+            predicted_state = history[:, -1, : self.state_dim]
+            previous_q = torch.as_tensor(
+                self.executable_command_state.previous_transmitted_q_ref,
+                dtype=predicted_state.dtype, device=predicted_state.device,
+            ).view(1, -1).expand(batch_size, -1)
+            previous_velocity = torch.as_tensor(
+                self.executable_command_state.previous_command_velocity,
+                dtype=predicted_state.dtype, device=predicted_state.device,
+            ).view(1, -1).expand(batch_size, -1)
+            if self.executable_rollout_engine is not None:
+                executable = self.executable_rollout_engine.run(
+                    initial_history=history,
+                    requested_q_ref=requested,
+                    previous_q_ref=previous_q,
+                    previous_velocity=previous_velocity,
+                    exact=exact_executable_projection,
+                )
+                q_ref_sequences = executable.q_ref_sequences
+                expected_raw_sequences = executable.expected_raw_sequences
+                requested_absolute_sequences = requested
+                pred_states = executable.pred_states
+            else:
+                projection_dtype = torch.float64 if exact_executable_projection else torch.float32
+                projection_vectors = self._projection_vectors(predicted_state.device, projection_dtype)
+                projected_steps: list[torch.Tensor] = []
+                raw_steps: list[torch.Tensor] = []
+                predicted_steps: list[torch.Tensor] = [predicted_state]
+                requested_steps: list[torch.Tensor] = []
+                for step_idx in range(horizon):
+                    requested_i = requested[:, step_idx]
+                    projected_i, raw_i, transmitted_i, velocity_i = step_executable_command_torch(
+                        requested_i, predicted_state[:, : self.state_dim // 2], previous_q,
+                        previous_velocity, self.executable_command_spec,
+                        exact=exact_executable_projection,
+                        vectors=projection_vectors,
+                    )
+                    predicted_state, history = rollout_dynamics_step(
+                        self.model, self.normalizer, self.model_type, history, predicted_state,
+                        transmitted_i, self.state_dim, self.target_mode, self.control_dt,
+                    )
+                    requested_steps.append(requested_i)
+                    projected_steps.append(transmitted_i)
+                    raw_steps.append(raw_i)
+                    predicted_steps.append(predicted_state)
+                    previous_q, previous_velocity = transmitted_i, velocity_i
+                q_ref_sequences = torch.stack(projected_steps, dim=1)
+                expected_raw_sequences = torch.stack(raw_steps, dim=1)
+                requested_absolute_sequences = torch.stack(requested_steps, dim=1)
+                pred_states = torch.stack(predicted_steps, dim=1)
+            projected_nominal_offsets = q_ref_sequences - nominal_for_request
         costs, cost_terms = joint_space_tracking_cost(
             pred_states=pred_states,
             q_des=self.q_des.to(device=pred_states.device, dtype=pred_states.dtype),
@@ -419,6 +589,12 @@ class LearnedDynamicsPlanner:
             "costs": costs,
             "cost_terms": cost_terms,
             "q_ref_sequences": q_ref_sequences,
+            "requested_absolute_q_ref_sequences": (
+                requested_absolute_sequences
+                if requested_absolute_sequences is not None
+                else None
+            ),
+            "expected_raw_sequences": expected_raw_sequences,
             "residual_sequences": requested_residual_sequences,
             "requested_residual_sequences": requested_residual_sequences,
             "projected_nominal_offsets": projected_nominal_offsets,
@@ -440,6 +616,7 @@ class LearnedDynamicsPlanner:
         *,
         project_kinematics_override: bool | None = None,
         include_stage_one_task_cost: bool | None = None,
+        exact_executable_projection: bool = False,
     ) -> dict[str, torch.Tensor]:
         return self._evaluate_impl(
             candidate_action,
@@ -449,13 +626,46 @@ class LearnedDynamicsPlanner:
                 if include_stage_one_task_cost is None
                 else bool(include_stage_one_task_cost)
             ),
+            exact_executable_projection=exact_executable_projection,
         )
 
     def evaluate_exact(self, candidate_action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Evaluate physical candidates and optionally align final selection with TCP metrics."""
         self._suppress_stage_one_task_cost = True
         try:
-            evaluation = self.evaluate(candidate_action, project_kinematics_override=True)
+            # Most candidates are away from a raw-count boundary.  Score them
+            # with the fast float32 path, then verify the selected pool against
+            # the NumPy state machine.  Only a boundary mismatch pays for the
+            # full float64 Torch replay.
+            if self.executable_command_spec is not None and self.executable_rollout_engine is not None:
+                # The fixed-shape executable engine can run the exact raw-count
+                # path directly.  This avoids fast-path replay plus a CPU
+                # parity synchronization for every final candidate pool.
+                evaluation = self.evaluate(
+                    candidate_action,
+                    project_kinematics_override=True,
+                    exact_executable_projection=True,
+                )
+                raw_matches = True
+            elif self.executable_command_spec is None:
+                # Keep compatibility with lightweight test/dummy planners
+                # that implement the original evaluate() signature.
+                evaluation = self.evaluate(candidate_action, project_kinematics_override=True)
+                raw_matches = True
+            else:
+                evaluation = self.evaluate(
+                    candidate_action,
+                    project_kinematics_override=True,
+                    exact_executable_projection=False,
+                )
+                raw_matches = self._fast_raw_matches_exact(evaluation)
+            if not raw_matches:
+                self._exact_projection_fallbacks += 1
+                evaluation = self.evaluate(
+                    candidate_action,
+                    project_kinematics_override=True,
+                    exact_executable_projection=True,
+                )
         finally:
             self._suppress_stage_one_task_cost = False
         if self.exact_task_space_cost is None:

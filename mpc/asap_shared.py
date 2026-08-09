@@ -88,6 +88,8 @@ def _copy_packet(packet: ASAPPlanPacket) -> ASAPPlanPacket:
         predicted_state_sequence=packet.predicted_state_sequence.copy(), planning_time_s=packet.planning_time_s,
         anchor_state=packet.anchor_state.copy(), selection_mode=packet.selection_mode, selected_cost=packet.selected_cost,
         q_ref_sequence=packet.q_ref_sequence.copy(),
+        requested_q_ref_sequence=packet.requested_q_ref_sequence.copy(),
+        expected_raw_sequence=packet.expected_raw_sequence.copy(),
         requested_residual_sequence=packet.requested_residual_sequence.copy(),
         planned_projection_offset_sequence=packet.planned_projection_offset_sequence.copy(),
         uncertainty_gate=packet.uncertainty_gate,
@@ -116,6 +118,14 @@ def copy_snapshot(snapshot: PlanningSnapshot) -> PlanningSnapshot:
         previous_command_nominal_offset=snapshot.previous_command_nominal_offset.copy(),
         previous_command_nominal_offset_velocity=snapshot.previous_command_nominal_offset_velocity.copy(),
         packet_schedule=tuple(_copy_packet(packet) for packet in snapshot.packet_schedule),
+        executable_command_state=(
+            None
+            if snapshot.executable_command_state is None
+            else type(snapshot.executable_command_state)(
+                snapshot.executable_command_state.previous_transmitted_q_ref.copy(),
+                snapshot.executable_command_state.previous_command_velocity.copy(),
+            )
+        ),
         packet_prediction_q_innovation=float(snapshot.packet_prediction_q_innovation),
         history_generation=snapshot.history_generation,
         estimator_generation=snapshot.estimator_generation,

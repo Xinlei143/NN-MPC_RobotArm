@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from robot_runtime.executable_command import ExecutableCommandState
+
 
 @dataclass(frozen=True)
 class ASAPPlanPacket:
@@ -24,6 +26,8 @@ class ASAPPlanPacket:
     # the CEM scorer.  Real adapters should prefer this over rebuilding a
     # command from ``residual_sequence`` and a live nominal reference.
     q_ref_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
+    requested_q_ref_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
+    expected_raw_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.int64))
     requested_residual_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     planned_projection_offset_sequence: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=np.float32))
     uncertainty_gate: bool = False
@@ -63,6 +67,7 @@ class PlanningSnapshot:
     previous_command_nominal_offset: np.ndarray
     previous_command_nominal_offset_velocity: np.ndarray
     packet_schedule: tuple[ASAPPlanPacket, ...]
+    executable_command_state: ExecutableCommandState | None = None
     packet_prediction_q_innovation: float = float("nan")
     history_generation: int = 0
     estimator_generation: int = 0

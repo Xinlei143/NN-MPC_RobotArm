@@ -1,0 +1,23 @@
+{
+  "gate": "plant_identity_then_sensitivity_sign_then_heldout_rollout_rmse",
+  "evaluated": [
+    {
+      "label": "u_minus_q_epoch14",
+      "plant_identity_match": true,
+      "sign_gate": true,
+      "sign_matches": 5,
+      "h12_q_rmse": 0.0037803691811859608,
+      "sensitivity_relative_error": 0.3277205823385744
+    }
+  ],
+  "eligible": [
+    {
+      "label": "u_minus_q_epoch14",
+      "h12_q_rmse": 0.0037803691811859608,
+      "sign_matches": 5,
+      "sensitivity_relative_error": 0.3277205823385744
+    }
+  ],
+  "selected_label": "u_minus_q_epoch14",
+  "active_authorized": true
+}

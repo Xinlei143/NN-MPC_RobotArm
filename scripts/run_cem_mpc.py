@@ -372,6 +372,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Exact planner projection implementation. Compiled preserves the eager mathematics after one-time warmup.",
     )
     parser.add_argument(
+        "--executable_rollout_backend",
+        choices=["auto", "cuda_graph", "eager"],
+        default="auto",
+        help="Interleaved executable projection/GRU backend. CUDA Graphs remove per-step launch overhead; eager is the reference path.",
+    )
+    parser.add_argument(
         "--planner_projection_strategy",
         choices=["full", "two_stage"],
         default="two_stage",
@@ -932,8 +938,8 @@ def run_closed_loop_mpc(args: argparse.Namespace, *, activation_observer: Any | 
         raise ValueError("--mpc_preview_nominal_steps must be non-negative")
     if args.controller_mode != "mpc" and args.mpc_preview_nominal_steps:
         raise ValueError("--mpc_preview_nominal_steps is only valid with --controller_mode mpc")
-    if args.mpc_preview_nominal_steps and args.reference_mode != "task":
-        raise ValueError("--mpc_preview_nominal_steps requires --reference_mode task")
+    if args.mpc_preview_nominal_steps and args.reference_mode not in {"task", "joint_file"}:
+        raise ValueError("--mpc_preview_nominal_steps requires --reference_mode task or joint_file")
     if args.anticipation_delay_steps < 0:
         raise ValueError("--anticipation_delay_steps must be non-negative")
     if args.reference_mode != "task" and args.episode_len <= 0:

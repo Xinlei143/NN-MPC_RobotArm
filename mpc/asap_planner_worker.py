@@ -9,14 +9,20 @@ from typing import Any
 import numpy as np
 import torch
 
-from neural_dynamics.rollout import rollout_dynamics_batch
+from neural_dynamics.rollout import rollout_dynamics_batch, rollout_dynamics_step
 from mpc.constraints import project_nominal_q_ref_sequence
 from mpc.preview_nominal import nominal_command, nominal_window
 from mpc.asap_shared import LatestSnapshotStore, PlanPacketStore, PlannerResultStore
 from mpc.asap_types import ASAPPlanPacket, PlannerResultEvent, PlanningSnapshot
 from mpc.cem_controller import CEMMPCConfig, CEMMPCController
 from mpc.cost_functions import JointSpaceCostConfig
+from mpc.executable_rollout import ExecutableRolloutEngine
 from mpc.delay_aware import project_executable_command_np, project_packet_command_sequence_np
+from robot_runtime.executable_command import (
+    ExecutableCommandSpec,
+    ExecutableCommandState,
+    step_executable_command_np,
+)
 from mpc.history import future_history_tokens, history_tokens
 from mpc.planner_rollout import LearnedDynamicsPlanner, PlannerRolloutConfig
 from mpc.task_space_cost import ExactTaskSpaceCost, TaskSpaceCostConfig, TorchTaskSpaceCost
@@ -102,6 +108,7 @@ class ASAPPlannerWorker(threading.Thread):
         dq_reference: np.ndarray,
         ddq_reference: np.ndarray,
         *,
+        executable_command_spec: ExecutableCommandSpec | None = None,
         kinematics_model: Any | None = None,
         task_positions_des: np.ndarray | None = None,
         task_rotations_des: np.ndarray | None = None,
@@ -112,6 +119,8 @@ class ASAPPlannerWorker(threading.Thread):
         self.reference = reference.astype(np.float32).copy()
         self.dq_reference = dq_reference.astype(np.float32).copy()
         self.ddq_reference = ddq_reference.astype(np.float32).copy()
+        self.executable_command_spec = executable_command_spec
+        self.executable_rollout_engine: ExecutableRolloutEngine | None = None
         self.kinematics_model = kinematics_model
         self.task_positions_des = (
             None if task_positions_des is None else np.asarray(task_positions_des, dtype=np.float64).copy()
@@ -154,6 +163,7 @@ class ASAPPlannerWorker(threading.Thread):
         self._uncertainty_residual_scale = 1.0
         self._uncertainty_high_risk = False
         self._uncertainty_reference_feedback = False
+        self._zeros = zeros.copy()
 
     def status(self) -> PlannerWorkerStatus:
         with self._status_lock:
@@ -219,7 +229,255 @@ class ASAPPlannerWorker(threading.Thread):
         assert index is not None
         return selected.q_ref_sequence[index].astype(np.float32, copy=True)
 
+    def _packet_requested_q_ref(self, schedule: tuple[ASAPPlanPacket, ...], step: int) -> tuple[np.ndarray, np.ndarray | None] | None:
+        """Return a scheduled request and its planner-expected raw command."""
+        candidates = [
+            packet for packet in schedule
+            if packet.activation_step <= step and packet.index_at(step) is not None
+            and packet.requested_q_ref_sequence.shape == packet.residual_sequence.shape
+        ]
+        if not candidates:
+            return None
+        selected = max(candidates, key=lambda packet: (packet.activation_step, packet.plan_id))
+        index = selected.index_at(step)
+        assert index is not None
+        expected = None
+        if selected.expected_raw_sequence.shape == selected.residual_sequence.shape:
+            expected = selected.expected_raw_sequence[index].astype(np.int64, copy=True)
+        return selected.requested_q_ref_sequence[index].astype(np.float32, copy=True), expected
+
+    def _forecast_anchor_executable(self, snapshot: PlanningSnapshot, bundle: Any, device: torch.device,
+                                    velocity_limit: np.ndarray, acceleration_limit: np.ndarray):
+        """Forecast delay without host synchronization inside the D-step loop."""
+        if self.executable_rollout_engine is None:
+            return self._forecast_anchor_executable_legacy(
+                snapshot, bundle, device, velocity_limit, acceleration_limit
+            )
+        assert self.executable_command_spec is not None
+        delay = int(self.args.anticipation_delay_steps)
+        command_state = snapshot.executable_command_state or ExecutableCommandState(
+            snapshot.previous_q_ref, snapshot.previous_q_ref_velocity
+        )
+        history = torch.as_tensor(
+            history_tokens(snapshot.states_history, snapshot.command_history, bundle.history_len),
+            dtype=torch.float32,
+            device=device,
+        ).unsqueeze(0)
+        if delay <= 0:
+            previous_command = command_state.previous_transmitted_q_ref.copy()
+            previous_velocity = command_state.previous_command_velocity.copy()
+            return (
+                history,
+                history[0, -1, : bundle.state_dim].detach().cpu().numpy().astype(np.float32),
+                previous_command,
+                previous_velocity,
+                snapshot.previous_requested_mpc_residual.copy(),
+                snapshot.previous_requested_mpc_residual_velocity.copy(),
+                snapshot.previous_command_nominal_offset.copy(),
+                snapshot.previous_command_nominal_offset_velocity.copy(),
+                self._zeros.copy(),
+            )
+
+        nominal_rows: list[np.ndarray] = []
+        requested_rows: list[np.ndarray] = []
+        requested_residuals: list[np.ndarray] = []
+        expected_rows: list[np.ndarray] = []
+        expected_mask: list[bool] = []
+        for offset in range(delay):
+            step = snapshot.launch_step + offset
+            nominal = nominal_command(
+                self.reference, step, int(self.args.mpc_preview_nominal_steps)
+            ).astype(np.float32)
+            requested_residual = self._packet_residual(snapshot.packet_schedule, step, requested=True)
+            scheduled = self._packet_requested_q_ref(snapshot.packet_schedule, step)
+            if scheduled is not None:
+                requested, expected_raw = scheduled
+            else:
+                payload = self._packet_residual(snapshot.packet_schedule, step, requested=False)
+                requested = (nominal + payload).astype(np.float32)
+                expected_raw = None
+            nominal_rows.append(nominal)
+            requested_rows.append(np.asarray(requested, dtype=np.float32))
+            requested_residuals.append(requested_residual.astype(np.float32, copy=True))
+            if expected_raw is None:
+                expected_rows.append(np.zeros(self.args.n_joints, dtype=np.int64))
+                expected_mask.append(False)
+            else:
+                expected_rows.append(np.asarray(expected_raw, dtype=np.int64))
+                expected_mask.append(True)
+
+        nominal_tensor = torch.as_tensor(
+            np.stack(nominal_rows), dtype=torch.float32, device=device
+        ).unsqueeze(0)
+        requested_tensor = torch.as_tensor(
+            np.stack(requested_rows), dtype=torch.float32, device=device
+        ).unsqueeze(0)
+        expected_tensor = torch.as_tensor(
+            np.stack(expected_rows), dtype=torch.int64, device=device
+        ).unsqueeze(0)
+        expected_mask_tensor = torch.as_tensor(
+            np.asarray(expected_mask, dtype=bool), dtype=torch.bool, device=device
+        ).unsqueeze(0)
+        previous_q = torch.as_tensor(
+            command_state.previous_transmitted_q_ref,
+            # Keep the hardware command state at the exact float64 precision
+            # used by the NumPy reference projector.  The transmitted/model
+            # tensors remain float32 after quantisation.
+            dtype=torch.float64,
+            device=device,
+        ).view(1, -1)
+        previous_velocity = torch.as_tensor(
+            command_state.previous_command_velocity,
+            dtype=torch.float64,
+            device=device,
+        ).view(1, -1)
+        rollout = self.executable_rollout_engine.run(
+            initial_history=history,
+            requested_q_ref=requested_tensor,
+            previous_q_ref=previous_q,
+            previous_velocity=previous_velocity,
+            fallback_q_ref=nominal_tensor,
+            expected_raw=expected_tensor,
+            expected_raw_mask=expected_mask_tensor,
+            fail_closed=True,
+            exact=True,
+        )
+        # Pack the small CPU-facing diagnostics into one transfer.  The
+        # future history and all CEM inputs remain device-resident.
+        packed = torch.cat(
+            (
+                rollout.pred_states[0].reshape(-1),
+                rollout.q_ref_sequences[0].reshape(-1),
+                rollout.final_velocity[0].reshape(-1),
+                rollout.fallback_mask[0].to(torch.float32),
+            )
+        ).detach().cpu().numpy()
+        state_size = int(bundle.state_dim)
+        joint_size = int(self.args.n_joints)
+        predicted = packed[: (delay + 1) * state_size].reshape(delay + 1, state_size).astype(np.float32)
+        cursor = (delay + 1) * state_size
+        actions = packed[cursor : cursor + delay * joint_size].reshape(delay, joint_size).astype(np.float32)
+        cursor += delay * joint_size
+        previous_command = actions[-1].copy()
+        previous_velocity = packed[cursor : cursor + joint_size].astype(np.float32)
+        fallback = packed[cursor + joint_size :].astype(bool)
+        payload_residuals = [
+            (actions[index] - nominal_rows[index]).astype(np.float32)
+            for index in range(delay)
+        ]
+        command_nominal_offsets = [value.copy() for value in payload_residuals]
+        previous_requested_residual = requested_residuals[-1]
+        previous_requested_residual_velocity = (
+            (requested_residuals[-1] - requested_residuals[-2]) / bundle.control_dt
+            if delay > 1
+            else (requested_residuals[-1] - snapshot.previous_requested_mpc_residual) / bundle.control_dt
+        )
+        previous_command_offset = command_nominal_offsets[-1]
+        previous_command_offset_velocity = (
+            (command_nominal_offsets[-1] - command_nominal_offsets[-2]) / bundle.control_dt
+            if delay > 1
+            else (command_nominal_offsets[-1] - snapshot.previous_command_nominal_offset) / bundle.control_dt
+        )
+        # ``fallback`` is intentionally consumed only as a diagnostic here;
+        # the engine has already advanced using the selected transmitted
+        # command.  Keep the variable to make that fail-closed behavior
+        # explicit when inspecting a trace.
+        del fallback
+        return (
+            rollout.final_history,
+            predicted[-1],
+            previous_command,
+            previous_velocity,
+            previous_requested_residual,
+            previous_requested_residual_velocity.astype(np.float32),
+            previous_command_offset,
+            previous_command_offset_velocity.astype(np.float32),
+            payload_residuals[-1],
+        )
+
+    def _forecast_anchor_executable_legacy(self, snapshot: PlanningSnapshot, bundle: Any, device: torch.device,
+                                           velocity_limit: np.ndarray, acceleration_limit: np.ndarray):
+        """Forecast delay using the same projected/quantised state transition."""
+        assert self.executable_command_spec is not None
+        delay = self.args.anticipation_delay_steps
+        command_state = snapshot.executable_command_state or ExecutableCommandState(
+            snapshot.previous_q_ref, snapshot.previous_q_ref_velocity
+        )
+        history = torch.as_tensor(
+            history_tokens(snapshot.states_history, snapshot.command_history, bundle.history_len),
+            dtype=torch.float32, device=device,
+        ).unsqueeze(0)
+        predicted_state = history[:, -1, :bundle.state_dim]
+        previous_command = command_state.previous_transmitted_q_ref.copy()
+        previous_velocity = command_state.previous_command_velocity.copy()
+        actions: list[np.ndarray] = []
+        predicted_states: list[np.ndarray] = [predicted_state[0].detach().cpu().numpy().astype(np.float32)]
+        command_nominal_offsets: list[np.ndarray] = []
+        payload_residuals: list[np.ndarray] = []
+        requested_residuals: list[np.ndarray] = []
+        for offset in range(delay):
+            step = snapshot.launch_step + offset
+            nominal = nominal_command(self.reference, step, int(self.args.mpc_preview_nominal_steps))
+            requested_residual = self._packet_residual(snapshot.packet_schedule, step, requested=True)
+            scheduled = self._packet_requested_q_ref(snapshot.packet_schedule, step)
+            if scheduled is not None:
+                requested, expected_raw = scheduled
+            else:
+                payload = self._packet_residual(snapshot.packet_schedule, step, requested=False)
+                requested = (nominal + payload).astype(np.float32)
+                expected_raw = None
+            result = step_executable_command_np(
+                requested, predicted_state[0, : self.args.n_joints].detach().cpu().numpy(),
+                command_state, self.executable_command_spec,
+            )
+            if expected_raw is not None and not np.array_equal(result.tx_goal_position_raw, expected_raw):
+                # Match the real runner's fail-closed policy: stale scheduled
+                # MPC commands become the current Direct nominal before the
+                # forecast advances.
+                result = step_executable_command_np(
+                    nominal, predicted_state[0, : self.args.n_joints].detach().cpu().numpy(),
+                    command_state, self.executable_command_spec,
+                )
+                requested = nominal.copy()
+            action = result.transmitted_q_ref.astype(np.float32)
+            next_state, history = rollout_dynamics_step(
+                bundle.model, bundle.normalizer, bundle.model_type, history, predicted_state,
+                torch.as_tensor(action, dtype=torch.float32, device=device).view(1, -1),
+                bundle.state_dim, bundle.target_mode, bundle.control_dt,
+            )
+            predicted_state = next_state
+            command_state = result.next_state
+            previous_command, previous_velocity = action, result.command_velocity
+            actions.append(action)
+            predicted_states.append(predicted_state[0].detach().cpu().numpy().astype(np.float32))
+            payload_residuals.append((action - nominal).astype(np.float32))
+            requested_residuals.append(requested_residual)
+            command_nominal_offsets.append((action - nominal).astype(np.float32))
+        action_array = np.stack(actions).astype(np.float32)
+        predicted = np.stack(predicted_states).astype(np.float32)
+        future_history = future_history_tokens(
+            snapshot.states_history, snapshot.command_history, predicted, action_array, bundle.history_len
+        )
+        previous_requested_residual = requested_residuals[-1] if requested_residuals else self._zeros
+        previous_requested_residual_velocity = (
+            (requested_residuals[-1] - requested_residuals[-2]) / bundle.control_dt
+            if delay > 1 else (previous_requested_residual - snapshot.previous_requested_mpc_residual) / bundle.control_dt
+        )
+        previous_command_offset = command_nominal_offsets[-1] if command_nominal_offsets else self._zeros
+        previous_command_offset_velocity = (
+            (command_nominal_offsets[-1] - command_nominal_offsets[-2]) / bundle.control_dt
+            if delay > 1 else (previous_command_offset - snapshot.previous_command_nominal_offset) / bundle.control_dt
+        )
+        return (
+            torch.as_tensor(future_history, dtype=torch.float32, device=device), predicted[-1],
+            previous_command, previous_velocity, previous_requested_residual,
+            previous_requested_residual_velocity.astype(np.float32), previous_command_offset,
+            previous_command_offset_velocity.astype(np.float32), payload_residuals[-1] if payload_residuals else self._zeros,
+        )
+
     def _forecast_anchor(self, snapshot: PlanningSnapshot, bundle: Any, device: torch.device, velocity_limit: np.ndarray, acceleration_limit: np.ndarray) -> tuple[torch.Tensor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if self.executable_command_spec is not None:
+            return self._forecast_anchor_executable(snapshot, bundle, device, velocity_limit, acceleration_limit)
         delay = self.args.anticipation_delay_steps
         previous_command, previous_velocity = snapshot.previous_q_ref.copy(), snapshot.previous_q_ref_velocity.copy()
         actions: list[np.ndarray] = []
@@ -317,6 +575,17 @@ class ASAPPlannerWorker(threading.Thread):
                     )
             self.control_dt = float(bundle.control_dt)
             self.history_len = int(bundle.history_len)
+            if self.executable_command_spec is not None:
+                self.executable_rollout_engine = ExecutableRolloutEngine(
+                    model=bundle.model,
+                    normalizer=bundle.normalizer,
+                    model_type=bundle.model_type,
+                    state_dim=bundle.state_dim,
+                    target_mode=bundle.target_mode,
+                    control_dt=bundle.control_dt,
+                    spec=self.executable_command_spec,
+                    backend=getattr(self.args, "executable_rollout_backend", "auto"),
+                )
             parse = self.api["_parse_joint_vector"]
             velocity_limit = parse(self.args.command_velocity_physical_limit, self.args.n_joints, "command_velocity_physical_limit")
             acceleration_limit = parse(self.args.command_acceleration_physical_limit, self.args.n_joints, "command_acceleration_physical_limit")
@@ -398,8 +667,11 @@ class ASAPPlannerWorker(threading.Thread):
                     >= self.reference.shape[0]
                 ):
                     continue
+                worker_pickup_ns = time.perf_counter_ns()
                 last_launch_ns = time.perf_counter_ns()
+                forecast_start_ns = time.perf_counter_ns()
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_requested_residual, anchor_requested_residual_velocity, anchor_command_nominal_offset, anchor_command_nominal_offset_velocity, anchor_payload_residual = self._forecast_anchor(snapshot, bundle, device, velocity_limit, acceleration_limit)
+                forecast_end_ns = time.perf_counter_ns()
                 anchor = snapshot.launch_step + self.args.anticipation_delay_steps
                 future_q = t(self.reference[anchor + 1:anchor + 1 + self.args.horizon])
                 planner_nominal = t(
@@ -407,7 +679,11 @@ class ASAPPlannerWorker(threading.Thread):
                         self.reference, anchor, self.args.horizon, int(self.args.mpc_preview_nominal_steps)
                     )
                 )
-                if self.args.nominal_command_semantics == "executable_ik":
+                # The canonical executable state machine below owns all
+                # velocity/acceleration/braking projection.  Applying the
+                # legacy projector here would project the nominal twice and
+                # break zero-residual parity with Direct IK.
+                if self.args.nominal_command_semantics == "executable_ik" and self.executable_command_spec is None:
                     planner_nominal = project_nominal_q_ref_sequence(
                         planner_nominal, previous_q_ref=t(anchor_command), previous_q_ref_velocity=t(anchor_velocity),
                         control_dt=bundle.control_dt, velocity_limit=t(velocity_limit), acceleration_limit=t(acceleration_limit),
@@ -446,6 +722,16 @@ class ASAPPlannerWorker(threading.Thread):
                     else self.task_rotations_des[
                         anchor + 1 : anchor + 1 + self.args.horizon
                     ],
+                    executable_command_spec=self.executable_command_spec,
+                    executable_command_state=(
+                        ExecutableCommandState(
+                            np.asarray(anchor_command, dtype=np.float64),
+                            np.asarray(anchor_velocity, dtype=np.float64),
+                        )
+                        if self.executable_command_spec is not None
+                        else None
+                    ),
+                    executable_rollout_engine=self.executable_rollout_engine,
                 )
                 if controller is None:
                     controller = CEMMPCController(CEMMPCConfig(horizon=self.args.horizon, action_dim=self.args.n_joints, decision_horizon=self.args.horizon if self.args.residual_parameterization == "full" else self.args.residual_control_points, num_samples=self.args.num_samples, num_elites=self.args.num_elites, elite_ratio=self.args.elite_ratio, cem_iters=self.args.cem_iters, init_std=self.args.init_std, min_std=self.args.min_std, smoothing_alpha=self.args.smoothing_alpha, temporal_noise_alpha=self.args.temporal_noise_alpha, reset_std_each_step=self.args.reset_std_each_step, uniform_sample_ratio=self.args.uniform_sample_ratio, force_baseline_candidate=True, execute=self.args.cem_execute, seed=self.args.seed, device=str(device), selection_validation="exact_final_pool" if self.args.planner_projection_strategy == "two_stage" else "none", stage_one_task_mode=self.args.stage_one_task_space_cost), planner, self.joint_low, self.joint_high)
@@ -465,7 +751,9 @@ class ASAPPlannerWorker(threading.Thread):
                 if reset_mean_anchor:
                     controller.reset()
                     mean_anchor_step = None
+                cem_start_ns = time.perf_counter_ns()
                 result = controller.plan(anchor_state, anchor_command, warm_start_shift_steps=shift)
+                cem_end_ns = time.perf_counter_ns()
                 mean_anchor_step = mean_anchor_after_plan(mean_anchor_step, anchor, result.failure)
                 planning_time = float(result.planning_time)
                 uncertainty_score = float("nan")
@@ -549,45 +837,95 @@ class ASAPPlannerWorker(threading.Thread):
                         if uncertainty_residual_scale < 1.0:
                             residual_was_modified = True
                             selection_mode = "uncertainty_limited"
+                postprocess_start_ns = time.perf_counter_ns()
                 planner_nominal_np = planner_nominal.detach().cpu().numpy().astype(np.float32)
-                if residual_was_modified:
-                    # Keep the post-CEM safety decision and its prediction in
-                    # lockstep.  A scaled/fallback residual must not reuse the
-                    # state rollout belonging to the pre-gate candidate.
+                requested_absolute_sequence = np.asarray(
+                    planner_nominal_np + residual_sequence, dtype=np.float32
+                )
+                expected_raw_sequence = np.empty((0, 0), dtype=np.int64)
+                if not result.failure and self.executable_command_spec is not None:
+                    # Re-evaluate the selected physical residual after any
+                    # uncertainty gate/scale.  This makes the packet request,
+                    # prediction, transmitted q_ref and expected raw
+                    # Goal_Position one exact state-machine transition.
+                    if residual_was_modified:
+                        selected_norm_tensor = planner.residual_parameterizer().compress(
+                            torch.as_tensor(
+                                residual_sequence / np.asarray(residual_max, dtype=np.float32),
+                                dtype=torch.float32,
+                                device=device,
+                            )
+                        )
+                    else:
+                        selected_norm_tensor = torch.as_tensor(
+                            result.selected_control_points,
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                    if residual_was_modified:
+                        exact = planner.evaluate_exact(selected_norm_tensor.unsqueeze(0))
+                        q_ref_sequence = exact["q_ref_sequences"][0].detach().cpu().numpy().astype(np.float32)
+                        predicted_sequence = exact["pred_states"][0].detach().cpu().numpy().astype(np.float32)
+                        requested_absolute_sequence = exact["requested_absolute_q_ref_sequences"][0].detach().cpu().numpy().astype(np.float32)
+                        expected_raw_sequence = exact["expected_raw_sequences"][0].detach().cpu().numpy().astype(np.int64)
+                    else:
+                        selected_expected_raw = getattr(result, "selected_expected_raw_sequence", np.empty((0, 0), dtype=np.int64))
+                        predicted_sequence = result.selected_predicted_state_sequence.copy().astype(np.float32)
+                        if selected_expected_raw.shape == result.selected_q_ref_sequence.shape:
+                            # Two-stage CEM already selected this trajectory
+                            # from the exact final pool.  Carry its raw counts
+                            # through the result instead of replaying the
+                            # projector a second time in the worker.
+                            q_ref_sequence = result.selected_q_ref_sequence.copy().astype(np.float32)
+                            expected_raw_sequence = selected_expected_raw.copy().astype(np.int64)
+                        else:
+                            # Compatibility path for full/legacy planners
+                            # that did not run an exact final pool.
+                            exact_q, exact_raw = planner.exact_executable_command_sequence(
+                                torch.as_tensor(requested_absolute_sequence, dtype=torch.float32, device=device).unsqueeze(0),
+                                torch.as_tensor(predicted_sequence, dtype=torch.float32, device=device).unsqueeze(0),
+                            )
+                            q_ref_sequence = exact_q[0].detach().cpu().numpy().astype(np.float32)
+                            expected_raw_sequence = exact_raw[0].detach().cpu().numpy().astype(np.int64)
+                            if not np.array_equal(q_ref_sequence, result.selected_q_ref_sequence.astype(np.float32)):
+                                exact = planner.evaluate_exact(selected_norm_tensor.unsqueeze(0))
+                                q_ref_sequence = exact["q_ref_sequences"][0].detach().cpu().numpy().astype(np.float32)
+                                predicted_sequence = exact["pred_states"][0].detach().cpu().numpy().astype(np.float32)
+                                requested_absolute_sequence = exact["requested_absolute_q_ref_sequences"][0].detach().cpu().numpy().astype(np.float32)
+                                expected_raw_sequence = exact["expected_raw_sequences"][0].detach().cpu().numpy().astype(np.int64)
+                elif residual_was_modified:
+                    # Legacy/simulation path: keep the existing NumPy
+                    # projector and prediction in lockstep.
                     q_ref_sequence, _ = project_packet_command_sequence_np(
-                        planner_nominal_np,
-                        residual_sequence,
-                        anchor_command,
-                        anchor_velocity,
-                        self.joint_low,
-                        self.joint_high,
-                        self.args.joint_limit_margin,
-                        velocity_limit,
-                        acceleration_limit,
-                        bundle.control_dt,
+                        planner_nominal_np, residual_sequence, anchor_command,
+                        anchor_velocity, self.joint_low, self.joint_high,
+                        self.args.joint_limit_margin, velocity_limit,
+                        acceleration_limit, bundle.control_dt,
                     )
                     predicted_sequence = rollout_dynamics_batch(
-                        model=bundle.model,
-                        normalizer=bundle.normalizer,
-                        model_type=bundle.model_type,
-                        initial_history=future_history,
-                        future_q_ref=torch.as_tensor(
-                            q_ref_sequence, dtype=torch.float32, device=device
-                        ).unsqueeze(0),
-                        state_dim=bundle.state_dim,
-                        target_mode=bundle.target_mode,
+                        model=bundle.model, normalizer=bundle.normalizer,
+                        model_type=bundle.model_type, initial_history=future_history,
+                        future_q_ref=torch.as_tensor(q_ref_sequence, dtype=torch.float32, device=device).unsqueeze(0),
+                        state_dim=bundle.state_dim, target_mode=bundle.target_mode,
                         control_dt=bundle.control_dt,
                     )[0].detach().cpu().numpy().astype(np.float32)
                 else:
                     # This is the exact projected command sequence selected by
-                    # the final CEM evaluation (including the exact final
-                    # pool in the two-stage planner).
+                    # the final CEM evaluation (including the exact final pool
+                    # in the two-stage planner).
                     q_ref_sequence = result.selected_q_ref_sequence.copy().astype(np.float32)
                 projected_offset_sequence = (q_ref_sequence - planner_nominal_np).astype(np.float32)
                 planned_projection_offset = (
                     q_ref_sequence - (planner_nominal_np + residual_sequence)
                 ).astype(np.float32)
                 publish_ns = time.perf_counter_ns()
+                phase_diagnostics = dict(result.candidate_diagnostics)
+                phase_diagnostics.update({
+                    "worker_queue_wait_ms": (worker_pickup_ns - snapshot.launch_time_ns) / 1e6,
+                    "anchor_forecast_ms": (forecast_end_ns - forecast_start_ns) / 1e6,
+                    "cem_search_wall_ms": (cem_end_ns - cem_start_ns) / 1e6,
+                    "packet_postprocess_ms": (publish_ns - postprocess_start_ns) / 1e6,
+                })
                 activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
                 late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))
                 reason_code, reason_detail = split_failure_reason(result.failure_reason)
@@ -640,7 +978,7 @@ class ASAPPlannerWorker(threading.Thread):
                     candidate_count=int(result.candidate_count),
                     valid_candidate_count=int(result.valid_candidate_count),
                     selection_mode=str(result.selection_mode),
-                    candidate_diagnostics=dict(result.candidate_diagnostics),
+                    candidate_diagnostics=phase_diagnostics,
                 ))
                 if result.failure or late_dropped:
                     continue
@@ -662,6 +1000,8 @@ class ASAPPlannerWorker(threading.Thread):
                     planning_time_s=planning_time, anchor_state=anchor_state.copy(),
                     selection_mode=selection_mode, selected_cost=float(result.selected_cost),
                     q_ref_sequence=q_ref_sequence,
+                    requested_q_ref_sequence=requested_absolute_sequence,
+                    expected_raw_sequence=expected_raw_sequence,
                     requested_residual_sequence=requested_residual_sequence,
                     planned_projection_offset_sequence=planned_projection_offset,
                     uncertainty_gate=uncertainty_gate,

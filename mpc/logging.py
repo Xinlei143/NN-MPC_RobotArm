@@ -159,6 +159,15 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
         "actual_update_rate_hz": planner_rate,
         "late_drop_count": planner_late_drop_count,
         "late_drop_rate": float(planner_late_drop_count / planner_solve_count) if planner_solve_count else float("nan"),
+        "expected_raw_mismatch_count": int(
+            np.sum(~np.asarray(arrays.get("planner_expected_raw_match", np.ones(0, dtype=bool)), dtype=bool))
+        ),
+        "live_reproject_count": int(
+            np.sum(np.asarray(arrays.get("planner_raw_mismatch_live_reproject", np.zeros(0, dtype=bool)), dtype=bool))
+        ),
+        "direct_fallback_count": int(
+            np.sum(np.asarray(arrays.get("planner_raw_mismatch_direct_fallback", np.zeros(0, dtype=bool)), dtype=bool))
+        ),
         "failure_count": int(np.asarray(arrays.get("planner_failure_count", 0)).reshape(-1)[0]),
         "packet_expiration_count": int(np.asarray(arrays.get("packet_expiration_count", 0)).reshape(-1)[0]),
         "dynamics_backend": str(np.asarray(arrays.get("dynamics_backend", "not_applicable")).reshape(-1)[0]),
@@ -204,6 +213,10 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "actual_control_period_s": _finite_stats(np.asarray(arrays.get("actual_control_period_s", np.empty(0)))),
             "control_wakeup_lateness_s": _finite_stats(np.asarray(arrays.get("control_wakeup_lateness_s", np.empty(0)))),
             "control_start_jitter_s": _finite_stats(np.asarray(arrays.get("control_start_jitter_s", np.empty(0)))),
+            "planner_worker_queue_wait_ms": _finite_stats(np.asarray(arrays.get("planner_worker_queue_wait_ms", np.empty(0)))),
+            "planner_anchor_forecast_ms": _finite_stats(np.asarray(arrays.get("planner_anchor_forecast_ms", np.empty(0)))),
+            "planner_cem_search_wall_ms": _finite_stats(np.asarray(arrays.get("planner_cem_search_wall_ms", np.empty(0)))),
+            "planner_packet_postprocess_ms": _finite_stats(np.asarray(arrays.get("planner_packet_postprocess_ms", np.empty(0)))),
         },
         "replanning": replanning,
         "planner": planner,

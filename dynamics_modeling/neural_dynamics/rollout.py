@@ -236,3 +236,54 @@ def rollout_dynamics_batch(
             )
         )
     return torch.cat(chunks, dim=0)
+
+
+def rollout_dynamics_step(
+    model: nn.Module,
+    normalizer: StandardNormalizer,
+    model_type: str,
+    history: torch.Tensor,
+    state: torch.Tensor,
+    action: torch.Tensor,
+    state_dim: int,
+    target_mode: str,
+    control_dt: float,
+    *,
+    track_grad: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Advance one learned-dynamics step and return ``(state, history)``.
+
+    This is the single-step primitive used when executable command projection
+    must be interleaved with rollout prediction.  ``history`` follows the
+    same ``[x_t, u_t]`` placeholder convention as :func:`rollout_dynamics_batch`.
+    """
+    history = _as_batched_history(history)
+    if state.ndim != 2 or action.ndim != 2 or state.shape[0] != action.shape[0]:
+        raise ValueError("state and action must have matching [batch, dim] shapes")
+    with torch.set_grad_enabled(track_grad):
+        if model_type == "mlp":
+            model_input = normalizer.normalize_single_input(state, action)
+        else:
+            history = history.clone()
+            history[:, -1, :state_dim] = state
+            history[:, -1, state_dim:] = action
+            model_input = normalizer.normalize_sequence_input(history, state_dim)
+        pred_target = normalizer.denormalize_delta(model(model_input))
+        next_state = reconstruct_next_state(state, pred_target, target_mode, control_dt, state_dim // 2)
+        if model_type == "mlp":
+            next_history = history
+        elif not track_grad:
+            # CEM inference never needs the pre-step history after the model
+            # call.  Reuse the cloned buffer instead of allocating a second
+            # full [batch, history, token] tensor through torch.cat().  Keep
+            # the autograd path unchanged because in-place history updates
+            # would invalidate saved tensors during rollout-loss training.
+            tail = history[:, 1:].clone()
+            history[:, :-1] = tail
+            history[:, -1, :state_dim] = next_state
+            history[:, -1, state_dim:] = action
+            next_history = history
+        else:
+            next_entry = torch.cat([next_state, action], dim=-1).unsqueeze(1)
+            next_history = torch.cat([history[:, 1:], next_entry], dim=1)
+    return next_state, next_history

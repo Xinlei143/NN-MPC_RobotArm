@@ -8,6 +8,13 @@ from typing import Any, Callable
 import numpy as np
 
 from robot_runtime.config import SO101HardwareConfig, file_sha256
+from robot_runtime.executable_command import (
+    ExecutableCommandResult,
+    ExecutableCommandSpec,
+    ExecutableCommandState,
+    make_executable_command_spec,
+    step_executable_command_np,
+)
 from robot_runtime.interfaces import CommandResult, RobotState
 from robot_runtime.safety import CommandProjector
 from robot_runtime.state_estimation import CausalVelocityEstimator
@@ -30,7 +37,11 @@ def degrees_to_raw(degrees: np.ndarray, range_min: np.ndarray, range_max: np.nda
     value = np.asarray(degrees, dtype=np.float64)
     low = np.asarray(range_min, dtype=np.float64)
     high = np.asarray(range_max, dtype=np.float64)
-    return ((value * ENCODER_MAX / 360.0) + (low + high) / 2.0).astype(np.int64)
+    # Keep the public conversion identical to the canonical executable
+    # command state machine.  ``astype(int)`` floors the positive raw value
+    # and introduces a one-count directional bias; the motor command path
+    # uses nearest-count quantisation instead.
+    return np.rint((value * ENCODER_MAX / 360.0) + (low + high) / 2.0).astype(np.int64)
 
 
 def raw_to_degrees(raw: np.ndarray, range_min: np.ndarray, range_max: np.ndarray) -> np.ndarray:
@@ -62,6 +73,10 @@ class SO101Backend:
         self._read_only = False
         self._history_generation = 0
         self._estimator = CausalVelocityEstimator(self.n_joints, 4.0)
+        # ``CommandProjector`` instances are retained as immutable envelope
+        # holders for existing safety/configuration APIs.  They are not used
+        # to execute a command; every normal send goes through the canonical
+        # executable-command state machine below.
         self._projector = CommandProjector(config.joint_low, config.joint_high,
                                            config.command_velocity_limit, config.command_acceleration_limit,
                                            config.relative_target_limit, config.control_dt)
@@ -84,6 +99,7 @@ class SO101Backend:
         self._workspace_projector: CommandProjector | None = None
         self._last_state: RobotState | None = None
         self._last_command = config.home_q_ctrl.astype(np.float32).copy()
+        self._command_state = ExecutableCommandState.anchored(self._last_command)
         self._gripper_raw: int | None = config.gripper_hold_raw
         self._last_goal_readback_ns = 0
         self._delivery_uncertain = False
@@ -95,6 +111,48 @@ class SO101Backend:
     @property
     def hardware_startup_envelope_configured(self) -> bool:
         return self._hardware_projector is not None
+
+    def executable_command_spec(self, envelope: str = "hardware") -> ExecutableCommandSpec:
+        """Return the exact runtime command spec used by the selected envelope.
+
+        This is intentionally created from the loaded motor calibration rather
+        than from ``configs/robots/so101.yaml``.  The latter is a dynamics
+        model identity, not the encoder map used on the wire.
+        """
+        if self.follower is None:
+            raise RuntimeError("connect the backend before requesting executable command spec")
+        cal_low, cal_high = self._calibration_arrays()
+        if envelope == "hardware":
+            low, high = self.config.hardware_joint_low, self.config.hardware_joint_high
+            if low is None or high is None:
+                raise RuntimeError("hardware envelope is not configured")
+            relative = np.asarray(high, dtype=np.float64) - np.asarray(low, dtype=np.float64)
+        elif envelope == "workspace":
+            if self._workspace_projector is None:
+                raise RuntimeError("workspace projector is not configured")
+            low, high = self._workspace_projector.low, self._workspace_projector.high
+            relative = np.asarray(high, dtype=np.float64) - np.asarray(low, dtype=np.float64)
+        elif envelope == "experiment":
+            low, high = self.config.joint_low, self.config.joint_high
+            relative = self.config.relative_target_limit
+        else:
+            raise ValueError("envelope must be 'experiment', 'hardware', or 'workspace'")
+        return make_executable_command_spec(
+            joint_low=np.asarray(low, dtype=np.float64), joint_high=np.asarray(high, dtype=np.float64),
+            velocity_limit=self.config.command_velocity_limit,
+            acceleration_limit=self.config.command_acceleration_limit,
+            relative_limit=relative,
+            raw_low=self.config.raw_low[:self.n_joints], raw_high=self.config.raw_high[:self.n_joints],
+            calibration_low=cal_low[:self.n_joints], calibration_high=cal_high[:self.n_joints],
+            control_dt=self.control_dt, braking=True,
+        )
+
+    def executable_command_state(self) -> ExecutableCommandState:
+        """Copy the command state consumed by the next projection step."""
+        return ExecutableCommandState(
+            self._command_state.previous_transmitted_q_ref.copy(),
+            self._command_state.previous_command_velocity.copy(),
+        )
 
     @staticmethod
     def _make_follower(config: SO101HardwareConfig) -> Any:
@@ -141,6 +199,13 @@ class SO101Backend:
         low, high = self._calibration_arrays()
         return np.deg2rad(raw_to_degrees(values[:self.n_joints], low[:self.n_joints], high[:self.n_joints])).astype(np.float32)
 
+    def _anchor_executable_state_from_raw(self, raw: np.ndarray) -> np.ndarray:
+        """Reset the canonical state after an explicitly raw, bypass write."""
+        q = self.q_ctrl_from_raw(np.asarray(raw, dtype=np.int64))
+        self._last_command = q.copy()
+        self._command_state = ExecutableCommandState.anchored(q)
+        return q
+
     def _write_raw_goal(self, raw: np.ndarray, *, tick_index: int, requested_q: np.ndarray,
                         flags: tuple[str, ...] = ()) -> CommandResult:
         """Write an already validated six-motor raw target without projection."""
@@ -158,8 +223,8 @@ class SO101Backend:
         end = time.perf_counter_ns()
         q = np.asarray(requested_q, dtype=np.float32)
         if success:
-            self._last_command = q.copy()
             self._last_tx_raw = values.copy()
+            q = self._anchor_executable_state_from_raw(values)
         return CommandResult(q.copy(), q.copy(), q.copy(), values.copy(), success, int(tick_index),
                              start, end, flags, self._delivery_uncertain,
                              {"last_matching_goal_readback_tick": self._last_matching_readback_tick})
@@ -406,23 +471,94 @@ class SO101Backend:
             samples.append(np.asarray([values[name] for name in ALL_MOTORS], dtype=np.float64))
         return samples
 
-    def send_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0) -> CommandResult:
+    def send_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0,
+                           expected_raw: np.ndarray | None = None,
+                           fallback_q_ref: np.ndarray | None = None,
+                           strict_expected_raw: bool = False) -> CommandResult:
         self._assert_owner()
         if self._read_only:
             raise RuntimeError("read-only SO101 connection cannot send joint targets")
         if self._last_state is None or self.bus is None or not self._connected:
             raise RuntimeError("read_state must succeed before sending a target")
-        return self._send_joint_targets(q_ref, tick_index=tick_index, projector=self._projector)
+        return self._send_joint_targets(q_ref, tick_index=tick_index, envelope="experiment",
+                                        expected_raw=expected_raw, fallback_q_ref=fallback_q_ref,
+                                        strict_expected_raw=strict_expected_raw)
 
-    def _send_joint_targets(self, q_ref: np.ndarray, *, tick_index: int, projector: CommandProjector) -> CommandResult:
+    def _send_joint_targets(self, q_ref: np.ndarray, *, tick_index: int,
+                            projector: CommandProjector | None = None,
+                            envelope: str | None = None,
+                            expected_raw: np.ndarray | None = None,
+                            fallback_q_ref: np.ndarray | None = None,
+                            strict_expected_raw: bool = False) -> CommandResult:
+        """Project and transmit one command using the live executable state.
+
+        ``expected_raw`` is produced by the planner's delayed-state forecast
+        and is therefore an audit value.  The default path always transmits
+        the live-state canonical projection; callers that are explicitly
+        auditing stale-packet rejection may opt into the old fail-closed
+        nominal fallback with ``strict_expected_raw=True``.
+        """
         assert self._last_state is not None and self.bus is not None and self._connected
         requested = np.asarray(q_ref, dtype=np.float32)
-        projected = projector.project(requested, self._last_state.q_ctrl, self._last_command)
+        if envelope is None:
+            if projector is self._hardware_projector:
+                envelope = "hardware"
+            elif projector is self._workspace_projector:
+                envelope = "workspace"
+            else:
+                envelope = "experiment"
+        spec = self.executable_command_spec(envelope)
+        state = self._command_state
+        projected = step_executable_command_np(requested, self._last_state.q_ctrl, state, spec)
+        selected = projected
+        mismatch = expected_raw is not None and not np.array_equal(
+            np.asarray(expected_raw, dtype=np.int64).reshape(-1), projected.tx_goal_position_raw
+        )
+        mismatch_reprojected = False
+        if mismatch and strict_expected_raw:
+            if fallback_q_ref is None:
+                raise RuntimeError("planner expected raw command does not match executable projection")
+            fallback = step_executable_command_np(
+                np.asarray(fallback_q_ref, dtype=np.float32), self._last_state.q_ctrl, state, spec
+            )
+            selected = ExecutableCommandResult(
+                requested_q_ref=projected.requested_q_ref,
+                projected_q_ref=fallback.projected_q_ref,
+                transmitted_q_ref=fallback.transmitted_q_ref,
+                tx_goal_position_raw=fallback.tx_goal_position_raw,
+                command_velocity=fallback.command_velocity,
+                projection_flags=tuple((*projected.projection_flags,
+                                        "planner_raw_mismatch_direct_fallback",
+                                        *fallback.projection_flags)),
+                next_state=fallback.next_state,
+            )
+        elif mismatch:
+            # ``expected_raw`` was generated against the planner's forecast
+            # state.  A delayed packet is executed against the live measured
+            # state and the backend's transmitted-command state, so an exact
+            # raw match is not physically knowable at planning time.  Re-run
+            # the canonical state machine on the live state (``projected``)
+            # and keep the mismatch as an explicit diagnostic.  Treating every
+            # one-count forecast difference as a Direct fallback would discard
+            # most MPC packets and create the very command/model mismatch this
+            # state machine is meant to remove.
+            mismatch_reprojected = True
+            projected = ExecutableCommandResult(
+                requested_q_ref=projected.requested_q_ref,
+                projected_q_ref=projected.projected_q_ref,
+                transmitted_q_ref=projected.transmitted_q_ref,
+                tx_goal_position_raw=projected.tx_goal_position_raw,
+                command_velocity=projected.command_velocity,
+                projection_flags=tuple((*projected.projection_flags,
+                                        "planner_raw_mismatch_live_reproject")),
+                next_state=projected.next_state,
+            )
+            selected = projected
         cal_low, cal_high = self._calibration_arrays()
-        arm_raw = degrees_to_raw(np.rad2deg(projected.q_ref), cal_low[:5], cal_high[:5])
+        arm_raw = selected.tx_goal_position_raw.astype(np.int64)
         raw = np.concatenate((arm_raw, [int(self._gripper_raw)]))
         raw = np.clip(raw, self.config.raw_low, self.config.raw_high).astype(np.int64)
-        quantized = np.deg2rad(raw_to_degrees(raw[:5], cal_low[:5], cal_high[:5])).astype(np.float32)
+        quantized = selected.transmitted_q_ref.copy()
         goals = {name: int(value) for name, value in zip(ALL_MOTORS, raw, strict=True)}
         start = time.perf_counter_ns()
         success = True
@@ -434,9 +570,26 @@ class SO101Backend:
         if success:
             self._last_command = quantized.copy()
             self._last_tx_raw = raw.copy()
-        return CommandResult(requested.copy(), projected.q_ref.copy(), quantized, raw, success, int(tick_index),
-                             start, end, projected.flags, self._delivery_uncertain,
-                             {"last_matching_goal_readback_tick": self._last_matching_readback_tick})
+            self._command_state = selected.next_state
+        diagnostics = {
+            "last_matching_goal_readback_tick": self._last_matching_readback_tick,
+            "command_velocity": selected.command_velocity.copy(),
+            "planner_expected_raw": (
+                np.asarray(expected_raw, dtype=np.int64).copy()
+                if expected_raw is not None else np.full(self.n_joints, -1, dtype=np.int64)
+            ),
+            "planner_expected_raw_match": not mismatch,
+            "planner_raw_mismatch_direct_fallback": bool(mismatch and strict_expected_raw),
+            "planner_raw_mismatch_live_reproject": bool(mismatch_reprojected),
+            "fallback_q_ref": (
+                np.asarray(fallback_q_ref, dtype=np.float32).copy()
+                if mismatch and strict_expected_raw and fallback_q_ref is not None
+                else np.full(self.n_joints, np.nan, dtype=np.float32)
+            ),
+            "executable_envelope": envelope,
+        }
+        return CommandResult(requested.copy(), selected.projected_q_ref.copy(), quantized, raw, success, int(tick_index),
+                             start, end, selected.projection_flags, self._delivery_uncertain, diagnostics)
 
     def startup_to_home(self, duration_s: float = 3.0, *, convergence_timeout_s: float = 15.0,
                         home_tolerance_rad: float = np.deg2rad(1.0),
@@ -465,7 +618,7 @@ class SO101Backend:
 
         while not home_converged(settled) and time.monotonic() < deadline:
             result = self._send_joint_targets(self.config.home_q_ctrl, tick_index=tick,
-                                                projector=self._hardware_projector)
+                                                envelope="hardware")
             if not result.tx_local_success:
                 raise RuntimeError("startup hold write failed")
             time.sleep(self.control_dt)
@@ -498,6 +651,7 @@ class SO101Backend:
         # ``connect`` preloads raw motor targets; mirror that in the software
         # projector so its first acceleration-limited command is continuous.
         self._last_command = state.q_ctrl.copy()
+        self._command_state = ExecutableCommandState.anchored(self._last_command)
         self._hardware_projector.reset()
         if self._workspace_projector is not None:
             self._workspace_projector.reset()
@@ -532,8 +686,12 @@ class SO101Backend:
         )
         self._workspace_projector.reset()
         self._last_command = self._last_state.q_ctrl.copy() if self._last_state is not None else self._last_command
+        self._command_state = ExecutableCommandState.anchored(self._last_command)
 
-    def send_hardware_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0) -> CommandResult:
+    def send_hardware_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0,
+                                    expected_raw: np.ndarray | None = None,
+                                    fallback_q_ref: np.ndarray | None = None,
+                                    strict_expected_raw: bool = False) -> CommandResult:
         """Send a target under the wide verified startup envelope only."""
         self._assert_owner()
         if self._read_only:
@@ -542,9 +700,14 @@ class SO101Backend:
             raise RuntimeError("hardware startup envelope is not configured")
         if self._last_state is None:
             raise RuntimeError("prepare_hardware_motion or read_state must run before hardware targets")
-        return self._send_joint_targets(q_ref, tick_index=tick_index, projector=self._hardware_projector)
+        return self._send_joint_targets(q_ref, tick_index=tick_index, envelope="hardware",
+                                        expected_raw=expected_raw, fallback_q_ref=fallback_q_ref,
+                                        strict_expected_raw=strict_expected_raw)
 
-    def send_workspace_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0) -> CommandResult:
+    def send_workspace_joint_targets(self, q_ref: np.ndarray, *, tick_index: int = 0,
+                                     expected_raw: np.ndarray | None = None,
+                                     fallback_q_ref: np.ndarray | None = None,
+                                     strict_expected_raw: bool = False) -> CommandResult:
         """Send a target under the workspace-bounded data-collection envelope.
 
         Identical to the hardware envelope except the projector clips at the
@@ -560,7 +723,9 @@ class SO101Backend:
             raise RuntimeError("workspace collection envelope is not configured")
         if self._last_state is None:
             raise RuntimeError("prepare_hardware_motion or read_state must run before workspace targets")
-        return self._send_joint_targets(q_ref, tick_index=tick_index, projector=self._workspace_projector)
+        return self._send_joint_targets(q_ref, tick_index=tick_index, envelope="workspace",
+                                        expected_raw=expected_raw, fallback_q_ref=fallback_q_ref,
+                                        strict_expected_raw=strict_expected_raw)
 
     def move_selected_joints_to_configuration(self, target_q: np.ndarray, active_mask: np.ndarray,
                                                duration_s: float) -> None:
@@ -620,8 +785,8 @@ class SO101Backend:
             success = False
         end = time.perf_counter_ns()
         if success:
-            self._last_command = requested.copy()
             self._last_tx_raw = raw.copy()
+            self._anchor_executable_state_from_raw(raw)
         return CommandResult(requested.copy(), requested.copy(), requested.copy(), raw, success, int(tick_index),
                              start, end, ("b2_manual_raw_safety_jog",), self._delivery_uncertain,
                              {"b2_only": True, "last_matching_goal_readback_tick": self._last_matching_readback_tick})
@@ -668,8 +833,8 @@ class SO101Backend:
             success = False
         end = time.perf_counter_ns()
         if success:
-            self._last_command = q.copy()
             self._last_tx_raw = raw.copy()
+            self._anchor_executable_state_from_raw(raw)
         return CommandResult(q.copy(), q.copy(), q.copy(), raw.copy(), success, int(tick_index),
                              start, end, (), self._delivery_uncertain,
                              {"benchmark_echo": True,
@@ -682,9 +847,8 @@ class SO101Backend:
         if envelope == "hardware":
             if self._hardware_projector is None:
                 raise RuntimeError("hardware startup envelope is not configured")
-            projector = self._hardware_projector
         elif envelope == "experiment":
-            projector = self._projector
+            pass
         else:
             raise ValueError("envelope must be 'hardware' or 'experiment'")
         start = self._last_state.q_ctrl.copy()
@@ -703,7 +867,7 @@ class SO101Backend:
             state = self.read_state(tick_index=index)
             blend = 0.5 - 0.5 * np.cos(np.pi * index / steps)
             result = self._send_joint_targets(start + blend * (target - start), tick_index=index,
-                                              projector=projector)
+                                              envelope=envelope)
             if not state.valid or not result.tx_local_success:
                 raise RuntimeError("safe move aborted due to invalid state or write failure")
             time.sleep(self.control_dt)
@@ -768,6 +932,7 @@ class SO101Backend:
         # q hardware envelope and rechecks validity before every transmission.
         self._last_command = initial.q_ctrl.copy()
         self._hardware_projector.reset()
+        self._command_state = ExecutableCommandState.anchored(self._last_command)
         self.move_to_configuration(q_envelope_target, duration_s, envelope="hardware",
                                    path_validator=path_validator)
         before_final = self.read_state(tick_index=max(1, int(np.ceil(duration_s / self.control_dt))) + 1)
@@ -833,6 +998,7 @@ class SO101Backend:
             self._hardware_projector.reset()
         if self._workspace_projector is not None:
             self._workspace_projector.reset()
+        self._command_state = ExecutableCommandState.anchored(self._last_command)
 
     def close(self) -> None:
         self._assert_owner()

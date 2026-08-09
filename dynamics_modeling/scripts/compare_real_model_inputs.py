@@ -19,9 +19,14 @@ for path in (ROOT, DYNAMICS_ROOT):
         sys.path.insert(0, str(path))
 
 from neural_dynamics.rollout import load_dynamics_bundle, rollout_dynamics_batch
-from neural_dynamics.integration import reconstruct_next_state
 from neural_dynamics.train_utils import load_checkpoint
 from mpc.robot_config import load_robot_spec
+from dynamics_modeling.scripts.evaluate_so101_sensitivity import (
+    _history_windows,
+    _load_rollout_arrays,
+    _run_model_sensitivity,
+)
+from robot_runtime.config import load_hardware_config
 
 
 def _sha256(path: Path) -> str:
@@ -58,41 +63,10 @@ def _anchors(
     return np.asarray(selected, dtype=np.int64)
 
 
-def _established_kappa_rollout(
-    history_states: np.ndarray, history_actions: np.ndarray, commands: np.ndarray, bundle,
-) -> np.ndarray:
-    """Reproduce the frozen 2026-08-08 κ protocol exactly.
-
-    The prior H-1 measured history tokens stay fixed; each recurrent query
-    appends the latest predicted state and the counterfactual command.
-    """
-    predicted_state = torch.as_tensor(history_states[-1:], device=bundle.device)
-    fixed_history = torch.cat([
-        torch.as_tensor(history_states[-(bundle.history_len - 1):], device=bundle.device),
-        torch.as_tensor(history_actions[-(bundle.history_len - 1):], device=bundle.device),
-    ], dim=-1)
-    predictions = []
-    for command in commands:
-        current = torch.cat([
-            predicted_state,
-            torch.as_tensor(command, device=bundle.device).view(1, -1),
-        ], dim=-1)
-        model_input = bundle.normalizer.normalize_sequence_input(
-            torch.cat([fixed_history, current], dim=0).unsqueeze(0), bundle.state_dim
-        )
-        with torch.no_grad():
-            predicted_target = bundle.normalizer.denormalize_delta(bundle.model(model_input))
-        predicted_state = reconstruct_next_state(
-            predicted_state, predicted_target, bundle.target_mode, bundle.control_dt, 5
-        )
-        predictions.append(predicted_state[0])
-    return torch.stack(predictions).cpu().numpy()
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True)
-    parser.add_argument("--rollout", required=True, help="Frozen active rollout containing executed_tokens and q_des")
+    parser.add_argument("--rollout", required=True, help="Frozen active rollout containing actual states and executable commands")
     parser.add_argument(
         "--model", nargs=3, action="append", required=True, metavar=("LABEL", "CHECKPOINT", "NORMALIZER"),
         help="Repeat exactly three times: e75, absolute_u_grad, u_minus_q_grad",
@@ -102,6 +76,7 @@ def main() -> None:
     parser.add_argument("--horizons", default="1,3,5,6,10,20")
     parser.add_argument("--kappa-ticks", default="300,400,600")
     parser.add_argument("--kappa-perturbation-deg", type=float, default=0.5)
+    parser.add_argument("--hardware-config", default="configs/hardware/so101_follower.local.yaml")
     parser.add_argument("--expected-epoch", type=int, default=75)
     parser.add_argument("--rollout-batch-size", type=int, default=1024)
     args = parser.parse_args()
@@ -122,9 +97,12 @@ def main() -> None:
         groups = np.asarray(data["split_group_ids"], dtype=np.int64)
         episodes = np.asarray(data["episode_ids"], dtype=np.int64)
         valid = np.asarray(data["valid_target"], dtype=bool)
-    with np.load(args.rollout, allow_pickle=False) as recorded:
-        executed_tokens = np.asarray(recorded["executed_tokens"], dtype=np.float32)
-        q_des = np.asarray(recorded["q_des"], dtype=np.float32)[:, :5]
+    rollout_states, rollout_commands = _load_rollout_arrays(Path(args.rollout))
+    hardware = load_hardware_config(args.hardware_config)
+    calibration = json.loads(hardware.calibration_path.read_text(encoding="utf-8"))
+    cal_low = np.asarray([calibration[name]["range_min"] for name in hardware.joint_names], dtype=np.float64)
+    cal_high = np.asarray([calibration[name]["range_max"] for name in hardware.joint_names], dtype=np.float64)
+    sensitivity_horizon = 12
 
     loaded = []
     for label, checkpoint_name, normalizer_name in args.model:
@@ -150,7 +128,6 @@ def main() -> None:
     future_actions = np.stack([actions[i:i + max_horizon] for i in anchors])
     truth = np.stack([next_states[i:i + max_horizon] for i in anchors])
 
-    perturbation = float(np.deg2rad(args.kappa_perturbation_deg))
     report: dict[str, object] = {
         "protocol": {
             "dataset": str(Path(args.dataset).resolve()), "dataset_sha256": _sha256(Path(args.dataset)),
@@ -158,6 +135,9 @@ def main() -> None:
             "test_group_ids": test_groups.tolist(), "window_count": int(len(anchors)),
             "horizons": horizons, "kappa_ticks": ticks,
             "kappa_perturbation_deg": args.kappa_perturbation_deg,
+            "sensitivity_horizon": sensitivity_horizon,
+            "sensitivity_history_semantics": "training_equivalent_[x_t,u_t]",
+            "sensitivity_perturbation": "single-joint plus/minus encoder-count impulse and held commands",
         },
         "models": {},
     }
@@ -178,33 +158,36 @@ def main() -> None:
                 "dq_rmse": values["dq_rmse"], "kappa_mean": "",
             })
 
-        kappa_rows = []
-        for tick in ticks:
-            if tick - history_len + 1 < 0 or tick + 7 > len(q_des):
-                raise ValueError(f"kappa tick {tick} is outside the frozen rollout")
-            history_window = executed_tokens[tick - history_len + 1:tick + 1]
-            history_states = history_window[:, :10]
-            # executed_tokens stores the previous transmitted q_ref.  Match the
-            # established script's H-1 action-history slice exactly.
-            history_actions = history_window[:-1, 10:15]
-            baseline_commands = q_des[tick + 1:tick + 7]
-            baseline = _established_kappa_rollout(
-                history_states, history_actions, baseline_commands, bundle
-            )[:, :5]
-            perturbed = _established_kappa_rollout(
-                history_states, history_actions, baseline_commands + perturbation, bundle
-            )[:, :5]
-            response = perturbed - baseline
-            kappa_rows.append({
-                "tick": tick,
-                "kappa_h6": float(np.linalg.norm(response[-1]) / np.linalg.norm(np.full(5, perturbation))),
-                "per_joint_terminal_gain": (np.abs(response[-1]) / perturbation).tolist(),
-                "per_joint_accumulated_gain": (np.linalg.norm(response, axis=0) / perturbation).tolist(),
-            })
-        kappa_values = [row["kappa_h6"] for row in kappa_rows]
+        valid_ticks = [tick for tick in ticks if history_len - 1 <= tick < len(rollout_states) - sensitivity_horizon]
+        if not valid_ticks:
+            raise ValueError(f"none of the κ ticks {ticks} has a complete H={sensitivity_horizon} rollout window")
+        sensitivity = _run_model_sensitivity(
+            bundle,
+            _history_windows(rollout_states, rollout_commands, np.asarray(valid_ticks, dtype=np.int64), history_len),
+            rollout_commands,
+            np.asarray(valid_ticks, dtype=np.int64),
+            sensitivity_horizon,
+            cal_low,
+            cal_high,
+            hardware.raw_low[:5],
+            hardware.raw_high[:5],
+            args.rollout_batch_size,
+            perturbation_counts=max(1, int(round(args.kappa_perturbation_deg * 4095.0 / 360.0))),
+        )
+        held_median = np.asarray(sensitivity["held"]["median"], dtype=np.float64)
+        diag_h6 = np.diag(held_median[5])
+        finite_h6 = np.abs(diag_h6)[np.isfinite(diag_h6)]
+        scalar_h6 = float(np.mean(finite_h6)) if finite_h6.size else float("nan")
+        kappa_rows = [{
+            "tick": int(tick),
+            "kappa_h6": float(np.mean(np.abs(np.diag(np.asarray(sensitivity["held"]["per_anchor"][row][5]))))),
+            "per_joint_signed_gain_h6": np.diag(np.asarray(sensitivity["held"]["per_anchor"][row][5])).tolist(),
+        } for row, tick in enumerate(valid_ticks)]
         kappa_summary = {
-            "rows": kappa_rows, "mean": float(np.mean(kappa_values)),
-            "min": float(np.min(kappa_values)), "max": float(np.max(kappa_values)),
+            "rows": kappa_rows, "mean": scalar_h6,
+            "min": float(np.min(finite_h6)) if finite_h6.size else float("nan"),
+            "max": float(np.max(finite_h6)) if finite_h6.size else float("nan"),
+            "protocol": "training_equivalent_[x_t,u_t]_signed_single_joint_perturbations",
         }
         csv_rows.append({
             "label": label, "horizon": "kappa_h6", "q_rmse": "", "dq_rmse": "",
@@ -220,7 +203,7 @@ def main() -> None:
                 "rollout_loss_steps", "rollout_loss_weight", "train_sample_stride",
                 "validation_group_ids", "test_group_ids",
             )},
-            "by_horizon": by_horizon, "kappa": kappa_summary,
+            "by_horizon": by_horizon, "kappa": kappa_summary, "sensitivity": sensitivity,
         }
 
     labels = [entry[0] for entry in loaded]

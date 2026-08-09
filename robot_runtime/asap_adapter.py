@@ -7,6 +7,7 @@ from mpc.asap_shared import LatestSnapshotStore, PlanPacketStore
 from mpc.asap_types import PlanningSnapshot
 from robot_runtime.runner import PlannerCommand
 from robot_runtime.ood import RobustEnvelope
+from robot_runtime.executable_command import ExecutableCommandState
 
 
 class ASAPStorePlannerAdapter:
@@ -37,9 +38,13 @@ class ASAPStorePlannerAdapter:
         self.future_tokens: list[np.ndarray] = []
 
     def submit(self, tick_index: int, state_timestamp_ns: int, states: np.ndarray, commands: np.ndarray,
-               history_generation: int) -> None:
+               history_generation: int,
+               executable_command_state: ExecutableCommandState | None = None) -> None:
         self.current_tick, self.generation = int(tick_index), int(history_generation)
-        if commands.size:
+        if executable_command_state is not None:
+            self.previous_q_ref = executable_command_state.previous_transmitted_q_ref.astype(np.float32, copy=True)
+            self.previous_velocity = executable_command_state.previous_command_velocity.astype(np.float32, copy=True)
+        elif commands.size:
             new_q = np.asarray(commands[-1], dtype=np.float32)
             if new_q.shape != (self.n_joints,):
                 raise ValueError(f"commands must end with shape ({self.n_joints},)")
@@ -70,6 +75,9 @@ class ASAPStorePlannerAdapter:
             previous_requested_mpc_residual=self._zeros.copy(), previous_requested_mpc_residual_velocity=self._zeros.copy(),
             previous_command_nominal_offset=self._zeros.copy(), previous_command_nominal_offset_velocity=self._zeros.copy(),
             packet_schedule=self.packets.schedule(), history_generation=self.generation,
+            executable_command_state=ExecutableCommandState(
+                self.previous_q_ref.copy(), self.previous_velocity.copy()
+            ),
         ))
         self.request_id += 1
 
@@ -85,19 +93,23 @@ class ASAPStorePlannerAdapter:
         future_tokens = None
         if packet.q_ref_sequence.size and packet.predicted_state_sequence.size:
             length = min(len(packet.q_ref_sequence), len(packet.predicted_state_sequence))
-            if packet.q_ref_sequence.shape == packet.residual_sequence.shape:
-                # q_ref_sequence is the absolute command sequence scored by
-                # the planner.  Preserve it through the adapter so the real
-                # runner does not rebuild a different command from the live
-                # nominal reference and a raw residual.
+            if packet.requested_q_ref_sequence.shape == packet.residual_sequence.shape:
+                # The packet carries the pre-projection request. The backend
+                # applies the canonical state machine once and checks raw.
+                absolute_q_ref = packet.requested_q_ref_sequence[index].copy()
+            elif packet.q_ref_sequence.shape == packet.residual_sequence.shape:
                 absolute_q_ref = packet.q_ref_sequence[index].copy()
             future_tokens = np.concatenate((packet.predicted_state_sequence[:length], packet.q_ref_sequence[:length]), axis=1)
             if self.ood_envelope is not None:
                 ood_valid = ood_valid and bool(np.all(self.ood_envelope.contains(future_tokens)))
         if self.record_ood_tokens and future_tokens is not None:
             self.future_tokens.append(future_tokens)
+        expected_raw = None
+        if packet.expected_raw_sequence.shape == packet.residual_sequence.shape:
+            expected_raw = packet.expected_raw_sequence[index].copy()
         return PlannerCommand(packet.residual_sequence[index].copy(), packet.history_generation,
-                              packet.activation_step, packet.publication_tick, ood_valid, absolute_q_ref)
+                              packet.activation_step, packet.publication_tick, ood_valid,
+                              absolute_q_ref, expected_raw)
 
     def clear(self, history_generation: int) -> None:
         self.generation = int(history_generation)

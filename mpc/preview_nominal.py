@@ -7,14 +7,15 @@ import numpy as np
 def nominal_index(step: int, preview_steps: int) -> int:
     """Return the actuator nominal index for control/planner step ``step``.
 
-    The tracking target remains ``reference[step + 1]``.  Only the nominal
-    actuator command is advanced by ``preview_steps``.
+    The tracking target remains ``reference[step + 1]``.  With explicit
+    zero-preview semantics the actuator command is ``reference[step]``;
+    ``preview_steps=1`` is the old one-tick-ahead behavior.
     """
     if step < 0:
         raise ValueError("step must be non-negative")
     if preview_steps < 0:
         raise ValueError("preview_steps must be non-negative")
-    return step + 1 + preview_steps
+    return step + preview_steps
 
 
 def nominal_command(reference: np.ndarray, step: int, preview_steps: int) -> np.ndarray:

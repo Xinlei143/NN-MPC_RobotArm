@@ -130,7 +130,7 @@ class ThreadedASAPDefaultTests(unittest.TestCase):
             "--controller_mode", "mpc", "--reference_mode", "joint_sine",
             "--mpc_preview_nominal_steps", "7",
         ])
-        with self.assertRaisesRegex(ValueError, "requires --reference_mode task"):
+        with self.assertRaisesRegex(ValueError, "requires --reference_mode task or joint_file"):
             RUNNER.run_closed_loop_mpc(args)
 
     def test_task_reference_validation_honors_execution_cap(self) -> None:

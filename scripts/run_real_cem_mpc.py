@@ -121,15 +121,24 @@ def main() -> None:
     try:
         backend.connect()
         backend.startup_to_home()
+        # Freeze the exact runtime envelope/calibration/state machine after
+        # startup.  The CUDA planner must use this object, not the dynamics
+        # RobotSpec or a second hand-written projector.
+        executable_command_spec = backend.executable_command_spec("hardware")
         # The worker consumes a warmup snapshot before it can publish.  It must
         # use the measured, frozen-home hardware state—not simulation's zero
         # state—so its history semantics match the live control thread.
         startup = backend.read_state(tick_index=0)
-        adapter.submit(0, startup.timestamp_ns, startup.vector[None, :], robot.home_q[None, :],
-                       startup.history_generation)
+        adapter.submit(
+            0, startup.timestamp_ns, startup.vector[None, :],
+            startup.q_ctrl[None, :], startup.history_generation,
+            executable_command_state=backend.executable_command_state(),
+        )
         worker = ASAPPlannerWorker(args, vars(simulation_cli), snapshots, packets, results, stop,
-                                   robot.data_target_low, robot.data_target_high,
-                                   reference, dq_reference, ddq_reference)
+                                   executable_command_spec.joint_low,
+                                   executable_command_spec.joint_high,
+                                   reference, dq_reference, ddq_reference,
+                                   executable_command_spec=executable_command_spec)
         worker.start()
         if not worker.ready.wait(60) or worker.status().failure_reason:
             stop.set(); snapshots.wake()
@@ -153,6 +162,11 @@ def main() -> None:
         planning_times = np.zeros(len(records), dtype=np.float32)
         for index, event in enumerate(event_rows[:len(records)]):
             planning_times[index] = float(event.planning_time_s)
+        def event_phase(name: str) -> np.ndarray:
+            return np.asarray(
+                [float(event.candidate_diagnostics.get(name, np.nan)) for event in event_rows],
+                dtype=np.float32,
+            )
         # OOD tokens for calibrate_real_ood.py: executed = per-tick
         # [state, previous q_ref] (15-dim); selected_action/predicted_state =
         # flattened [predicted_state; q_ref] future windows the runtime
@@ -167,12 +181,48 @@ def main() -> None:
             "actuator_q_ref": np.asarray([record.command.transmitted_q_ref for record in records], dtype=np.float32),
             "requested_absolute_command": np.asarray([record.command.requested_q_ref for record in records], dtype=np.float32),
             "projected_absolute_command": np.asarray([record.command.projected_q_ref for record in records], dtype=np.float32),
+            "transmitted_goal_position_raw": np.asarray([record.command.tx_goal_position_raw for record in records], dtype=np.int64),
+            "planner_expected_raw": np.asarray([
+                record.command.diagnostics.get("planner_expected_raw", np.full(5, -1, dtype=np.int64))
+                for record in records
+            ], dtype=np.int64),
+            "planner_expected_raw_match": np.asarray([
+                bool(record.command.diagnostics.get("planner_expected_raw_match", True))
+                for record in records
+            ], dtype=bool),
+            "planner_raw_mismatch_direct_fallback": np.asarray([
+                bool(record.command.diagnostics.get("planner_raw_mismatch_direct_fallback", False))
+                for record in records
+            ], dtype=bool),
+            "planner_raw_mismatch_live_reproject": np.asarray([
+                bool(record.command.diagnostics.get("planner_raw_mismatch_live_reproject", False))
+                for record in records
+            ], dtype=bool),
+            "fallback_q_ref": np.asarray([
+                record.command.diagnostics.get("fallback_q_ref", np.full(5, np.nan, dtype=np.float32))
+                for record in records
+            ], dtype=np.float32),
+            "executable_command_velocity": np.asarray([
+                record.command.diagnostics.get("command_velocity", np.zeros(5, dtype=np.float32))
+                for record in records
+            ], dtype=np.float32),
             "planner_requested_residual": np.asarray([record.planner_residual for record in records], dtype=np.float32),
             "control_wakeup_lateness_s": np.asarray([record.wake_lateness_s for record in records]),
             "control_deadline_miss": np.asarray([record.skipped_ticks > 0 for record in records]),
             "packet_expired": ever_packet & ~packet_available,
             "planner_end_to_end_latency_s": np.asarray([event.end_to_end_latency_s for event in event_rows]),
+            "planner_worker_queue_wait_ms": event_phase("worker_queue_wait_ms"),
+            "planner_anchor_forecast_ms": event_phase("anchor_forecast_ms"),
+            "planner_cem_search_wall_ms": event_phase("cem_search_wall_ms"),
+            "planner_packet_postprocess_ms": event_phase("packet_postprocess_ms"),
             "planner_late_drop": np.asarray([event.result_type == "success_late_dropped" for event in event_rows]),
+            # Scalar planner counters are consumed by mpc.logging's threaded
+            # run summary.  Keep them explicit; otherwise a real ASAP run is
+            # incorrectly reported as having zero late drops.
+            "planner_solve_count": np.asarray(len(event_rows), dtype=np.int64),
+            "planner_late_drop_count": np.asarray(sum(event.result_type == "success_late_dropped" for event in event_rows), dtype=np.int64),
+            "planner_failure_count": np.asarray(sum(event.result_type == "failure" for event in event_rows), dtype=np.int64),
+            "packet_expiration_count": np.asarray(int(np.sum(ever_packet & ~packet_available)), dtype=np.int64),
             "planner_ood_valid": np.asarray([record.planner_ood_valid for record in records]),
             "planning_time": planning_times,
             "executed_tokens": executed_tokens,
@@ -191,6 +241,9 @@ def main() -> None:
         }
         rows = [{"tick": index, "safety_mode": record.safety_mode.value,
                  "planner_applied": record.planner_applied,
+                 "planner_expected_raw_match": bool(record.command.diagnostics.get("planner_expected_raw_match", True)),
+                 "planner_raw_mismatch_live_reproject": bool(record.command.diagnostics.get("planner_raw_mismatch_live_reproject", False)),
+                 "planner_raw_mismatch_direct_fallback": bool(record.command.diagnostics.get("planner_raw_mismatch_direct_fallback", False)),
                  "tx_local_success": record.command.tx_local_success,
                  "command_delivery_uncertain": record.command.command_delivery_uncertain,
                  "projection_flags": "|".join(record.command.projection_flags)}

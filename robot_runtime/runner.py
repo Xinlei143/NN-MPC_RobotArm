@@ -32,11 +32,13 @@ class PlannerCommand:
     activation_tick: int
     publication_tick: int
     ood_valid: bool = True
-    # When present, this is the planner's already projected absolute target
-    # for the current packet index.  Real execution must prefer it over
-    # reconstructing ``nominal + residual``: the latter can differ from the
-    # command sequence that the CEM rollout actually scored.
+    # When present, this is the planner's pre-projection absolute request for
+    # the current packet index. The backend applies the canonical executable
+    # state machine against the live state. ``expected_raw`` is an audit
+    # prediction from the delayed planner forecast; a mismatch is recorded,
+    # not treated as an automatic Direct fallback.
     absolute_q_ref: np.ndarray | None = None
+    expected_raw: np.ndarray | None = None
 
 
 def compose_requested_command(
@@ -61,7 +63,7 @@ def compose_requested_command(
 
 class Planner(Protocol):
     def submit(self, tick_index: int, state_timestamp_ns: int, states: np.ndarray, commands: np.ndarray,
-               history_generation: int) -> None: ...
+               history_generation: int, executable_command_state: object | None = None) -> None: ...
     def latest(self) -> PlannerCommand | None: ...
     def clear(self, history_generation: int) -> None: ...
 
@@ -202,7 +204,10 @@ class RealTimeRunner:
             active_gate_open = active_mpc_gate_open(self.mode, tick, self.active_start_tick)
             if self.planner and self.safety_mode is SafetyMode.RUNNING:
                 if active_gate_open:
-                    self.planner.submit(tick, current.timestamp_ns, states, commands, generation)
+                    self.planner.submit(
+                        tick, current.timestamp_ns, states, commands, generation,
+                        executable_command_state=getattr(self.backend, "executable_command_state", lambda: None)(),
+                    )
                 else:
                     # Do not let CEM packets accumulated during a static
                     # startup hold leak into the first moving reference.
@@ -288,9 +293,17 @@ class RealTimeRunner:
                 # Guarded above: this non-Protocol method exists only on the
                 # SO101 backend and uses hardware_joint_low/high, never the
                 # narrower MPC experiment envelope.
-                command = self.backend.send_hardware_joint_targets(requested, tick_index=tick)  # type: ignore[attr-defined]
+                command = self.backend.send_hardware_joint_targets(  # type: ignore[attr-defined]
+                    requested, tick_index=tick,
+                    expected_raw=(packet.expected_raw if applied and packet is not None else None),
+                    fallback_q_ref=(nominal if applied and packet is not None else None),
+                )
             elif self.command_envelope == "workspace":
-                command = self.backend.send_workspace_joint_targets(requested, tick_index=tick)  # type: ignore[attr-defined]
+                command = self.backend.send_workspace_joint_targets(  # type: ignore[attr-defined]
+                    requested, tick_index=tick,
+                    expected_raw=(packet.expected_raw if applied and packet is not None else None),
+                    fallback_q_ref=(nominal if applied and packet is not None else None),
+                )
             else:
                 command = self.backend.send_joint_targets(requested, tick_index=tick)
             history.record_transmission(command.transmitted_q_ref, tick)
@@ -306,8 +319,9 @@ class RealTimeRunner:
                     safety_guard_failure = f"transmitted_command_guard: {exc}"
                     self.safety_mode = SafetyMode.FAULT_LATCHED
             advance = advance_absolute_deadline(deadline, time.perf_counter_ns(), period_ns)
+            planner_applied = applied and "planner_raw_mismatch_direct_fallback" not in command.projection_flags
             record = TickRecord(current, command, nominal, self.mode, self.safety_mode, wake_lateness,
-                                advance.skipped_ticks, residual, applied, packet_available, packet_ood_valid,
+                                advance.skipped_ticks, residual, planner_applied, packet_available, packet_ood_valid,
                                 safety_guard_failure)
             records.append(record)
             if on_tick: on_tick(record)
