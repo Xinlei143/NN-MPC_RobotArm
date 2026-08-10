@@ -69,6 +69,7 @@ class ReferenceConfig:
     ellipse_axis_b: float = 0.025
     figure8_axis_a: float = 0.035
     figure8_axis_b: float = 0.02
+    back_and_forth_half_length: float = 0.04
     square_half_side: float = 0.025
     rounded_square_corner_radius: float = 0.006
     # Start phase (rad) of the closed shape traversal.  The approach target
@@ -96,7 +97,7 @@ class ReferenceConfig:
     max_joint_acceleration: tuple[float, ...] = (5.0, 5.0, 5.0, 10.0, 10.0, 12.5)
 
     def __post_init__(self) -> None:
-        if self.shape_name.lower() not in {"circle", "ellipse", "figure8", "square", "rounded_square"}:
+        if self.shape_name.lower() not in {"circle", "ellipse", "figure8", "back_and_forth", "square", "rounded_square"}:
             raise ValueError(f"Unsupported shape_name {self.shape_name!r}")
         if not isinstance(self.repeat_count, int) or self.repeat_count <= 0:
             raise ValueError("repeat_count must be a positive integer")

@@ -36,6 +36,12 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--real-mode", choices=["shadow_mpc", "active_mpc"], default="shadow_mpc")
     value.add_argument("--enable-motion", action="store_true")
     value.add_argument("--operator-supported-shutdown", action="store_true")
+    value.add_argument(
+        "--home-tolerance-deg",
+        default=1.0,
+        type=float,
+        help="Home convergence tolerance; must remain below the configured +/-3 deg experiment envelope.",
+    )
     value.add_argument("--delay-calibration", default=None)
     value.add_argument("--ood-envelope", default=None)
     value.add_argument("--reference-manifest", required=True,
@@ -49,6 +55,8 @@ def main() -> None:
     args = parser().parse_args()
     if not args.enable_motion: raise SystemExit("refusing hardware connection without --enable-motion")
     if not args.operator_supported_shutdown: raise SystemExit("refusing torque enable without --operator-supported-shutdown")
+    if args.home_tolerance_deg <= 0.0 or args.home_tolerance_deg >= 3.0:
+        raise SystemExit("--home-tolerance-deg must be > 0 and < 3 degrees")
     if args.reference_mode != "joint_file": raise SystemExit("real MPC currently requires a prevalidated --reference_mode joint_file")
     if not args.checkpoint or not args.normalizer: raise SystemExit("real MPC requires --checkpoint and --normalizer")
     args.multirate_mode = "threaded_asap"
@@ -76,6 +84,16 @@ def main() -> None:
             raise SystemExit("active MPC delay gate requires >=2000 samples and late-drop/expiry rates below 1%")
         args.anticipation_delay_steps = int(delay["anticipation_delay_steps"])
     verify_real_artifact_identity(args.checkpoint, args.normalizer, hardware.plant_identity())
+    # Use the same residual bound in the live runner that the planner uses
+    # during candidate generation.  This must not be hard-coded: otherwise a
+    # nominal 0.5/1.0 degree authority sweep would still execute with the
+    # historical 2 degree runtime clamp.
+    runtime_residual_max = simulation_cli._parse_joint_vector(
+        args.residual_max, args.n_joints, "residual_max"
+    )
+    assert runtime_residual_max is not None
+    print("active MPC residual cap [deg]: "
+          + " ".join(f"{value:.4f}" for value in np.rad2deg(runtime_residual_max)))
     reference, dq_reference, ddq_reference, execution_steps = simulation_cli._load_joint_file_reference(args)
     required_reference = execution_steps + args.horizon + args.anticipation_delay_steps + int(args.mpc_preview_nominal_steps) + 1
     if reference.shape[0] < required_reference:
@@ -120,7 +138,7 @@ def main() -> None:
     nominal = player
     try:
         backend.connect()
-        backend.startup_to_home()
+        backend.startup_to_home(home_tolerance_rad=float(np.deg2rad(args.home_tolerance_deg)))
         # Freeze the exact runtime envelope/calibration/state machine after
         # startup.  The CUDA planner must use this object, not the dynamics
         # RobotSpec or a second hand-written projector.
@@ -144,7 +162,7 @@ def main() -> None:
             stop.set(); snapshots.wake()
             raise RuntimeError(worker.status().failure_reason or "planner worker initialization timeout")
         runner = RealTimeRunner(backend, nominal, mode=RealControlMode(args.real_mode), planner=adapter,
-                                history_len=worker.history_len or 8, residual_limit_rad=np.deg2rad(2.0),
+                                history_len=worker.history_len or 8, residual_limit_rad=runtime_residual_max,
                                 # The reference spans the data-collection envelope (e.g. the 4 cm
                                 # circle needs pan +/-6.5 deg), not the first-motion +/-3 deg
                                 # authority; JointFilePlayer validated it above, so hardware
@@ -174,9 +192,28 @@ def main() -> None:
         executed_tokens = np.asarray(adapter.executed_tokens, dtype=np.float32) if adapter.executed_tokens else np.empty((0, 10 + 5), dtype=np.float32)
         future_rows = [row for window in adapter.future_tokens for row in window]
         future_tokens = np.asarray(future_rows, dtype=np.float32) if future_rows else np.empty((0, 10 + 5), dtype=np.float32)
+        command_velocity = np.asarray([
+            record.command.diagnostics.get("command_velocity", np.zeros(hardware.n_joints, dtype=np.float32))
+            for record in records
+        ], dtype=np.float32)
+        command_acceleration = np.zeros_like(command_velocity)
+        if len(records) > 1:
+            command_acceleration[1:] = np.diff(command_velocity, axis=0) / float(hardware.control_dt)
+        # A one-count encoder quantisation step can exceed the numerical
+        # acceleration threshold at 30 Hz.  Keep that diagnostic separate from
+        # actual runtime safety faults; the transmitted command itself is already
+        # checked by the canonical projector.
+        quantization_acceleration_exceedance = np.asarray([
+            bool(np.any(np.abs(value) > np.asarray(hardware.command_acceleration_limit) + 1e-7))
+            for value in command_acceleration
+        ], dtype=bool)
+        actual_residual = np.asarray([
+            record.command.transmitted_q_ref - record.nominal for record in records
+        ], dtype=np.float32)
         arrays = {
             "actual_states": np.asarray([record.state.vector for record in records], dtype=np.float32),
             "observed_states": np.asarray([record.state.vector for record in records], dtype=np.float32),
+            "state_timestamp_ns": np.asarray([record.state.timestamp_ns for record in records], dtype=np.int64),
             "q_des": np.asarray([record.nominal for record in records], dtype=np.float32),
             "actuator_q_ref": np.asarray([record.command.transmitted_q_ref for record in records], dtype=np.float32),
             "requested_absolute_command": np.asarray([record.command.requested_q_ref for record in records], dtype=np.float32),
@@ -202,11 +239,82 @@ def main() -> None:
                 record.command.diagnostics.get("fallback_q_ref", np.full(5, np.nan, dtype=np.float32))
                 for record in records
             ], dtype=np.float32),
-            "executable_command_velocity": np.asarray([
-                record.command.diagnostics.get("command_velocity", np.zeros(5, dtype=np.float32))
-                for record in records
-            ], dtype=np.float32),
+            "command_velocity": command_velocity,
+            "executable_command_velocity": command_velocity.copy(),
+            "command_acceleration": command_acceleration,
             "planner_requested_residual": np.asarray([record.planner_residual for record in records], dtype=np.float32),
+            "requested_mpc_residual": np.asarray([record.planner_residual for record in records], dtype=np.float32),
+            # This is the residual that was actually transmitted relative to
+            # the tick's nominal reference.  It includes the final canonical
+            # projector and encoder quantisation; it is intentionally kept
+            # separate from the planner's requested residual.
+            "executed_residual": actual_residual,
+            "command_nominal_offset": actual_residual.copy(),
+            "safety_projection_offset": np.asarray([
+                record.command.transmitted_q_ref - record.command.projected_q_ref for record in records
+            ], dtype=np.float32),
+            "projection_discrepancy": np.asarray([
+                record.command.transmitted_q_ref - record.command.requested_q_ref for record in records
+            ], dtype=np.float32),
+            "requested_correction": np.asarray([
+                record.command.requested_q_ref - record.nominal for record in records
+            ], dtype=np.float32),
+            "residual_max": np.asarray(runtime_residual_max, dtype=np.float32),
+            "residual_saturated": np.asarray([
+                bool(np.any(np.abs(record.planner_residual) >= 0.999 * runtime_residual_max))
+                for record in records
+            ], dtype=bool),
+            "cem_num_samples": np.asarray(args.num_samples, dtype=np.int64),
+            "cem_iters": np.asarray(args.cem_iters, dtype=np.int64),
+            "cem_horizon": np.asarray(args.horizon, dtype=np.int64),
+            "cem_seed": np.asarray(args.seed, dtype=np.int64),
+            "cem_uniform_sample_ratio": np.asarray(args.uniform_sample_ratio, dtype=np.float32),
+            "cem_reset_std_each_step": np.asarray(args.reset_std_each_step),
+            "mpc_policy": np.asarray(args.mpc_policy),
+            "cost_profile": np.asarray(args.cost_profile),
+            "planner_projection": np.asarray(args.planner_projection),
+            "nominal_command_semantics": np.asarray(args.nominal_command_semantics),
+            "packet_residual_semantics": np.asarray("planner_residual_added_to_projected_nominal"),
+            "residual_feasibility_semantics": np.asarray("runtime_jointwise_hard_clip"),
+            "tx_local_success": np.asarray([record.command.tx_local_success for record in records], dtype=bool),
+            "command_delivery_uncertain": np.asarray([
+                record.command.command_delivery_uncertain for record in records
+            ], dtype=bool),
+            "projection_flags": np.asarray([
+                "|".join(record.command.projection_flags) for record in records
+            ], dtype=str),
+            "state_validity_flags": np.asarray([
+                "|".join(record.state.validity_flags) for record in records
+            ], dtype=str),
+            "safety_mode": np.asarray([record.safety_mode.value for record in records], dtype=str),
+            "safety_guard_failure": np.asarray([
+                record.safety_guard_failure or "" for record in records
+            ], dtype=str),
+            "planner_applied": np.asarray([record.planner_applied for record in records], dtype=bool),
+            "command_velocity_violation_flags": np.asarray([
+                bool(np.any(np.abs(value) > np.asarray(hardware.command_velocity_limit) + 1e-7))
+                for value in command_velocity
+            ], dtype=bool),
+            "command_acceleration_violation_flags": np.zeros(len(records), dtype=bool),
+            "command_acceleration_quantization_exceedance_flags": quantization_acceleration_exceedance,
+            "command_acceleration_flag_semantics": np.asarray(
+                "runtime_fault_only; quantization_exceedance_separate"
+            ),
+            "motor_voltage_v": np.asarray([
+                record.state.diagnostics.get("motor_voltage_v", np.full(6, np.nan)) for record in records
+            ]),
+            "motor_temperature_c": np.asarray([
+                record.state.diagnostics.get("motor_temperature", np.full(6, np.nan)) for record in records
+            ]),
+            "motor_current_raw": np.asarray([
+                record.state.diagnostics.get("motor_current_raw", np.full(6, np.nan)) for record in records
+            ]),
+            "motor_load_raw": np.asarray([
+                record.state.diagnostics.get("motor_load_raw", np.full(6, np.nan)) for record in records
+            ]),
+            "diagnostic_sample_age_s": np.asarray([
+                record.state.diagnostics.get("diagnostic_sample_age_s", np.nan) for record in records
+            ]),
             "control_wakeup_lateness_s": np.asarray([record.wake_lateness_s for record in records]),
             "control_deadline_miss": np.asarray([record.skipped_ticks > 0 for record in records]),
             "packet_expired": ever_packet & ~packet_available,
@@ -238,6 +346,8 @@ def main() -> None:
             "tau_actuator_available": np.asarray(False),
             "true_state_available": np.asarray(False),
             "active_start_tick": np.asarray(active_start_tick, dtype=np.int64),
+            "execution_steps": np.asarray(len(records), dtype=np.int64),
+            "control_dt_s": np.asarray(hardware.control_dt, dtype=np.float32),
         }
         rows = [{"tick": index, "safety_mode": record.safety_mode.value,
                  "planner_applied": record.planner_applied,

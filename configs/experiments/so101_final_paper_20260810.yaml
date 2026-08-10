@@ -1,0 +1,75 @@
+protocol_id: so101_final_paper_20260810_tracking1deg_v1
+control_dt_s: 0.03333333333333333
+home_tolerance_deg: 1.5
+repeat_count: 3
+phase_order_deg: [0.0, 120.0, 240.0]
+controller_order_by_repeat:
+  0: [direct, preview6, nn_mpc]
+  1: [preview6, nn_mpc, direct]
+  2: [nn_mpc, direct, preview6]
+
+hardware_config: configs/hardware/so101_follower.local.yaml
+heldout_reference_root: outputs/hardware/so101_paper_refs_20260810
+heldout_reference_manifest: outputs/hardware/so101_paper_refs_20260810/mpc_manifest.json
+circle_reference_root: outputs/hardware/so101_pre_mpc/20260808_refs_6phase
+circle_reference_manifest: outputs/hardware/so101_pre_mpc/20260808_refs_6phase/mpc_manifest.json
+output_root: outputs/hardware/so101_paper_final/20260810_tracking1deg_v1
+
+checkpoint: dynamics_modeling/outputs/checkpoints_real/u_minus_q_epoch14_20260809/gru_20260809_150038/best_rollout_model.pt
+normalizer: dynamics_modeling/outputs/checkpoints_real/u_minus_q_epoch14_20260809/gru_20260809_150038/normalizer.pt
+delay_calibration: outputs/hardware/so101_pre_mpc/20260808_shadow/delay_calibration.json
+ood_envelope: outputs/hardware/so101_pre_mpc/20260808_shadow/ood_envelope.json
+fine_model: dynamics_modeling/robots/so101_fine/scene_table_guard_25mm.xml
+fk_site: gripperframe
+q_ctrl_to_q_kin_offset_rad: [0.0, 0.00872665, -0.1396263, -0.2516342834, 0.0]
+
+circle_labels: [circle_p0, circle_p2, circle_p4]
+heldout_shapes: [ellipse, back_and_forth, rounded_square]
+speed_labels: [nominal, fast]
+
+final_mpc:
+  real_mode: active_mpc
+  model_type: gru
+  history_len: 16
+  horizon: 6
+  num_samples: 128
+  cem_iters: 2
+  rollout_batch_size: 128
+  seed_by_repeat: [10, 11, 12]
+  residual_max_rad: 0.017453292
+  planner_projection: "on"
+  planner_projection_backend: compiled
+  planner_projection_strategy: two_stage
+  executable_rollout_backend: cuda_graph
+  mpc_warmup_plans: 3
+  mpc_preview_nominal_steps: 0
+  nominal_command_semantics: executable_ik
+  asap_history_mode: aligned
+  asap_snapshot_mode: tick_start
+  mpc_policy: residual
+  cem_execute: lowest_cost
+  analytical_preview_steps: 6
+  cost_profile: blackbox
+  feedback_kq: 0.0
+  feedback_kdq: 0.0
+  feedback_max_rad: 0.008726646
+  weights:
+    w_q: 1.0
+    w_dq: 0.0
+    w_residual: 0.0
+    w_servo: 0.0
+    w_residual_velocity: 0.0
+    w_residual_acceleration: 0.0
+    w_first: 0.0
+    w_qref_velocity: 0.0
+    w_qref_acceleration: 0.0
+    w_terminal: 0.0
+    w_joint_limit: 0.0
+    w_dq_limit: 0.0
+
+artifacts:
+  checkpoint_sha256: f8f8e05ae7b5381bab5f6da3a176d5da875332f773adc076e3c10e0337b8a55b
+  normalizer_sha256: e33b8164a0e382c5a61d2376452d6bdf1a246ae1c63ba45f9589831681281672
+  delay_calibration_sha256: ec5fa1208160c86bd555ee311b0696a88dddfe06ac844728adc68ba74962f9b5
+  ood_envelope_sha256: 00b6cc83632fdedfcb02694d7ad957390c66d65fd98c0a6662aa93e4d4255637
+  fine_model_sha256: 18489287c61ee2c42cb9d04fede61a6bfaef6b5bad06236886922127d53f50c3

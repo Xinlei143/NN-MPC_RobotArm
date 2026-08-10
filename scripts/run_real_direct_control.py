@@ -172,8 +172,17 @@ def find_reference_manifest_entry(manifest_path: str | Path, reference_file: str
     sha = digest.hexdigest()
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     for shape, entry in manifest.get("artifacts", {}).items():
-        frozen = entry.get("q_des_ctrl.npy", {}).get("sha256")
-        if frozen == sha:
+        # The older circle manifest called the padded runtime file
+        # ``q_des_ctrl.npy`` even though the hash was for
+        # ``joint_reference_mpc.npz``.  New formal manifests record both
+        # files explicitly.  Accept either representation, but never accept
+        # an unlisted reference.
+        candidates = {
+            entry.get("q_des_ctrl.npy", {}).get("sha256"),
+            entry.get("q_des_ctrl_sha256"),
+            entry.get("joint_reference_mpc_sha256"),
+        }
+        if sha in candidates:
             return shape, entry, sha
     raise SystemExit(
         f"reference file {reference_file} does not match any frozen artifact in "
@@ -185,6 +194,21 @@ def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
                   evaluation_q_des: np.ndarray | None = None) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    command_velocity = np.asarray([
+        record.command.diagnostics.get("command_velocity", np.zeros(config.n_joints, dtype=np.float32))
+        for record in records
+    ], dtype=np.float32)
+    command_acceleration = np.zeros_like(command_velocity)
+    if len(records) > 1:
+        command_acceleration[1:] = np.diff(command_velocity, axis=0) / float(config.control_dt)
+    # A one-count encoder quantisation step can exceed the numerical
+    # acceleration threshold at 30 Hz.  Keep that diagnostic separate from
+    # actual runtime safety faults; the transmitted command itself is already
+    # checked by the canonical projector.
+    quantization_acceleration_exceedance = np.asarray([
+        bool(np.any(np.abs(value) > np.asarray(config.command_acceleration_limit) + 1e-7))
+        for value in command_acceleration
+    ], dtype=bool)
     arrays = {
         "states": np.asarray([record.state.vector for record in records], dtype=np.float32),
         "actions": np.asarray([record.command.transmitted_q_ref for record in records], dtype=np.float32),
@@ -203,6 +227,34 @@ def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
         "motor_current_raw": np.asarray([record.state.diagnostics.get("motor_current_raw", np.full(6, np.nan)) for record in records]),
         "motor_load_raw": np.asarray([record.state.diagnostics.get("motor_load_raw", np.full(6, np.nan)) for record in records]),
         "diagnostic_sample_age_s": np.asarray([record.state.diagnostics.get("diagnostic_sample_age_s", np.nan) for record in records]),
+        "command_velocity": command_velocity,
+        "executable_command_velocity": command_velocity.copy(),
+        "command_acceleration": command_acceleration,
+        "command_velocity_violation_flags": np.asarray([
+            bool(np.any(np.abs(value) > np.asarray(config.command_velocity_limit) + 1e-7))
+            for value in command_velocity
+        ], dtype=bool),
+        "command_acceleration_violation_flags": np.zeros(len(records), dtype=bool),
+        "command_acceleration_quantization_exceedance_flags": quantization_acceleration_exceedance,
+        "command_acceleration_flag_semantics": np.asarray(
+            "runtime_fault_only; quantization_exceedance_separate"
+        ),
+        "tx_local_success": np.asarray([record.command.tx_local_success for record in records], dtype=bool),
+        "command_delivery_uncertain": np.asarray([
+            record.command.command_delivery_uncertain for record in records
+        ], dtype=bool),
+        "projection_flags": np.asarray([
+            "|".join(record.command.projection_flags) for record in records
+        ], dtype=str),
+        "state_validity_flags": np.asarray([
+            "|".join(record.state.validity_flags) for record in records
+        ], dtype=str),
+        "safety_mode": np.asarray([record.safety_mode.value for record in records], dtype=str),
+        "safety_guard_failure": np.asarray([
+            record.safety_guard_failure or "" for record in records
+        ], dtype=str),
+        "planner_applied": np.zeros(len(records), dtype=bool),
+        "active_start_tick": np.asarray(0, dtype=np.int64),
     }
     if evaluation_q_des is not None:
         target_q_des = np.asarray(evaluation_q_des, dtype=np.float32)
@@ -217,6 +269,8 @@ def save_evidence(path: str | Path, records: list, config, *, motion_mode: str,
         "sample_count": len(records), "plant_identity": config.plant_identity(),
         "dataset": target.name, "action_semantics": "software_transmitted_absolute_position_target",
         "motor_acknowledged": False,
+        "control_dt_s": float(config.control_dt),
+        "execution_steps": int(len(records)),
     }
     if reference_metadata:
         summary["reference"] = reference_metadata
@@ -287,6 +341,12 @@ def main() -> None:
                         help="For a single joint, use positive/negative for B4 or oscillate only after direction checks.")
     parser.add_argument("--output", help="Evidence NPZ path; required for a formal direct baseline.")
     parser.add_argument("--startup-seconds", type=float, default=3.0)
+    parser.add_argument(
+        "--home-tolerance-deg",
+        type=float,
+        default=1.0,
+        help="Home convergence tolerance; must remain below the configured +/-3 deg experiment envelope.",
+    )
     parser.add_argument("--enable-motion", action="store_true")
     parser.add_argument("--operator-supported-shutdown", action="store_true")
     parser.add_argument("--robot-config", default="configs/robots/so101.yaml",
@@ -301,6 +361,8 @@ def main() -> None:
     args = parser.parse_args()
     if not args.enable_motion: raise SystemExit("refusing motion without --enable-motion")
     if not args.operator_supported_shutdown: raise SystemExit("refusing torque enable without --operator-supported-shutdown")
+    if args.home_tolerance_deg <= 0.0 or args.home_tolerance_deg >= 3.0:
+        raise SystemExit("--home-tolerance-deg must be > 0 and < 3 degrees")
     config = load_hardware_config(args.hardware_config)
     if args.reference_mode == "joint_file":
         if not args.reference_file:
@@ -334,17 +396,37 @@ def main() -> None:
     backend = make_so101_backend(args.hardware_config)
     reference_metadata: dict | None = None
     evaluation_q_des: np.ndarray | None = None
+    reference_execution_steps: int | None = None
     if args.reference_mode == "joint_file":
-        q_ref = np.load(args.reference_file)
+        loaded_reference = np.load(args.reference_file, allow_pickle=False)
+        if isinstance(loaded_reference, np.lib.npyio.NpzFile):
+            with loaded_reference as archive:
+                if "q_des" not in archive.files:
+                    raise KeyError(f"joint reference {args.reference_file} is missing q_des")
+                q_ref = np.asarray(archive["q_des"], dtype=np.float32)
+        else:
+            q_ref = np.asarray(loaded_reference, dtype=np.float32)
         shape_name = None
         if args.reference_manifest:
             shape_name, entry, sha = find_reference_manifest_entry(args.reference_manifest, args.reference_file)
-            env = entry["envelope"]
+            reference_execution_steps = int(entry.get("execution_steps", q_ref.shape[0]))
+            if reference_execution_steps <= 0 or reference_execution_steps > q_ref.shape[0]:
+                raise ValueError(
+                    f"reference manifest execution_steps={reference_execution_steps} is incompatible with "
+                    f"reference rows={q_ref.shape[0]}"
+                )
             print(f"reference matched frozen artifact [{shape_name}] sha256={sha[:16]}...")
-            print(f"  design: lap={entry['lap_duration_s']}s  max lap |dq| deg/s = "
-                  + " ".join(f"{env['max_dq_lap_deg_s'][j]:.2f}" for j in
-                             ["pan", "lift", "elbow", "wrist_flex", "wrist_roll"])
-                  + f"  (P99 pass: {env['all_joints_at_or_below_p99']})")
+            # Older/frozen manifests may contain only the artifact identity and
+            # hash.  Envelope/design metadata is useful for diagnostics but is
+            # not required to execute a validated joint-file reference.
+            env = entry.get("envelope")
+            if isinstance(env, dict) and "max_dq_lap_deg_s" in env:
+                print(f"  design: lap={entry.get('lap_duration_s', '?')}s  max lap |dq| deg/s = "
+                      + " ".join(f"{env['max_dq_lap_deg_s'][j]:.2f}" for j in
+                                 ["pan", "lift", "elbow", "wrist_flex", "wrist_roll"])
+                      + f"  (P99 pass: {env.get('all_joints_at_or_below_p99', '?')})")
+            else:
+                print("  manifest has no optional envelope metadata; using runtime hardware-envelope gates")
         command_reference, evaluation_reference, transform_metadata = transform_joint_reference(
             q_ref,
             config.control_dt,
@@ -354,14 +436,16 @@ def main() -> None:
         )
         nominal = JointFilePlayer(command_reference, config=config)
         evaluation_q_des = evaluation_reference
-        print(f"joint reference: {q_ref.shape[0]} rows @ {config.control_dt:.4f}s = "
-              f"{q_ref.shape[0] * config.control_dt:.2f}s (envelope-validated)")
+        run_rows = reference_execution_steps if reference_execution_steps is not None else q_ref.shape[0]
+        print(f"joint reference: {run_rows} execution rows / {q_ref.shape[0]} stored rows @ "
+              f"{config.control_dt:.4f}s = {run_rows * config.control_dt:.2f}s (envelope-validated)")
         print(f"direct diagnostic transform: {transform_metadata}")
         reference_metadata = {
             "file": str(args.reference_file),
             "sha256": sha if args.reference_manifest else None,
             "shape": shape_name,
             "rows": int(q_ref.shape[0]),
+            "execution_steps": int(reference_execution_steps or len(records)),
             "command_transform": transform_metadata,
         }
     elif args.joint == "all":
@@ -386,9 +470,12 @@ def main() -> None:
 
     try:
         backend.connect()
-        backend.startup_to_home(args.startup_seconds)
+        backend.startup_to_home(
+            args.startup_seconds,
+            home_tolerance_rad=float(np.deg2rad(args.home_tolerance_deg)),
+        )
         if args.reference_mode == "joint_file":
-            steps = q_ref.shape[0]
+            steps = reference_execution_steps if reference_execution_steps is not None else q_ref.shape[0]
             if args.seconds is not None:
                 steps = min(steps, max(1, int(round(args.seconds / config.control_dt))))
                 print(f"playback capped by --seconds: {steps} steps ({steps * config.control_dt:.2f}s)")

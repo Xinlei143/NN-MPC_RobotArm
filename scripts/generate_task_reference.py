@@ -42,7 +42,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--robot_config", default="configs/robots/abb_irb2400.yaml")
     parser.add_argument("--model_xml", default=None, help="Advanced RobotSpec XML override.")
     parser.add_argument("--save_dir", required=True)
-    parser.add_argument("--shape", choices=["circle", "ellipse", "figure8", "square", "rounded_square"], default="circle")
+    parser.add_argument("--shape", choices=["circle", "ellipse", "figure8", "back_and_forth", "square", "rounded_square"], default="circle")
     parser.add_argument("--repeat_count", type=int, default=3)
     parser.add_argument("--control_dt", type=float, default=0.01)
     parser.add_argument("--horizon", type=int, default=20)
@@ -69,6 +69,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ellipse_axis_b", type=float, default=0.025)
     parser.add_argument("--figure8_axis_a", type=float, default=0.035)
     parser.add_argument("--figure8_axis_b", type=float, default=0.02)
+    parser.add_argument("--back_and_forth_half_length", type=float, default=0.04)
     parser.add_argument("--square_half_side", type=float, default=0.025)
     parser.add_argument("--rounded_square_corner_radius", type=float, default=0.006)
 
@@ -129,6 +130,7 @@ def _reference_config_from_args(args: argparse.Namespace) -> ReferenceConfig:
         ellipse_axis_b=args.ellipse_axis_b,
         figure8_axis_a=args.figure8_axis_a,
         figure8_axis_b=args.figure8_axis_b,
+        back_and_forth_half_length=args.back_and_forth_half_length,
         square_half_side=args.square_half_side,
         rounded_square_corner_radius=args.rounded_square_corner_radius,
         safe_departure_mode=args.safe_departure_mode,

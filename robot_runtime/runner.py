@@ -87,7 +87,7 @@ class TickRecord:
 class RealTimeRunner:
     def __init__(self, backend: RobotBackend, nominal: Callable[[int, RobotState], np.ndarray], *,
                  mode: RealControlMode = RealControlMode.DIRECT, planner: Planner | None = None,
-                 history_len: int = 8, residual_limit_rad: float = np.deg2rad(2.0),
+                 history_len: int = 8, residual_limit_rad: float | np.ndarray = np.deg2rad(2.0),
                  command_envelope: str = "experiment",
                  state_validator: Callable[[np.ndarray], object] | None = None,
                  command_validator: Callable[[np.ndarray], object] | None = None,
@@ -118,7 +118,14 @@ class RealTimeRunner:
         self.state_validator = state_validator
         self.command_validator = command_validator
         self.history_len = int(history_len)
-        self.residual_limit = float(residual_limit_rad)
+        residual_limit = np.asarray(residual_limit_rad, dtype=np.float32)
+        if residual_limit.ndim not in {0, 1} or not np.all(np.isfinite(residual_limit)) or np.any(residual_limit <= 0.0):
+            raise ValueError("residual_limit_rad must be a finite positive scalar or per-joint vector")
+        self.residual_limit = (
+            float(residual_limit)
+            if residual_limit.ndim == 0
+            else residual_limit.copy()
+        )
         if active_start_tick < 0:
             raise ValueError("active_start_tick must be non-negative")
         self.active_start_tick = int(active_start_tick)

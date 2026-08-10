@@ -35,7 +35,7 @@ SEGMENT_NAMES = {
     SEGMENT_HORIZON_PADDING: "horizon_padding",
 }
 
-SHAPE_NAMES = frozenset({"circle", "ellipse", "figure8", "square", "rounded_square"})
+SHAPE_NAMES = frozenset({"circle", "ellipse", "figure8", "back_and_forth", "square", "rounded_square"})
 
 
 @dataclass
@@ -139,6 +139,7 @@ def shape_start_position(
     ellipse_axis_b: float = 0.025,
     figure8_axis_a: float = 0.035,
     figure8_axis_b: float = 0.02,
+    back_and_forth_half_length: float = 0.04,
     square_half_side: float = 0.025,
     rounded_square_corner_radius: float = 0.006,
 ) -> np.ndarray:
@@ -159,6 +160,7 @@ def shape_start_position(
         ellipse_axis_b=ellipse_axis_b,
         figure8_axis_a=figure8_axis_a,
         figure8_axis_b=figure8_axis_b,
+        back_and_forth_half_length=back_and_forth_half_length,
         square_half_side=square_half_side,
         rounded_square_corner_radius=rounded_square_corner_radius,
     )
@@ -177,6 +179,10 @@ def shape_start_position(
         return center + float(figure8_axis_a) * np.sin(theta_0) * u + float(
             figure8_axis_b
         ) * np.sin(theta_0) * np.cos(theta_0) * v
+    if name == "back_and_forth":
+        direction = u + v
+        direction /= np.linalg.norm(direction)
+        return center + float(back_and_forth_half_length) * np.cos(start_phase) * direction
     if name == "square":
         return center + float(square_half_side) * (u + v)
     if name == "rounded_square":
@@ -192,6 +198,7 @@ def _validate_shape_dimensions(
     ellipse_axis_b: float,
     figure8_axis_a: float,
     figure8_axis_b: float,
+    back_and_forth_half_length: float,
     square_half_side: float,
     rounded_square_corner_radius: float,
 ) -> None:
@@ -203,6 +210,7 @@ def _validate_shape_dimensions(
         "ellipse_axis_b": ellipse_axis_b,
         "figure8_axis_a": figure8_axis_a,
         "figure8_axis_b": figure8_axis_b,
+        "back_and_forth_half_length": back_and_forth_half_length,
         "square_half_side": square_half_side,
         "rounded_square_corner_radius": rounded_square_corner_radius,
     }
@@ -241,6 +249,7 @@ def _smooth_shape_positions(
     ellipse_axis_b: float,
     figure8_axis_a: float,
     figure8_axis_b: float,
+    back_and_forth_half_length: float,
     square_half_side: float,
     rounded_square_corner_radius: float,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -266,6 +275,20 @@ def _smooth_shape_positions(
             corner_radius=rounded_square_corner_radius,
         )
 
+    if shape_name == "back_and_forth":
+        direction = np.asarray(axis_u, dtype=np.float64) + np.asarray(axis_v, dtype=np.float64)
+        direction /= np.linalg.norm(direction)
+        tau = np.linspace(0.0, 1.0, lap_samples + 1, dtype=np.float64)
+        phase = start_phase + 2.0 * np.pi * quintic_time_scaling(tau)
+        one_lap = center[None, :] + float(back_and_forth_half_length) * np.cos(phase)[:, None] * direction[None, :]
+        return (
+            np.concatenate([one_lap.copy() for _ in range(repeat_count)], axis=0),
+            np.concatenate([
+                np.full(one_lap.shape[0], index, dtype=np.int64)
+                for index in range(repeat_count)
+            ], axis=0),
+        )
+
     # Each lap has an explicit initial and final sample.  That gives offline
     # validation a real, discrete closure point for every lap and makes the
     # zero-speed corner between repeated drawings deliberate rather than an
@@ -286,6 +309,10 @@ def _smooth_shape_positions(
             theta = np.pi / 2.0 + phase
             positions = center[None, :] + float(figure8_axis_a) * np.sin(theta)[:, None] * axis_u[None, :]
             positions += float(figure8_axis_b) * np.sin(theta)[:, None] * np.cos(theta)[:, None] * axis_v[None, :]
+        elif shape_name == "back_and_forth":
+            direction = np.asarray(axis_u, dtype=np.float64) + np.asarray(axis_v, dtype=np.float64)
+            direction /= np.linalg.norm(direction)
+            positions = center[None, :] + float(back_and_forth_half_length) * np.cos(phase)[:, None] * direction[None, :]
         else:  # pragma: no cover - _validate_shape_dimensions protects this branch.
             raise ValueError(f"Unsupported shape_name {shape_name!r}")
         positions_by_lap.append(positions)
@@ -390,6 +417,7 @@ def generate_task_space_trajectory(
     ellipse_axis_b: float = 0.025,
     figure8_axis_a: float = 0.035,
     figure8_axis_b: float = 0.02,
+    back_and_forth_half_length: float = 0.04,
     square_half_side: float = 0.025,
     rounded_square_corner_radius: float = 0.006,
     include_return: bool = True,
@@ -413,6 +441,7 @@ def generate_task_space_trajectory(
         ellipse_axis_b=ellipse_axis_b,
         figure8_axis_a=figure8_axis_a,
         figure8_axis_b=figure8_axis_b,
+        back_and_forth_half_length=back_and_forth_half_length,
         square_half_side=square_half_side,
         rounded_square_corner_radius=rounded_square_corner_radius,
     )
@@ -442,6 +471,7 @@ def generate_task_space_trajectory(
         ellipse_axis_b=ellipse_axis_b,
         figure8_axis_a=figure8_axis_a,
         figure8_axis_b=figure8_axis_b,
+        back_and_forth_half_length=back_and_forth_half_length,
         square_half_side=square_half_side,
         rounded_square_corner_radius=rounded_square_corner_radius,
     )
@@ -460,6 +490,7 @@ def generate_task_space_trajectory(
         ellipse_axis_b=ellipse_axis_b,
         figure8_axis_a=figure8_axis_a,
         figure8_axis_b=figure8_axis_b,
+        back_and_forth_half_length=back_and_forth_half_length,
         square_half_side=square_half_side,
         rounded_square_corner_radius=rounded_square_corner_radius,
     )
@@ -500,6 +531,7 @@ def generate_task_space_trajectory(
         "ellipse_axis_b": float(ellipse_axis_b),
         "figure8_axis_a": float(figure8_axis_a),
         "figure8_axis_b": float(figure8_axis_b),
+        "back_and_forth_half_length": float(back_and_forth_half_length),
         "square_half_side": float(square_half_side),
         "rounded_square_corner_radius": float(rounded_square_corner_radius),
     }

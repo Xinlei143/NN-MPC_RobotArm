@@ -251,6 +251,9 @@ def build_run_summary(arrays: dict[str, np.ndarray], *, task_summary: dict[str, 
             "joint_limit_violation_count": int(np.sum(np.asarray(arrays.get("joint_limit_violation_flags", np.empty(0))) != 0)),
             "command_velocity_violation_count": int(np.sum(np.asarray(arrays.get("command_velocity_violation_flags", np.empty(0))) != 0)),
             "command_acceleration_violation_count": int(np.sum(np.asarray(arrays.get("command_acceleration_violation_flags", np.empty(0))) != 0)),
+            "command_acceleration_quantization_exceedance_count": int(np.sum(
+                np.asarray(arrays.get("command_acceleration_quantization_exceedance_flags", np.empty(0))) != 0
+            )),
             "recovery_active_step_count": int(np.sum(np.asarray(arrays.get("recovery_active_flags", np.empty(0))) != 0)),
             "recovery_trigger_count": int(sum(recovery_trigger_counts.values())),
             "recovery_trigger_counts": recovery_trigger_counts,
@@ -385,6 +388,12 @@ def print_run_summary(summary: dict[str, Any]) -> None:
         f"command v/a flags: {safety['command_velocity_violation_count']}/{safety['command_acceleration_violation_count']}  "
         f"recovery triggers: {safety['recovery_trigger_count']}"
     )
+    if safety.get("command_acceleration_quantization_exceedance_count", 0):
+        print(
+            "          "
+            "discrete encoder-quantization acceleration exceedances: "
+            f"{safety['command_acceleration_quantization_exceedance_count']}"
+        )
     if safety["recovery_active_step_count"] or safety["recovery_trigger_counts"]:
         print(
             f"          recovery active steps: {safety['recovery_active_step_count']} "
@@ -523,6 +532,9 @@ def _task_tracking_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any] | No
     limit_flags = np.asarray(arrays.get("joint_limit_violation_flags", np.empty((0,))), dtype=np.float64)
     command_velocity_flags = np.asarray(arrays.get("command_velocity_violation_flags", np.empty((0,))), dtype=np.float64)
     command_acceleration_flags = np.asarray(arrays.get("command_acceleration_violation_flags", np.empty((0,))), dtype=np.float64)
+    command_acceleration_quantization_flags = np.asarray(
+        arrays.get("command_acceleration_quantization_exceedance_flags", np.empty((0,))), dtype=np.float64
+    )
     planning: dict[str, float | int] = {}
     if planning_time.size:
         planning["mean_planning_time_s"] = float(np.mean(planning_time))
@@ -539,6 +551,13 @@ def _task_tracking_summary(arrays: dict[str, np.ndarray]) -> dict[str, Any] | No
     if command_acceleration_flags.size:
         planning["command_acceleration_violation_count"] = int(np.sum(command_acceleration_flags != 0.0))
         planning["command_acceleration_violation_rate"] = float(np.mean(command_acceleration_flags != 0.0))
+    if command_acceleration_quantization_flags.size:
+        planning["command_acceleration_quantization_exceedance_count"] = int(
+            np.sum(command_acceleration_quantization_flags != 0.0)
+        )
+        planning["command_acceleration_quantization_exceedance_rate"] = float(
+            np.mean(command_acceleration_quantization_flags != 0.0)
+        )
     if planning:
         summary["planning"] = planning
     return summary
