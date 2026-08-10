@@ -1,14 +1,15 @@
 # NN-MPC_RobotArm
 
 Learned-dynamics, delay-aware residual CEM-MPC for position-controlled
-manipulators in MuJoCo. The repository contains the ABB IRB 2400 primary
-evaluation, an independently trained and calibrated UR5e replication, task-space
-reference generation, and auditable public evidence for the ROBIO 2026 manuscript.
+manipulators. The repository contains the ABB IRB 2400 primary MuJoCo
+evaluation, an independently trained and calibrated UR5e replication, and a
+separate SO101 real-hardware evaluation pipeline for the final paper protocol.
 
-> This is simulation research code. Position, velocity, acceleration, and
-> safety limits in this repository are planning or MuJoCo constraints, not
-> hardware ratings. A physical-robot deployment requires a separate safety
-> review, collision checking, emergency-stop integration, and real-time testing.
+> The MuJoCo workflows are simulation research code. Position, velocity,
+> acceleration, and safety limits are not hardware ratings. The SO101 workflow
+> is a separately gated real-hardware experiment and requires the configured
+> startup/homing procedure, operator-supported shutdown, collision checking,
+> an independent emergency-stop path, and a hardware-specific safety review.
 
 ## What the controller does
 
@@ -45,9 +46,55 @@ diagnostics, mechanism-isolation results, figures, delay calibrations,
 robot/reference contracts, and portable cohort audits. It excludes raw
 rollouts, caches, checkpoints, normalizers, and paper files.
 
-The reported experiments are MuJoCo-only. UR5e is a robot-specific replication
-with its own data, model, IK references, and activation-delay calibration; it is
-not a shared-model transfer result.
+The ROBIO 2026 evidence bundle reports MuJoCo experiments only. UR5e is a
+robot-specific replication with its own data, model, IK references, and
+activation-delay calibration; it is not a shared-model transfer result. The
+SO101 real-hardware results are maintained as local experiment records because
+they include raw rollouts and hardware-specific artifacts that are not part of
+the compact public bundle.
+
+## SO101 real-hardware paper experiment
+
+The final SO101 protocol is frozen in
+[`configs/experiments/so101_final_paper_20260810.yaml`](configs/experiments/so101_final_paper_20260810.yaml).
+It compares Direct IK, fixed Preview6 (6 steps / 200 ms), and tracking-dominant
+NN-MPC on 63 paired trials: 9 development-circle trials and 54 held-out trials
+covering ellipse, back-and-forth, and rounded-square references at nominal and
+fast speeds.
+
+The final NN-MPC configuration is 30 Hz, horizon 6, GRU history 16, CEM with
+128 samples and 2 iterations, and requested residual authority `|r_j| <= 1°`.
+The objective is `J = C_q`; executable velocity, acceleration, joint-limit,
+braking, encoder-quantization, startup, and shutdown safeguards remain active.
+The requested residual is measured before the executable-command projector;
+the executed command deviation can therefore differ from the requested
+residual after stateful projection and quantization.
+
+Use the frozen trial wrapper for one registered trial at a time:
+
+```bash
+conda run --no-capture-output -n lerobot python scripts/run_so101_paper_trial.py \
+  --protocol configs/experiments/so101_final_paper_20260810.yaml \
+  --trial-id <TRIAL_ID> \
+  --confirm <TRIAL_ID> \
+  --operator <OPERATOR>
+```
+
+The wrapper prevents non-registered parameters and output overwrites. The
+offline analyzer evaluates all completed artifacts without contacting the
+robot:
+
+```bash
+conda run --no-capture-output -n lerobot python scripts/analyze_so101_paper_trials.py \
+  --protocol configs/experiments/so101_final_paper_20260810.yaml \
+  --write-doc
+```
+
+The current result record is
+[`docs/hardware/so101-final-paper-experiment-results-20260810.md`](docs/hardware/so101-final-paper-experiment-results-20260810.md).
+It records the held-out aggregate, paired comparisons, residual definitions,
+latency, safety fields, and command-activity trade-off. The raw SO101 outputs
+are generated under `outputs/hardware/` and are intentionally not tracked.
 
 The evidence bundle supports claim checking and aggregate reanalysis, not a
 from-scratch reproduction: large learned artifacts and raw runtime arrays are
@@ -58,10 +105,11 @@ boundaries of the reported claims.
 
 ```text
 configs/robots/          RobotSpec YAML files for ABB IRB 2400 and UR5e
+configs/hardware/        Local hardware configurations, including SO101
 dynamics_modeling/       MuJoCo assets, data collection, training, and validation
 mpc/                     CEM, rollout, constraints, delay protocol, IK, and diagnostics
 scripts/                 Runners, reference tools, robustness, and paper workflows
-docs/                    Current architecture, guides, safety notes, and paper audits
+docs/                    Current architecture, guides, safety notes, hardware records, and paper audits
 evidence/robio2026/      Compact public evidence bundle and checksums
 outputs/                 Generated local outputs; intentionally not tracked
 ```
