@@ -608,9 +608,9 @@
       "source": "Paper/robo2026/figures/fig2_representative_tracking.pdf"
     },
     {
-      "bytes": 4938643,
+      "bytes": 4938599,
       "path": "so101/figures/fig2_representative_tracking.svg",
-      "sha256": "b9c9246fbe52d45a34a799782876ba75d505fbbacb6523fd1ffbec3664933ee3",
+      "sha256": "db0213eb3d0f2f13cb82ac610c853ae393f08b8c43044b423aef9f2fe4e1d57a",
       "source": "Paper/robo2026/figures/fig2_representative_tracking.svg"
     },
     {
@@ -676,7 +676,7 @@
     {
       "bytes": 262909,
       "path": "technical_supplement.pdf",
-      "sha256": "bd3fbb09b1464606ae763f756a2a54e595b2bdc17800143c351fb8bfe3b8a182",
+      "sha256": "e4c848c99d538a46e39a323928e197aaf412b9c524e981d07ea7a04bc5bcff59",
       "source": "repository-maintained technical supplement"
     }
   ],

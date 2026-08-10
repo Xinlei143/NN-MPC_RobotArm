@@ -1,7 +1,7 @@
 # ROBIO 2026 v2 release preparation
 
-This checklist prepares the repository for a future `robio2026-submission-v2`
-release. It does not create a tag, push a branch, or publish a GitHub release.
+This checklist freezes the repository for the `robio2026-submission-v2`
+release. It does not publish the GitHub Release page.
 
 ## Scope
 
@@ -10,10 +10,8 @@ ABB/UR5e MuJoCo mechanism study. The SO101 result is a hardware-specific
 instantiation of the residual MPC principle, not zero-shot transfer of the
 simulation hyperparameters.
 
-## Intended release assets
+## Contents of the tagged repository
 
-- `Paper/robo2026/main.pdf` and the corresponding manuscript source maintained
-  in the local paper workspace;
 - `evidence/robio2026/PUBLIC_MANIFEST.json` and
   `evidence/robio2026/technical_supplement.pdf`;
 - `evidence/robio2026/so101/analysis/public_summary.json` and
@@ -25,6 +23,11 @@ simulation hyperparameters.
 - `configs/experiments/so101_final_paper_20260810.yaml`, the offline analyzer,
   and the figure-generation script.
 
+The GitHub Release is intentionally created without manually uploaded assets.
+The manuscript source and final PDF remain local submission materials because
+`Paper/` is excluded by `.gitignore`; the tagged repository therefore contains
+the code, compact evidence, protocol files, and technical supplement only.
+
 ## Pre-publish checks
 
 1. Re-run the offline SO101 analyzer and verify 63/63 complete trials, 54
@@ -34,14 +37,18 @@ simulation hyperparameters.
 2. Re-run the offline delay-stress analyzer and verify six complete runs,
    three paired delay-worse blocks, pooled p95 latency of 28.33/94.34 ms for
    baseline/delay33, and zero delay-stress safety/deadline counters.
-3. Rebuild the compact evidence bundle and verify that all public text files
-   contain portable paths only; raw rollouts, checkpoints, normalizers, and
-   hardware-local runtime caches remain excluded.
-4. Compile the main paper and technical supplement, check the page budget and
-   undefined references, and visually inspect Fig. 2 at publication scale.
+3. Rebuild the compact evidence bundle and verify that all public text and SVG
+   files contain portable paths only; raw rollouts, checkpoints, normalizers,
+   and hardware-local runtime caches remain excluded.
+4. Compile the 8-page main paper and 4-page technical supplement, check the
+   page budget and undefined references, and visually inspect all pages and
+   Fig. 2 at publication scale.
 5. Confirm that the manuscript and README describe TCP as FK-derived secondary
    evidence and do not claim hard-real-time guarantees or zero-shot transfer.
-6. Record the final commit and manifest SHA-256 values in the release notes.
+6. Record the final commit, manuscript PDF, supplement PDF, and manifest
+   SHA-256 values in the GitHub Release notes. The paper footnote must target
+   the immutable URL
+   `releases/tag/robio2026-submission-v2`, not `tree/main`.
 
 ## Known boundary
 

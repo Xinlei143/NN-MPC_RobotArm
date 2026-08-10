@@ -95,9 +95,10 @@ SOURCES = {
     ),
 }
 
-TEXT_SUFFIXES = {".csv", ".json", ".log", ".md", ".txt"}
+TEXT_SUFFIXES = {".csv", ".json", ".log", ".md", ".txt", ".svg", ".tex", ".yaml", ".yml"}
 PRESERVED_PUBLIC_FILES = {"README.md", "technical_supplement.tex", "technical_supplement.pdf"}
 MANIFESTED_PUBLIC_FILES = ("technical_supplement.tex", "technical_supplement.pdf")
+FORBIDDEN_PATH_MARKERS = (str(ROOT), "/home/", "file://", "C:\\Users\\")
 
 
 def _portable_copy(source: Path, destination: Path) -> None:
@@ -110,6 +111,23 @@ def _portable_copy(source: Path, destination: Path) -> None:
     # the public copy. No numerical or configuration field is changed.
     text = text.replace(str(ROOT), ".")
     destination.write_text(text, encoding="utf-8")
+
+
+def _assert_portable_public_text() -> None:
+    violations: list[str] = []
+    for path in sorted(DESTINATION.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if any(marker in text for marker in FORBIDDEN_PATH_MARKERS):
+            violations.append(path.relative_to(DESTINATION).as_posix())
+    if violations:
+        raise RuntimeError(
+            "non-portable paths remain in public evidence: " + ", ".join(violations)
+        )
 
 
 def build() -> None:
@@ -169,6 +187,7 @@ def build() -> None:
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    _assert_portable_public_text()
 
 
 if __name__ == "__main__":

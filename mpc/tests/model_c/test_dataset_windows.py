@@ -16,18 +16,32 @@ from neural_dynamics.dataset import RolloutDynamicsDataset, split_dataset
 
 class ModelCDatasetTests(unittest.TestCase):
     def test_40_row_branch_has_six_valid_gru_rollout_windows(self) -> None:
-        # 15 context-only rows + 25 valid transitions.  The current target is
-        # the final history row, so L-H-R+2 = 40-16-20+2 = 6.
+        # A recurrent rollout needs history_len + rollout_steps - 1 valid
+        # rows.  Therefore L-H-R+2 = 40-16-20+2 = 6.
         values = np.zeros((40, 12), dtype=np.float32)
         actions = np.zeros((40, 6), dtype=np.float32)
         dataset = RolloutDynamicsDataset(
             values, actions, values, model_type="gru", history_len=16,
             episode_ids=np.zeros(40, dtype=np.int64),
             split_group_ids=np.zeros(40, dtype=np.int64),
-            valid_target=np.r_[np.zeros(15, dtype=np.int8), np.ones(25, dtype=np.int8)],
+            valid_target=np.ones(40, dtype=np.int8),
             target_mode="delta_dq", rollout_steps=20,
         )
         self.assertEqual(len(dataset), 6)
+
+    def test_invalid_history_or_rollout_row_removes_gru_window(self) -> None:
+        length = 60
+        values = np.zeros((length, 12), dtype=np.float32)
+        actions = np.zeros((length, 6), dtype=np.float32)
+        valid_target = np.ones(length, dtype=np.int8)
+        valid_target[20] = 0
+        dataset = RolloutDynamicsDataset(
+            values, actions, values, model_type="gru", history_len=16,
+            episode_ids=np.zeros(length, dtype=np.int64),
+            valid_target=valid_target, target_mode="delta_dq", rollout_steps=20,
+        )
+        # Starts 0..20 contain the invalid row; starts 21..25 remain valid.
+        self.assertEqual(len(dataset), 5)
 
     def test_parent_split_group_keeps_main_and_branch_together(self) -> None:
         # Main episode ids and branch ids deliberately differ, while parent
