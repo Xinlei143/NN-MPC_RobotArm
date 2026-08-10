@@ -459,6 +459,148 @@ def _paired(rows: list[dict[str, Any]], family: str | None = None) -> dict[str, 
     }
 
 
+def _paired_interval(pair: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact, public paired summary without exposing raw paths."""
+    values = np.asarray(pair.get("values", []), dtype=np.float64)
+    if not values.size:
+        return {"n": 0, "mean": None, "std": None, "ci95": [None, None], "wins": 0}
+    # The formal held-out matrix has 18 matched pairs (t_0.975,17).  Keep the
+    # same interval convention as the human-readable record; development and
+    # all-family summaries use the normal approximation.
+    critical = 2.109816 if values.size == 18 else 1.96
+    mean_value = float(np.mean(values))
+    standard_error = float(np.std(values, ddof=1) / np.sqrt(values.size)) if values.size > 1 else 0.0
+    return {
+        "n": int(values.size),
+        "mean": mean_value,
+        "std": float(np.std(values, ddof=1 if values.size > 1 else 0)),
+        "ci95": [mean_value - critical * standard_error, mean_value + critical * standard_error],
+        "wins": int(np.sum(values < 0.0)),
+        "values": [float(value) for value in values],
+    }
+
+
+def _planner_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate hardware planner events without returning local filenames."""
+    latencies: list[float] = []
+    event_count = 0
+    late_drop_count = 0
+    failure_count = 0
+    for row in rows:
+        if row.get("status") != "complete" or row.get("controller") != "nn_mpc":
+            continue
+        events_path = Path(str(row.get("output_dir", ""))) / "planner_events.jsonl"
+        if not events_path.exists():
+            continue
+        with events_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                event_count += 1
+                result_type = str(event.get("result_type", ""))
+                if result_type.endswith("late_dropped"):
+                    late_drop_count += 1
+                if result_type in {"failure", "planner_failure"}:
+                    failure_count += 1
+                value = event.get("end_to_end_latency_s")
+                if value is not None and np.isfinite(float(value)):
+                    latencies.append(float(value) * 1000.0)
+    values = np.asarray(latencies, dtype=np.float64)
+    return {
+        "event_count": int(event_count),
+        "late_drop_count": int(late_drop_count),
+        "failure_count": int(failure_count),
+        "latency_ms": {
+            "mean": None if not values.size else float(np.mean(values)),
+            "p95": None if not values.size else float(np.percentile(values, 95.0)),
+            "p99": None if not values.size else float(np.percentile(values, 99.0)),
+            "max": None if not values.size else float(np.max(values)),
+        },
+    }
+
+
+def _public_summary(
+    protocol: dict[str, Any],
+    rows: list[dict[str, Any]],
+    aggregate: dict[str, Any],
+    paired_heldout: dict[str, Any],
+    manifest_hash: str | None,
+) -> dict[str, Any]:
+    """Build the compact, path-free summary used by the public evidence bundle."""
+    complete = [row for row in rows if row.get("status") == "complete"]
+    heldout = [row for row in complete if row.get("family") == "heldout"]
+
+    def mean(controller: str, field: str, subset: list[dict[str, Any]]) -> float | None:
+        values = [row[field] for row in subset if row.get("controller") == controller and row.get(field) is not None]
+        return None if not values else float(np.mean(values))
+
+    overall: dict[str, dict[str, Any]] = {}
+    for controller in ("direct", "preview6", "nn_mpc"):
+        overall[controller] = {
+            "n": int(sum(row.get("controller") == controller for row in heldout)),
+            "joint_rmse_deg": mean(controller, "tracking_joint_rmse_deg", heldout),
+            "fk_tcp_rmse_mm": mean(controller, "tracking_tcp_rmse_mm", heldout),
+            "command_velocity_rms_rad_s": mean(controller, "command_velocity_rms_rad_s", heldout),
+            "command_acceleration_rms_rad_s2": mean(controller, "command_acceleration_rms_rad_s2", heldout),
+            "requested_residual_p95_deg": mean(controller, "requested_residual_p95_deg", heldout),
+            "requested_residual_max_deg": mean(controller, "requested_residual_max_deg", heldout),
+            "executed_deviation_p95_deg": mean(controller, "executed_residual_p95_deg", heldout),
+            "executed_deviation_max_deg": mean(controller, "executed_residual_max_deg", heldout),
+        }
+
+    safety_fields = (
+        "safety_violation_count", "control_deadline_miss_count", "command_velocity_violation_count",
+        "command_acceleration_violation_count", "planner_failure_count", "tx_failure_count",
+    )
+    safety_totals = {
+        field: int(sum(int(row.get(field) or 0) for row in complete if row.get(field) is not None))
+        for field in safety_fields
+    }
+    status_counts = Counter(str(row.get("status", "unknown")) for row in rows)
+    return _json_safe({
+        "schema_version": 1,
+        "protocol_id": protocol["protocol_id"],
+        "reference_manifest_sha256": manifest_hash,
+        "experiment_matrix": {
+            "total_trials": len(rows),
+            "complete_trials": len(complete),
+            "heldout_trials": len(heldout),
+            "development_trials": len([row for row in complete if row.get("family") == "circle"]),
+            "heldout_shapes": list(protocol.get("heldout_shapes", [])),
+            "speeds": list(protocol.get("speed_labels", [])),
+            "repeats": int(protocol.get("repeat_count", 0)),
+            "controllers": ["direct", "preview6", "nn_mpc"],
+        },
+        "status_counts": dict(sorted(status_counts.items())),
+        "hardware_instantiation": {
+            "platform": "SO101 follower",
+            "controlled_arm_joints": 5,
+            "control_rate_hz": round(1.0 / float(protocol["control_dt_s"]), 6),
+            "horizon": int(protocol["final_mpc"]["horizon"]),
+            "history_len": int(protocol["final_mpc"]["history_len"]),
+            "cem_samples": int(protocol["final_mpc"]["num_samples"]),
+            "cem_iterations": int(protocol["final_mpc"]["cem_iters"]),
+            "residual_authority_deg": 1.0,
+            "objective": "J=C_q",
+            "input_semantics": "[q, dq, q_ref-q]",
+            "target_semantics": "delta_state",
+            "hard_safeguards": ["executable projector", "joint/velocity/acceleration limits", "braking", "encoder quantization", "startup/homing"],
+        },
+        "heldout_aggregate": overall,
+        "paired_heldout": {key: _paired_interval(value) for key, value in sorted(paired_heldout.items())},
+        "safety_totals": safety_totals,
+        "planner_events_nn_mpc": _planner_summary(rows),
+        "aggregate_groups": aggregate,
+        "interpretation_boundaries": [
+            "FK-derived TCP uses encoder joint angles and the calibrated MuJoCo model; no external Cartesian tracker was used.",
+            "SO101 is a hardware-specific instantiation of the residual MPC principle, not zero-shot transfer of the simulation hyperparameters.",
+            "No hard-real-time guarantee or hardware-independent generalization claim is made.",
+        ],
+    })
+
+
 def _analysis_lines(rows: list[dict[str, Any]], paired: dict[str, Any]) -> list[str]:
     """Generate evidence-first interpretation for the frozen result record."""
     complete = [row for row in rows if row.get("status") == "complete"]
@@ -697,11 +839,13 @@ def _markdown(protocol: dict[str, Any], results: list[dict[str, Any]], aggregate
         "|---|---|---|---|---:|---:|---|---:|---:|---:|---:|",
     ]
     for row in rows:
+        joint_rmse = "" if row["tracking_joint_rmse_deg"] is None else f"{row['tracking_joint_rmse_deg']:.4f}"
+        tcp_rmse = "" if row["tracking_tcp_rmse_mm"] is None else f"{row['tracking_tcp_rmse_mm']:.3f}"
+        safety_count = "" if row["safety_violation_count"] is None else row["safety_violation_count"]
+        quantized_count = "" if row["command_acceleration_quantization_exceedance_count"] is None else row["command_acceleration_quantization_exceedance_count"]
         lines.append(
             f"| {row['trial_id']} | {row['controller']} | {row['shape']} | {row['speed']} | {row['phase_index']} | {row['repeat_index']} | {row['status']} | "
-            f"{'' if row['tracking_joint_rmse_deg'] is None else f'{row["tracking_joint_rmse_deg"]:.4f}'} | "
-            f"{'' if row['tracking_tcp_rmse_mm'] is None else f'{row["tracking_tcp_rmse_mm"]:.3f}'} | {row['safety_violation_count'] if row['safety_violation_count'] is not None else ''} | "
-            f"{row['command_acceleration_quantization_exceedance_count'] if row['command_acceleration_quantization_exceedance_count'] is not None else ''} |"
+            f"{joint_rmse} | {tcp_rmse} | {safety_count} | {quantized_count} |"
         )
     lines += [
         "",
@@ -761,8 +905,24 @@ def main() -> int:
         "heldout_reference_manifest_sha256": manifest_hash,
     }
     (analysis_dir / "trial_metrics.json").write_text(json.dumps(_json_safe(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    public_summary = _public_summary(protocol, rows, aggregate, paired_heldout, manifest_hash)
+    (analysis_dir / "public_summary.json").write_text(
+        json.dumps(public_summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     with (analysis_dir / "trial_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=("trial_id", *SUMMARY_FIELDS), extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    public_fields = (
+        "trial_id", "family", "shape", "speed", "phase_index", "repeat_index", "controller", "status",
+        "tracking_joint_rmse_deg", "tracking_tcp_rmse_mm", "command_velocity_rms_rad_s",
+        "command_acceleration_rms_rad_s2", "requested_residual_p95_deg", "requested_residual_max_deg",
+        "executed_residual_p95_deg", "executed_residual_max_deg", "safety_violation_count",
+        "control_deadline_miss_count", "command_velocity_violation_count", "command_acceleration_violation_count",
+        "command_acceleration_quantization_exceedance_count",
+    )
+    with (analysis_dir / "public_trial_ledger.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=public_fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
     with (analysis_dir / "aggregate_metrics.csv").open("w", newline="", encoding="utf-8") as handle:

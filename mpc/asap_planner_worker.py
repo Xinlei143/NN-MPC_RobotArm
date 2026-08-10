@@ -95,6 +95,7 @@ class PlannerWorkerStatus:
     uncertainty_residual_scale: float
     uncertainty_high_risk: bool
     uncertainty_reference_feedback: bool
+    initialization_stage: str
 
 
 class ASAPPlannerWorker(threading.Thread):
@@ -117,8 +118,9 @@ class ASAPPlannerWorker(threading.Thread):
         kinematics_model: Any | None = None,
         task_positions_des: np.ndarray | None = None,
         task_rotations_des: np.ndarray | None = None,
+        daemon: bool = True,
     ) -> None:
-        super().__init__(name="asap-mpc-planner", daemon=True)
+        super().__init__(name="asap-mpc-planner", daemon=bool(daemon))
         self.args, self.api, self.snapshots, self.packets, self.results, self.stop_event = args, api, snapshots, packets, results, stop_event
         self.joint_low, self.joint_high = joint_low.astype(np.float32).copy(), joint_high.astype(np.float32).copy()
         self.reference = reference.astype(np.float32).copy()
@@ -136,6 +138,7 @@ class ASAPPlannerWorker(threading.Thread):
         self.ready = threading.Event()
         self._status_lock = threading.Lock()
         self.failure_reason = ""
+        self._initialization_stage = "created"
         self.control_dt: float | None = None
         self.history_len: int | None = None
         self.solve_count = self.late_drop_count = 0
@@ -185,11 +188,18 @@ class ASAPPlannerWorker(threading.Thread):
                 self._last_successful_plan_id,
                 self._uncertainty_score, self._uncertainty_max_score, self._uncertainty_evaluation_time_s,
                 self._uncertainty_gate, self._uncertainty_residual_scale, self._uncertainty_high_risk, self._uncertainty_reference_feedback,
+                self._initialization_stage,
             )
+
+    def _set_initialization_stage(self, stage: str) -> None:
+        """Publish a coarse stage so a real-hardware preflight is observable."""
+        with self._status_lock:
+            self._initialization_stage = str(stage)
 
     def _fail(self, reason: str) -> None:
         with self._status_lock:
             self.failure_reason = reason
+            self._initialization_stage = "failed"
             self._planner_result_id += 1
             result_id = self._planner_result_id
         self.results.publish(PlannerResultEvent(
@@ -404,7 +414,7 @@ class ASAPPlannerWorker(threading.Thread):
                                            velocity_limit: np.ndarray, acceleration_limit: np.ndarray):
         """Forecast delay using the same projected/quantised state transition."""
         assert self.executable_command_spec is not None
-        delay = self.args.anticipation_delay_steps
+        delay = int(self.args.anticipation_delay_steps)
         command_state = snapshot.executable_command_state or ExecutableCommandState(
             snapshot.previous_q_ref, snapshot.previous_q_ref_velocity
         )
@@ -483,7 +493,7 @@ class ASAPPlannerWorker(threading.Thread):
     def _forecast_anchor(self, snapshot: PlanningSnapshot, bundle: Any, device: torch.device, velocity_limit: np.ndarray, acceleration_limit: np.ndarray) -> tuple[torch.Tensor, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if self.executable_command_spec is not None:
             return self._forecast_anchor_executable(snapshot, bundle, device, velocity_limit, acceleration_limit)
-        delay = self.args.anticipation_delay_steps
+        delay = int(self.args.anticipation_delay_steps)
         previous_command, previous_velocity = snapshot.previous_q_ref.copy(), snapshot.previous_q_ref_velocity.copy()
         actions: list[np.ndarray] = []
         command_nominal_offsets: list[np.ndarray] = []
@@ -545,10 +555,12 @@ class ASAPPlannerWorker(threading.Thread):
 
     def run(self) -> None:
         try:
+            self._set_initialization_stage("resolving_device")
             device = self.api["resolve_device"](self.args.device)
             if device.type != "cuda":
                 raise ValueError("threaded_asap requires a CUDA device so the worker exclusively owns GPU operations")
             self.api["set_seed"](self.args.seed)
+            self._set_initialization_stage("loading_dynamics_bundle")
             bundle = self.api["load_dynamics_bundle"](
                 checkpoint_path=self.api["resolve_runtime_path"](self.args.checkpoint),
                 normalizer_path=self.api["resolve_runtime_path"](self.args.normalizer),
@@ -580,6 +592,7 @@ class ASAPPlannerWorker(threading.Thread):
                     )
             self.control_dt = float(bundle.control_dt)
             self.history_len = int(bundle.history_len)
+            self._set_initialization_stage("creating_executable_rollout_engine")
             if self.executable_command_spec is not None:
                 self.executable_rollout_engine = ExecutableRolloutEngine(
                     model=bundle.model,
@@ -651,6 +664,7 @@ class ASAPPlannerWorker(threading.Thread):
             mean_anchor_step: int | None = None
             last_launch_ns: int | None = None
             plan_id = 0
+            self._set_initialization_stage("waiting_for_initial_snapshot")
             while not self.stop_event.is_set():
                 snapshot = self.snapshots.wait_for_newer(last_request, timeout=0.01)
                 if snapshot is None:
@@ -674,6 +688,7 @@ class ASAPPlannerWorker(threading.Thread):
                     continue
                 worker_pickup_ns = time.perf_counter_ns()
                 last_launch_ns = time.perf_counter_ns()
+                self._set_initialization_stage("forecasting_initial_snapshot" if controller is None else "planning")
                 forecast_start_ns = time.perf_counter_ns()
                 future_history, anchor_state, anchor_command, anchor_velocity, anchor_requested_residual, anchor_requested_residual_velocity, anchor_command_nominal_offset, anchor_command_nominal_offset_velocity, anchor_payload_residual = self._forecast_anchor(snapshot, bundle, device, velocity_limit, acceleration_limit)
                 forecast_end_ns = time.perf_counter_ns()
@@ -739,12 +754,14 @@ class ASAPPlannerWorker(threading.Thread):
                     executable_rollout_engine=self.executable_rollout_engine,
                 )
                 if controller is None:
+                    self._set_initialization_stage("warming_up_cem")
                     controller = CEMMPCController(CEMMPCConfig(horizon=self.args.horizon, action_dim=self.args.n_joints, decision_horizon=self.args.horizon if self.args.residual_parameterization == "full" else self.args.residual_control_points, num_samples=self.args.num_samples, num_elites=self.args.num_elites, elite_ratio=self.args.elite_ratio, cem_iters=self.args.cem_iters, init_std=self.args.init_std, min_std=self.args.min_std, smoothing_alpha=self.args.smoothing_alpha, temporal_noise_alpha=self.args.temporal_noise_alpha, reset_std_each_step=self.args.reset_std_each_step, uniform_sample_ratio=self.args.uniform_sample_ratio, force_baseline_candidate=True, execute=self.args.cem_execute, seed=self.args.seed, device=str(device), selection_validation="exact_final_pool" if self.args.planner_projection_strategy == "two_stage" else "none", stage_one_task_mode=self.args.stage_one_task_space_cost), planner, self.joint_low, self.joint_high)
                     generator_state = controller.generator.get_state()
                     for _ in range(self.args.mpc_warmup_plans):
                         controller.plan(anchor_state, anchor_command)
                     controller.generator.set_state(generator_state)
                     controller.reset()
+                    self._set_initialization_stage("ready")
                     self.ready.set()
                     # This snapshot exists solely to initialise CUDA.  A fresh
                     # timestamp is published by the runner after ``ready``.
@@ -974,6 +991,9 @@ class ASAPPlannerWorker(threading.Thread):
                 planned_projection_offset = (
                     q_ref_sequence - (planner_nominal_np + residual_sequence)
                 ).astype(np.float32)
+                injected_delay_ms = float(getattr(self.args, "injected_planner_delay_ms", 0.0))
+                if injected_delay_ms > 0.0:
+                    time.sleep(injected_delay_ms / 1000.0)
                 publish_ns = time.perf_counter_ns()
                 phase_diagnostics = dict(result.candidate_diagnostics)
                 phase_diagnostics.update({
@@ -981,6 +1001,8 @@ class ASAPPlannerWorker(threading.Thread):
                     "anchor_forecast_ms": (forecast_end_ns - forecast_start_ns) / 1e6,
                     "cem_search_wall_ms": (cem_end_ns - cem_start_ns) / 1e6,
                     "packet_postprocess_ms": (publish_ns - postprocess_start_ns) / 1e6,
+                    "injected_planner_delay_ms": injected_delay_ms,
+                    "anticipation_delay_steps": int(self.args.anticipation_delay_steps),
                 })
                 activation_ns = snapshot.launch_time_ns + int(self.args.anticipation_delay_steps * bundle.control_dt * 1e9)
                 late_dropped = bool(not result.failure and publish_ns >= activation_ns - int(self.args.planner_guard_ms * 1e6))

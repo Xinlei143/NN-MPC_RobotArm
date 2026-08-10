@@ -50,10 +50,16 @@ def merge_runs(paths: list[Path]) -> dict[str, np.ndarray]:
     for path in paths:
         with np.load(path, allow_pickle=False) as archive:
             for key in ("planner_end_to_end_latency_s", "planner_late_drop", "packet_expired",
-                        "executed_tokens", "selected_action_tokens", "predicted_state_tokens"):
+                        "executed_tokens", "selected_action_tokens", "predicted_state_tokens",
+                        "injected_planner_delay_ms"):
                 if key not in archive.files:
+                    if key == "injected_planner_delay_ms":
+                        continue
                     raise KeyError(f"{path} is missing {key!r} (is it a patched shadow rollout?)")
-                arrays.setdefault(key, []).append(np.asarray(archive[key]))
+                value = np.asarray(archive[key])
+                if key == "injected_planner_delay_ms":
+                    value = value.reshape(-1)
+                arrays.setdefault(key, []).append(value)
     merged = {key: np.concatenate(values, axis=0) for key, values in arrays.items()}
     for key in ("planner_late_drop", "packet_expired"):
         merged[key] = merged[key].astype(bool)
@@ -88,6 +94,12 @@ def main() -> None:
     parser.add_argument("--collection", type=Path, default=COLLECTION_DEFAULT,
                         help="Frozen Model-A collection NPZ.")
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--expected-injected-planner-delay-ms",
+        type=float,
+        default=None,
+        help="Require every input rollout to record this injected delay before merging.",
+    )
     args = parser.parse_args()
     if len(args.rollouts) < 2:
         parser.error("at least two shadow rollouts are needed to merge calibration evidence")
@@ -95,6 +107,19 @@ def main() -> None:
         parser.error(f"collection not found: {args.collection}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.expected_injected_planner_delay_ms is not None:
+        if not np.isfinite(args.expected_injected_planner_delay_ms) or args.expected_injected_planner_delay_ms < 0.0:
+            parser.error("--expected-injected-planner-delay-ms must be finite and non-negative")
+        for path in args.rollouts:
+            with np.load(path, allow_pickle=False) as archive:
+                if "injected_planner_delay_ms" not in archive.files:
+                    parser.error(f"{path} has no injected_planner_delay_ms metadata")
+                values = np.asarray(archive["injected_planner_delay_ms"], dtype=np.float64).reshape(-1)
+                if not values.size or not np.allclose(values, args.expected_injected_planner_delay_ms, atol=0.25):
+                    parser.error(
+                        f"{path} was collected with delay values {values[:5].tolist()}, "
+                        f"expected {args.expected_injected_planner_delay_ms:.3f} ms"
+                    )
     merged = merge_runs(args.rollouts)
     latency = merged["planner_end_to_end_latency_s"]
     latency = latency[np.isfinite(latency)]

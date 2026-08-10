@@ -23,6 +23,7 @@ from mpc.logging import save_mpc_run
 from robot_runtime.asap_adapter import ASAPStorePlannerAdapter
 from robot_runtime.artifacts import verify_real_artifact_identity
 from robot_runtime.config import load_hardware_config
+from robot_runtime.executable_command import ExecutableCommandState
 from robot_runtime.factory import make_so101_backend
 from robot_runtime.ood import RobustEnvelope
 from robot_runtime.runner import RealControlMode, RealTimeRunner
@@ -44,6 +45,34 @@ def parser() -> argparse.ArgumentParser:
     )
     value.add_argument("--delay-calibration", default=None)
     value.add_argument("--ood-envelope", default=None)
+    value.add_argument(
+        "--injected-planner-delay-ms",
+        default=0.0,
+        type=float,
+        help=(
+            "Opt-in wall-clock delay inserted immediately before packet publication. "
+            "Used only by the separately guarded SO101 ThreadedAsync delay-stress study."
+        ),
+    )
+    value.add_argument(
+        "--planner-init-timeout-s",
+        default=180.0,
+        type=float,
+        help="Maximum wait for CUDA/CEM worker initialization before motion/run aborts.",
+    )
+    value.add_argument(
+        "--planner-preflight-before-motion",
+        action="store_true",
+        help=(
+            "Initialize the same CUDA/CEM planner through a torque-disabled read-only connection "
+            "before enabling hardware motion. Intended for real delay-stress runs."
+        ),
+    )
+    value.add_argument(
+        "--planner-preflight-only",
+        action="store_true",
+        help="Run the torque-disabled planner preflight and exit without enabling hardware motion.",
+    )
     value.add_argument("--reference-manifest", required=True,
                        help="mpc_manifest.json whose artifacts.q_des_ctrl.npy SHA-256 must match the "
                             "reference file; also gates playback through JointFilePlayer (hardware "
@@ -51,12 +80,67 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
+def _wait_for_planner_ready(worker: ASAPPlannerWorker, timeout_s: float) -> None:
+    """Wait with visible progress and a deterministic, diagnosable timeout."""
+    deadline = time.monotonic() + float(timeout_s)
+    last_stage = None
+    last_report = 0.0
+    while True:
+        status = worker.status()
+        if status.failure_reason:
+            raise RuntimeError(status.failure_reason)
+        now = time.monotonic()
+        if worker.ready.is_set():
+            status = worker.status()
+            if status.failure_reason:
+                raise RuntimeError(status.failure_reason)
+            return
+        if now >= deadline:
+            raise RuntimeError(
+                "planner worker initialization timeout "
+                f"after {float(timeout_s):.1f}s (stage={status.initialization_stage})"
+            )
+        if status.initialization_stage != last_stage or now - last_report >= 5.0:
+            print(
+                f"planner initialization: stage={status.initialization_stage} "
+                f"elapsed={float(now - (deadline - float(timeout_s))):.1f}s",
+                flush=True,
+            )
+            last_stage, last_report = status.initialization_stage, now
+        worker.ready.wait(timeout=min(0.5, max(0.0, deadline - now)))
+
+
+def _same_executable_spec(left: object, right: object) -> bool:
+    """Compare the numerical command spec across read-only/full reconnects."""
+    fields = (
+        "joint_low", "joint_high", "velocity_limit", "acceleration_limit",
+        "relative_limit", "raw_low", "raw_high", "calibration_low",
+        "calibration_high", "control_dt", "braking",
+    )
+    return all(
+        np.array_equal(getattr(left, name), getattr(right, name))
+        if isinstance(getattr(left, name), np.ndarray)
+        else getattr(left, name) == getattr(right, name)
+        for name in fields
+    )
+
+
 def main() -> None:
     args = parser().parse_args()
-    if not args.enable_motion: raise SystemExit("refusing hardware connection without --enable-motion")
-    if not args.operator_supported_shutdown: raise SystemExit("refusing torque enable without --operator-supported-shutdown")
+    if not args.enable_motion and not args.planner_preflight_only:
+        raise SystemExit("refusing hardware connection without --enable-motion")
+    if not args.operator_supported_shutdown and not args.planner_preflight_only:
+        raise SystemExit("refusing torque enable without --operator-supported-shutdown")
     if args.home_tolerance_deg <= 0.0 or args.home_tolerance_deg >= 3.0:
         raise SystemExit("--home-tolerance-deg must be > 0 and < 3 degrees")
+    if not np.isfinite(args.planner_init_timeout_s) or args.planner_init_timeout_s <= 0.0:
+        raise SystemExit("--planner-init-timeout-s must be positive")
+    if not np.isfinite(args.injected_planner_delay_ms) or args.injected_planner_delay_ms < 0.0:
+        raise SystemExit("--injected-planner-delay-ms must be non-negative")
+    if args.delay_protocol != "full":
+        raise SystemExit("real SO101 ThreadedAsync supports only --delay_protocol full")
+    if args.planner_preflight_only:
+        args.planner_preflight_before_motion = True
     if args.reference_mode != "joint_file": raise SystemExit("real MPC currently requires a prevalidated --reference_mode joint_file")
     if not args.checkpoint or not args.normalizer: raise SystemExit("real MPC requires --checkpoint and --normalizer")
     args.multirate_mode = "threaded_asap"
@@ -79,6 +163,15 @@ def main() -> None:
         if args.delay_calibration is None:
             raise SystemExit("active MPC requires --delay-calibration from a shadow run")
         delay = json.loads(Path(args.delay_calibration).read_text(encoding="utf-8"))
+        calibrated_injection_ms = delay.get("injected_planner_delay_ms")
+        if calibrated_injection_ms is not None and not np.isclose(
+            float(calibrated_injection_ms), float(args.injected_planner_delay_ms), atol=0.25
+        ):
+            raise SystemExit(
+                "delay calibration was measured with a different injected delay: "
+                f"{float(calibrated_injection_ms):.3f} ms vs "
+                f"{float(args.injected_planner_delay_ms):.3f} ms"
+            )
         if (int(delay.get("samples", 0)) < 2000 or delay.get("method") != "p99.5" or
                 float(delay.get("late_drop_rate", 1.0)) >= .01 or float(delay.get("packet_expiry_rate", 1.0)) >= .01):
             raise SystemExit("active MPC delay gate requires >=2000 samples and late-drop/expiry rates below 1%")
@@ -133,34 +226,91 @@ def main() -> None:
     adapter = ASAPStorePlannerAdapter(snapshots, packets, 5, ood_envelope=envelope,
                                       control_dt=hardware.control_dt)
     worker = None
+
+    def _start_worker(
+        executable_command_spec: object,
+        startup_state: object,
+        executable_command_state: ExecutableCommandState,
+    ) -> ASAPPlannerWorker:
+        """Start the worker from one measured snapshot and wait safely."""
+        assert hasattr(executable_command_spec, "joint_low")
+        assert hasattr(startup_state, "timestamp_ns")
+        adapter.submit(
+            0, startup_state.timestamp_ns, startup_state.vector[None, :],
+            startup_state.q_ctrl[None, :], startup_state.history_generation,
+            executable_command_state=executable_command_state,
+        )
+        planner_worker = ASAPPlannerWorker(
+            args, vars(simulation_cli), snapshots, packets, results, stop,
+            executable_command_spec.joint_low,
+            executable_command_spec.joint_high,
+            reference, dq_reference, ddq_reference,
+            executable_command_spec=executable_command_spec,
+            daemon=False,
+        )
+        planner_worker.start()
+        _wait_for_planner_ready(planner_worker, args.planner_init_timeout_s)
+        return planner_worker
+
     # Nominal playback = the manifest-matched, gate-validated joint reference;
     # holds the final pose after the last row (JointFilePlayer semantics).
     nominal = player
     try:
-        backend.connect()
-        backend.startup_to_home(home_tolerance_rad=float(np.deg2rad(args.home_tolerance_deg)))
-        # Freeze the exact runtime envelope/calibration/state machine after
-        # startup.  The CUDA planner must use this object, not the dynamics
-        # RobotSpec or a second hand-written projector.
-        executable_command_spec = backend.executable_command_spec("hardware")
-        # The worker consumes a warmup snapshot before it can publish.  It must
-        # use the measured, frozen-home hardware state—not simulation's zero
-        # state—so its history semantics match the live control thread.
-        startup = backend.read_state(tick_index=0)
-        adapter.submit(
-            0, startup.timestamp_ns, startup.vector[None, :],
-            startup.q_ctrl[None, :], startup.history_generation,
-            executable_command_state=backend.executable_command_state(),
-        )
-        worker = ASAPPlannerWorker(args, vars(simulation_cli), snapshots, packets, results, stop,
-                                   executable_command_spec.joint_low,
-                                   executable_command_spec.joint_high,
-                                   reference, dq_reference, ddq_reference,
-                                   executable_command_spec=executable_command_spec)
-        worker.start()
-        if not worker.ready.wait(60) or worker.status().failure_reason:
-            stop.set(); snapshots.wake()
-            raise RuntimeError(worker.status().failure_reason or "planner worker initialization timeout")
+        if args.planner_preflight_before_motion:
+            # A read-only connection performs no torque enable and no goal
+            # writes.  It lets CUDA Graph/CEM initialization complete before
+            # the production connection is allowed to move the arm to home.
+            print("planner preflight: connecting read-only; torque remains disabled", flush=True)
+            backend.connect_read_only()
+            preflight_spec = backend.executable_command_spec("hardware")
+            preflight_state = backend.read_state(tick_index=0)
+            if not preflight_state.valid:
+                raise RuntimeError(
+                    "planner preflight read-only state is invalid: "
+                    f"{preflight_state.validity_flags}"
+                )
+            worker = _start_worker(
+                preflight_spec,
+                preflight_state,
+                ExecutableCommandState.anchored(preflight_state.q_ctrl),
+            )
+            if args.planner_preflight_only:
+                print("planner preflight complete; no torque was enabled and no motion was commanded", flush=True)
+                return
+            print("planner preflight: CUDA/CEM ready; enabling production connection", flush=True)
+            backend.close()
+            backend = make_so101_backend(args.hardware_config)
+            backend.connect()
+            executable_command_spec = backend.executable_command_spec("hardware")
+            if not _same_executable_spec(preflight_spec, executable_command_spec):
+                raise RuntimeError("read-only and production executable command specs differ")
+            backend.startup_to_home(home_tolerance_rad=float(np.deg2rad(args.home_tolerance_deg)))
+            # The preflight snapshot is not a trial sample and must not leak
+            # into OOD calibration or packet scheduling.  The worker is idle
+            # after its initialization snapshot; clearing before the runner's
+            # first live submit removes any preflight packet state.
+            adapter.clear(0)
+            adapter.executed_tokens.clear()
+            adapter.future_tokens.clear()
+            adapter._executed_ood_valid = True
+            results.drain()
+        else:
+            backend.connect()
+            backend.startup_to_home(home_tolerance_rad=float(np.deg2rad(args.home_tolerance_deg)))
+            # Freeze the exact runtime envelope/calibration/state machine after
+            # startup.  The CUDA planner must use this object, not the dynamics
+            # RobotSpec or a second hand-written projector.
+            executable_command_spec = backend.executable_command_spec("hardware")
+            # The worker consumes a warmup snapshot before it can publish.  It
+            # must use the measured, frozen-home hardware state—not
+            # simulation's zero state—so its history semantics match the live
+            # control thread.
+            startup = backend.read_state(tick_index=0)
+            worker = _start_worker(
+                executable_command_spec,
+                startup,
+                backend.executable_command_state(),
+            )
         runner = RealTimeRunner(backend, nominal, mode=RealControlMode(args.real_mode), planner=adapter,
                                 history_len=worker.history_len or 8, residual_limit_rad=runtime_residual_max,
                                 # The reference spans the data-collection envelope (e.g. the 4 cm
@@ -340,6 +490,10 @@ def main() -> None:
             "predicted_state_tokens": future_tokens.copy(),
             "controller_mode": np.asarray(args.real_mode),
             "multirate_mode": np.asarray("threaded_asap"),
+            "delay_protocol": np.asarray(args.delay_protocol),
+            "anticipation_delay_steps": np.asarray(args.anticipation_delay_steps, dtype=np.int64),
+            "planner_guard_ms": np.asarray(args.planner_guard_ms, dtype=np.float32),
+            "injected_planner_delay_ms": np.asarray(args.injected_planner_delay_ms, dtype=np.float32),
             "action_semantics": np.asarray("software_transmitted_absolute_position_target"),
             "motor_acknowledged": np.asarray(False),
             "plant_identity_sha256": np.asarray(hardware.config_sha256),
@@ -365,6 +519,18 @@ def main() -> None:
         stop.set(); snapshots.wake()
         if worker is not None:
             worker.join(timeout=10)
+            if worker.is_alive():
+                # A CUDA call cannot always be interrupted from Python.  Do
+                # not let interpreter finalization race a live CUDA-owning
+                # thread (the old path produced ``terminate called without an
+                # active exception``).  Disable hardware first, then keep
+                # waiting for the non-daemon worker to return.
+                print(
+                    "planner worker is still stopping; closing hardware before waiting for CUDA cleanup",
+                    flush=True,
+                )
+                backend.close()
+                worker.join()
         backend.close()
 
 

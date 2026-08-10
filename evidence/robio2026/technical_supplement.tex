@@ -17,12 +17,15 @@ This supplement provides implementation, configuration, and diagnostic detail
 compressed in the conference manuscript. It introduces no results beyond the
 frozen or deterministically reanalysed public evidence bundle.
 
-All results use MuJoCo position-controlled robot models. ABB IRB~2400 is the
-primary robot; UR5e is an independently trained and calibrated nominal
-within-robot replication. The evidence does not establish physical-robot
-performance, ABB hardware-torque feasibility, hard-real-time scheduling,
-robust-MPC guarantees, shared-model transfer, or arbitrary-morphology
-generalization. The post-freeze effort sweep is diagnostic only.
+The simulation results use MuJoCo position-controlled robot models. ABB
+IRB~2400 is the primary robot; UR5e is an independently trained and calibrated
+nominal within-robot replication. The bundle also contains a separate SO101
+physical case study with a hardware-specific model and controller calibration.
+The evidence does not establish zero-shot sim-to-real transfer,
+hardware-independent generalization, external Cartesian accuracy, ABB
+hardware-torque feasibility, hard-real-time scheduling, robust-MPC guarantees,
+shared-model transfer, or arbitrary-morphology generalization. The post-freeze
+effort sweep is diagnostic only.
 
 \section{Controller and execution configuration}
 The controller is a one-layer GRU (hidden size 256; history length 16) that
@@ -63,6 +66,105 @@ Residual maximum & (0.12,.10,.12,.15,.15,.20) rad \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Physical SO101 case study}
+The physical result is a deployment validation of the residual-planning
+principle, not a direct reuse of the six-DOF simulation hyperparameters. The
+SO101 follower controls five arm joints at 30~Hz. Its separately collected GRU
+uses 16 history tokens $[q,\dot q,q^{\rm ref}-q]$ and predicts a direct
+$\Delta$-state target. The frozen hardware instantiation uses $H=6$, 128 CEM
+samples, two iterations, residual authority $|r_j|\leq1^\circ$, and the
+tracking-dominant objective $J=C_q$. The executable-command projector,
+joint/velocity/acceleration/braking constraints, encoder quantization, and
+startup/homing gates remain active. The formal matrix contains 54 held-out
+trials and nine development-circle trials, with Direct IK, fixed Preview6, and
+NN-MPC in rotated pre-registered order. Direct IK denotes direct execution of
+the frozen IK-derived joint reference; Preview6 advances that same nominal by
+six control steps. These predictor parameterizations are hardware-specific,
+while residual CEM and asynchronous packet semantics are unchanged. All
+technically complete trials are retained.
+
+The primary endpoint is encoder-space joint RMSE over the frozen
+\texttt{SEGMENT\_SHAPE\_LOOP} window. TCP values are forward-kinematics calculations
+from encoder configurations using the calibrated fine MuJoCo model; no
+external Cartesian tracker was used. The public aggregate and sanitized trial
+ledger are available under \texttt{so101/analysis}.
+
+\begin{table}[h]
+\centering\scriptsize
+\caption{Held-out SO101 physical aggregate. TCP is FK-derived and secondary;
+command activity uses transmitted executable commands.}
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{lcccc}
+\toprule
+Method & Joint RMSE & FK TCP RMSE & Cmd. vel. RMS & Cmd. acc. RMS \\
+ & (deg) & (mm) & (rad/s) & (rad/s$^2$) \\
+\midrule
+Direct IK & 0.910 & 8.912 & 0.0435 & 0.7699 \\
+Fixed Preview6 & 0.675 & 6.538 & 0.0435 & 0.7701 \\
+NN-MPC $\pm1^\circ$ & \textbf{0.353} & \textbf{3.715} & 0.0807 & 1.1985 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Across the 54 held-out trials, NN-MPC reduced joint RMSE by 61.2\% versus
+Direct IK and 47.7\% versus Preview6. It won all 18 matched held-out pairs
+against both baselines; the paired means and confidence intervals are recorded
+in \texttt{so101/analysis/public\_summary.json}. Across 20,956 physical planner
+events, mean/p95/p99 latency was 22.73/28.36/29.93~ms (maximum 68.09~ms), with
+three late-dropped solutions and no control deadline miss, planner failure, or
+runtime safety violation. This timing result establishes deployability and
+does not independently isolate activation-alignment necessity on hardware.
+Diagnostic acceleration exceedances induced by encoder-command quantization are
+reported separately in the trial ledger and are not executable-projector safety
+violations.
+Command velocity and acceleration RMS increased by 85.4\% and 55.7\% relative
+to Direct IK, respectively, reproducing the simulation tracking--activity
+trade-off.
+
+\paragraph{Injected-delay stress.}
+We additionally evaluated the same \texttt{ThreadedAsync} execution path with a
+deterministic 33-ms delay inserted after packet post-processing and immediately
+before publication. Controller, model, reference, CEM, residual, projection,
+and safety settings remained frozen. An independent shadow pass produced 2,327
+finite latency samples and selected $D=4$ from the measured p99.5 latency
+($100.601$~ms) plus a 5-ms guard at 30~Hz; the resulting late-drop and
+packet-expiry rates were both zero. The v2 OOD envelope covered 100.000\% of
+executed histories and 99.683\% of both selected actions and predicted states.
+The preceding v1 calibration was excluded because it had 1,734 samples and a
+2.768\% late-drop rate.
+
+\begin{table}[h]
+\centering\scriptsize
+\caption{Paired SO101 injected-delay stress results. Each row is a held-out
+fast-ellipse phase block; the final row is the arithmetic mean across blocks.}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccc}
+\toprule
+Block & Baseline & Delay33 & Difference \\
+ & joint RMSE (deg) & joint RMSE (deg) & Delay33--baseline (deg) \\
+\midrule
+ellipse\_fast\_p0 & 0.34685 & 0.41896 & +0.07211 \\
+ellipse\_fast\_p1 & 0.31772 & 0.45074 & +0.13302 \\
+ellipse\_fast\_p2 & 0.33127 & 0.42876 & +0.09749 \\
+Mean & 0.33195 & 0.43282 & +0.10087 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Across the three matched blocks, planner-event timing statistics were computed
+after concatenating all events within each condition. Baseline pooled latency
+was 22.56~ms (mean), 28.33~ms (p95), and 29.37~ms (p99); under delay it was
+79.32, 94.34, and 99.44~ms, respectively. The stressed p95 spanned 2.83
+control periods. All six runs completed without control-loop deadline
+misses, planner failures, late drops, packet expirations, command-limit
+violations, or runtime safety violations. The delay condition was worse in all
+three pairs; the paired Student-$t$ 95\% interval for the mean increase was
+$[+0.02488,+0.17687]^\circ$ (three pairs, df=2). Encoder-quantization
+acceleration diagnostics are reported separately and are not executable-
+projector safety violations. This stress test supports physical deployability
+and latency sensitivity of the aligned execution path, but it is not a hardware
+\texttt{NaiveDelayed} or no-alignment ablation.
 
 \paragraph{True-history window validation.}
 Held-out model errors use fixed windows beginning at steps 16, 36, \ldots, 176

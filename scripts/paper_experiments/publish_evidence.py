@@ -70,6 +70,29 @@ SOURCES = {
         "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_level.json",
         "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_perturbation.json",
     ),
+    "so101/analysis": (
+        "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/public_summary.json",
+        "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/public_trial_ledger.csv",
+        "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/aggregate_metrics.csv",
+    ),
+    "so101/figures": (
+        "Paper/robo2026/figures/so101.png",
+        "Paper/robo2026/figures/fig2_representative_tracking.pdf",
+        "Paper/robo2026/figures/fig2_representative_tracking.svg",
+        "Paper/robo2026/figures/fig2_representative_tracking.png",
+        "Paper/robo2026/figures/fig2_representative_tracking.source_manifest.json",
+    ),
+    "so101/protocol": (
+        "configs/experiments/so101_final_paper_20260810.yaml",
+    ),
+    "so101/delay_stress": (
+        "configs/experiments/so101_threaded_delay_stress_20260810_v2.yaml",
+        "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/delay_calibration_33ms_d4.json",
+        "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/ood_envelope_33ms_d4.json",
+        "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/active_d4/delay_stress_summary.json",
+        "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/active_d4/delay_stress_summary.csv",
+        "docs/hardware/so101-threaded-delay-stress-results-20260810.md",
+    ),
 }
 
 TEXT_SUFFIXES = {".csv", ".json", ".log", ".md", ".txt"}

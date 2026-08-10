@@ -1,0 +1,32 @@
+protocol_id: so101_threaded_delay_stress_20260810_v1
+base_protocol_id: so101_final_paper_20260810_tracking1deg_v1
+base_protocol: configs/experiments/so101_final_paper_20260810.yaml
+
+# This is a deterministic wall-clock delay inserted after CEM, projection, and
+# packet post-processing, immediately before publication.  It is not a change
+# to the learned model, CEM budget, residual authority, or safety projector.
+injected_planner_delay_ms: 33.0
+
+# The old formal calibration reports D=2.  The measured old p99.5 plus 33 ms
+# predicts D=3, so the injected shadow starts from D=3 to avoid intentionally
+# dropping packets during calibration. calibrate_real_delay.py still derives
+# and records the active delay-stress D from the resulting >=2000 events.
+shadow_provisional_delay_steps: 3
+shadow_reference_root: outputs/hardware/so101_pre_mpc/20260808_refs_6phase
+shadow_reference_manifest: outputs/hardware/so101_pre_mpc/20260808_refs_6phase/mpc_manifest.json
+shadow_reference_labels: [circle_p0, figure8_p0, circle_p1]
+shadow_output_root: outputs/hardware/so101_delay_stress/20260810_threaded_asap/shadow_delay33
+
+# These files are produced only after the injected-delay shadow runs and are
+# intentionally separate from the formal 2026-08-08 calibration/OOD bundle.
+delay_calibration: outputs/hardware/so101_delay_stress/20260810_threaded_asap/delay_calibration_33ms.json
+ood_envelope: outputs/hardware/so101_delay_stress/20260810_threaded_asap/ood_envelope_33ms.json
+active_output_root: outputs/hardware/so101_delay_stress/20260810_threaded_asap/active
+
+# The active matrix is deliberately small and paired: the same ellipse/fast
+# phase references are run once with the original formal calibration and once
+# with the injected-delay calibration.
+active_trial_ids:
+  - ellipse_fast_p0_nn_mpc
+  - ellipse_fast_p1_nn_mpc
+  - ellipse_fast_p2_nn_mpc

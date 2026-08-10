@@ -50,5 +50,7 @@ evidence is under `outputs/paper_revision_v1`.
 | 19 | Final full-regression record for the release candidate |
 
 The primary result is activation alignment plus execution-time reanchoring.
-The reports preserve the MuJoCo-only scope, the history-ablation limitation,
-and the tracking-effort trade-off.
+Reports 00--19 are historical and preserve the pre-SO101 MuJoCo-only scope;
+the current manuscript and `evidence/robio2026/so101` add a separate,
+hardware-specific SO101 case study without claiming zero-shot transfer. The
+history-ablation limitation and tracking-effort trade-off remain unchanged.

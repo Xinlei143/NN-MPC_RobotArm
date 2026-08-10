@@ -16,8 +16,9 @@ separate SO101 real-hardware evaluation pipeline for the final paper protocol.
 The controller tracks a continuously generated IK nominal with bounded joint
 reference residuals. A GRU models the closed-loop position-actuator dynamics;
 CEM evaluates residual sequences around the nominal. In threaded operation, a
-CUDA planner runs asynchronously while the 100 Hz execution loop continues to
-apply physical projection, packet-age indexing, feedback, and fallback logic.
+CUDA planner runs asynchronously while a fast execution loop applies physical
+projection, packet-age indexing, feedback, and fallback logic (100 Hz for the
+MuJoCo ABB/UR5e runs and 30 Hz for the SO101 case study).
 
 ```text
 task-space reference -> continuous DLS IK -> absolute joint nominal
@@ -46,12 +47,17 @@ diagnostics, mechanism-isolation results, figures, delay calibrations,
 robot/reference contracts, and portable cohort audits. It excludes raw
 rollouts, caches, checkpoints, normalizers, and paper files.
 
-The ROBIO 2026 evidence bundle reports MuJoCo experiments only. UR5e is a
-robot-specific replication with its own data, model, IK references, and
-activation-delay calibration; it is not a shared-model transfer result. The
-SO101 real-hardware results are maintained as local experiment records because
-they include raw rollouts and hardware-specific artifacts that are not part of
-the compact public bundle.
+The ROBIO 2026 evidence bundle contains the MuJoCo experiments and a compact,
+sanitized aggregate for the physical SO101 case study. UR5e is a robot-specific
+replication with its own data, model, IK references, and activation-delay
+calibration; it is not a shared-model transfer result. SO101 is likewise a
+hardware-specific instantiation, not zero-shot transfer: its primary endpoint
+is encoder joint error, while TCP is FK-derived because no external Cartesian
+tracker was used. Raw rollouts, hardware-local checkpoints, and runtime caches
+remain local and are not part of the compact bundle.
+The bundle also includes `so101/delay_stress`, a compact record of the 33-ms
+ThreadedAsync planner-latency stress; this is deployability/latency-sensitivity
+evidence, not a hardware NaiveDelayed or no-alignment ablation.
 
 ## SO101 real-hardware paper experiment
 
@@ -95,6 +101,13 @@ The current result record is
 It records the held-out aggregate, paired comparisons, residual definitions,
 latency, safety fields, and command-activity trade-off. The raw SO101 outputs
 are generated under `outputs/hardware/` and are intentionally not tracked.
+
+The compact public copy is under
+[`evidence/robio2026/so101`](evidence/robio2026/so101), with the aggregate in
+`analysis/public_summary.json`, the sanitized trial ledger, and the source
+manifest for the physical Fig. 2. A release-v2 preparation note records the
+intended asset list and boundary checks; publishing a GitHub release is a
+separate maintainer action.
 
 The evidence bundle supports claim checking and aggregate reanalysis, not a
 from-scratch reproduction: large learned artifacts and raw runtime arrays are
@@ -220,7 +233,7 @@ optimizes bounded corrections around the IK nominal:
 q_des[t+1:t+H] -> q_nom -> sample r / r_max in [-1, 1]
                   -> planner_projection(q_nom + r)
                   -> learned rollout and cost -> select command
-                  -> 100 Hz physical projection and execution
+                  -> fast physical projection and execution
 ```
 
 With the default `raw_ik` nominal-command semantics, zero residual is exactly

@@ -1,0 +1,24 @@
+protocol_id: so101_threaded_delay_stress_20260810_v2
+base_protocol_id: so101_final_paper_20260810_tracking1deg_v1
+base_protocol: configs/experiments/so101_final_paper_20260810.yaml
+
+# Same 33 ms publication delay and same ThreadedAsync controller as v1. The
+# v1 shadow showed 2.77% late drops, so this independent calibration pass starts
+# at D=4 (133.3 ms activation lead) to avoid contaminating the timing/OOD gate.
+injected_planner_delay_ms: 33.0
+shadow_provisional_delay_steps: 4
+shadow_reference_root: outputs/hardware/so101_pre_mpc/20260808_refs_6phase
+shadow_reference_manifest: outputs/hardware/so101_pre_mpc/20260808_refs_6phase/mpc_manifest.json
+shadow_reference_labels: [circle_p0, figure8_p0, circle_p1]
+shadow_output_root: outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/shadow_delay33_d4
+
+# Produced only after the v2 shadow pass; v1 artifacts remain separate and
+# are not mixed into this calibration.
+delay_calibration: outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/delay_calibration_33ms_d4.json
+ood_envelope: outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/ood_envelope_33ms_d4.json
+active_output_root: outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/active_d4
+
+active_trial_ids:
+  - ellipse_fast_p0_nn_mpc
+  - ellipse_fast_p1_nn_mpc
+  - ellipse_fast_p2_nn_mpc

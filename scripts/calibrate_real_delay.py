@@ -17,6 +17,12 @@ def main() -> None:
     parser.add_argument("events", help="NPZ containing state_timestamp_ns and packet_publish_timestamp_ns")
     parser.add_argument("--control-dt", type=float, default=1/30)
     parser.add_argument("--guard-ms", type=float, default=5.0)
+    parser.add_argument(
+        "--injected-planner-delay-ms",
+        type=float,
+        default=None,
+        help="Record the deterministic wall-clock delay used to collect this calibration (metadata only).",
+    )
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
     data = np.load(args.events)
@@ -33,8 +39,20 @@ def main() -> None:
     late_key = "planner_late_drop" if "planner_late_drop" in data.files else "late_drop"
     late_rate = float(np.mean(data[late_key])) if late_key in data.files else float("nan")
     expiry_rate = float(np.mean(data["packet_expired"])) if "packet_expired" in data.files else float("nan")
-    payload = {"samples": int(latency.size), "method": method, "latency_s": estimate,
-               "anticipation_delay_steps": steps, "late_drop_rate": late_rate, "packet_expiry_rate": expiry_rate}
+    payload = {
+        "samples": int(latency.size),
+        "method": method,
+        "latency_s": estimate,
+        "control_dt_s": float(args.control_dt),
+        "guard_ms": float(args.guard_ms),
+        "anticipation_delay_steps": steps,
+        "late_drop_rate": late_rate,
+        "packet_expiry_rate": expiry_rate,
+    }
+    if args.injected_planner_delay_ms is not None:
+        if not np.isfinite(args.injected_planner_delay_ms) or args.injected_planner_delay_ms < 0.0:
+            raise SystemExit("--injected-planner-delay-ms must be finite and non-negative")
+        payload["injected_planner_delay_ms"] = float(args.injected_planner_delay_ms)
     text = json.dumps(payload, indent=2)
     print(text)
     if args.output: Path(args.output).write_text(text + "\n", encoding="utf-8")

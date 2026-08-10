@@ -28,6 +28,12 @@ caches to Git history.
 - `robustness_and_timing`: single-factor perturbation, threaded-versus-virtual,
   wall-clock timing, and `ik_baselines` paired statistics versus Projected and
   Preview IK.
+- `so101`: sanitized aggregate and trial-ledger evidence for the physical SO101
+  case study, including the representative held-out Fig. 2 source data and
+  figure manifest. `so101/delay_stress` adds the compact protocol, calibration,
+  OOD envelope, six-run paired summary, and result record for the 33-ms
+  ThreadedAsync latency stress. Raw rollouts, checkpoints, and hardware-local
+  paths remain excluded.
 - `PUBLIC_MANIFEST.json`: source path, byte size, and SHA-256 for every public
   artifact in this bundle.
 
@@ -75,8 +81,12 @@ commit identifiers are otherwise unchanged.
   uses the same four-trajectory, five-seed FullVirtual matrix at every scale,
   and was not used to replace the matched primary evidence.
 - Candidate-ranking diagnostics use retained, projection-active candidates.
-- Results are from MuJoCo; they do not establish physical-robot performance or
-  hard-real-time guarantees.
+- MuJoCo results establish the stale-plan mechanism evidence, while the SO101
+  aggregate is a one-platform, hardware-specific case study. The delay-stress
+  artifact evaluates ThreadedAsync under injected multi-period planner latency;
+  it is not a hardware NaiveDelayed/no-alignment ablation. FK-derived TCP is
+  not external Cartesian metrology, and no hard-real-time or hardware-
+  independent generalization guarantee is claimed.
 
 ## Rebuilding this directory
 
@@ -88,6 +98,17 @@ conda run -n pendulum-rl python scripts/paper_experiments/workflow.py \
   reanalyze-model-validation --overwrite
 conda run -n pendulum-rl python scripts/paper_experiments/ur5e_workflow.py \
   reanalyze-model-validation --overwrite
+conda run --no-capture-output -n lerobot python \
+  scripts/analyze_so101_paper_trials.py \
+  --protocol configs/experiments/so101_final_paper_20260810.yaml
+conda run --no-capture-output -n lerobot python \
+  scripts/analyze_so101_delay_stress.py \
+  --protocol configs/experiments/so101_threaded_delay_stress_20260810_v2.yaml
+# Optional: regenerate a scratch Python figure without replacing the final
+# manually composed Inkscape Figure 2 assets in Paper/robo2026/figures.
+MPLCONFIGDIR=/tmp/nnmpc-mpl conda run --no-capture-output -n pendulum-rl python \
+  scripts/paper_experiments/plot_so101_fig2.py \
+  --output-dir /tmp/robio2026-fig2-generated
 python3 scripts/paper_experiments/publish_evidence.py
 ```
 

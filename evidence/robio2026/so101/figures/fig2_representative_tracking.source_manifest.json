@@ -1,0 +1,70 @@
+{
+  "backend": "Python-generated data panels with recovered Inkscape layout",
+  "coordinate_transform": "world TCP y/z coordinates centered by desired shape-loop mean and converted m to mm",
+  "execution_steps": 1240,
+  "exports": [
+    "pdf",
+    "svg",
+    "png"
+  ],
+  "figure": "fig2_representative_tracking",
+  "joint_rms_definition": "sqrt(mean_j((q_actual_j - q_des_j)^2)) converted from rad to deg at each tick",
+  "panel_a": "Provided SO101 physical setup photograph; the recovered Inkscape composition uses the full portrait-oriented image, with no contrast, brightness, gamma, or color adjustment.",
+  "panel_b": "Desired and encoder-state FK TCP y-z paths over the first complete SEGMENT_SHAPE_LOOP lap, centered by the desired loop mean.",
+  "panel_c": "Encoder-space joint RMS error over the complete episode; shaded interval is SEGMENT_SHAPE_LOOP and the RMS is over five controlled joints at each tick.",
+  "photo_integrity": {
+    "path": "Paper/robo2026/figures/so101.png",
+    "processing": "Recovered Inkscape composition using the full portrait-oriented photograph; no tonal/color adjustment",
+    "scale_bar": "not applicable",
+    "sha256": "c1bd2e7c40e32dc158876f4a89d69ee40861bd43b945b344947f635c7fb4f6d5"
+  },
+  "protocol_id": "so101_final_paper_20260810_tracking1deg_v1",
+  "q_ctrl_to_q_kin_offset_rad": [
+    0.0,
+    0.00872665,
+    -0.1396263,
+    -0.2516342834,
+    0.0
+  ],
+  "raster_dpi": 600,
+  "raw_curve_smoothing": "none",
+  "representative_condition": {
+    "controllers": [
+      "direct",
+      "preview6",
+      "nn_mpc"
+    ],
+    "phase_index": 0,
+    "shape": "ellipse",
+    "speed": "nominal",
+    "trial_block": "ellipse_nominal_p0"
+  },
+  "selection_rule": "held-out matched condition whose NN-MPC minus Fixed Preview6 joint-RMSE difference is closest to the median over 18 pairs",
+  "shape_loop_step_range": [
+    137,
+    1103
+  ],
+  "source_data": [
+    {
+      "path": "outputs/hardware/so101_paper_refs_20260810/ellipse_nominal_p0/reference.npz",
+      "sha256": "877de75e1e243d1846607cb9249a8f548d1c0e0f51d37ddbba7221de54c2c44e"
+    },
+    {
+      "path": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/ellipse_nominal_p0_direct/rollout.npz",
+      "sha256": "4e835739e5ea2a2be999016ba2a08f4ae21d4064922a4486d0abdf3f11f3cca6"
+    },
+    {
+      "path": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/ellipse_nominal_p0_preview6/rollout.npz",
+      "sha256": "4cd28b425f628b903ff273fa3fda59d528ca3ce06bedff1e1e2212c91c1f76e7"
+    },
+    {
+      "path": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/ellipse_nominal_p0_nn_mpc/rollout.npz",
+      "sha256": "158dedc3d843882fb54d7e8e1e92635a11c855c7096b95751e865ac2ed02246f"
+    },
+    {
+      "path": "dynamics_modeling/robots/so101_fine/scene_table_guard_25mm.xml",
+      "sha256": "18489287c61ee2c42cb9d04fede61a6bfaef6b5bad06236886922127d53f50c3"
+    }
+  ],
+  "tcp_measurement": "encoder_state_forward_kinematics; no external Cartesian tracker"
+}

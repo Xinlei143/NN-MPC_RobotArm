@@ -1,5 +1,5 @@
 {
-  "artifact_count": 98,
+  "artifact_count": 113,
   "artifacts": [
     {
       "bytes": 81073,
@@ -578,15 +578,105 @@
       "source": "outputs/paper_revision_v1/statistics/ik/mpc_vs_projected_ik_by_perturbation.json"
     },
     {
-      "bytes": 10246,
+      "bytes": 66055,
+      "path": "so101/analysis/public_summary.json",
+      "sha256": "075a267ea8d32983ae80820f3bb8863fc36b8031fcfa876f5a8b24c0ea8cb72e",
+      "source": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/public_summary.json"
+    },
+    {
+      "bytes": 13064,
+      "path": "so101/analysis/public_trial_ledger.csv",
+      "sha256": "9d4e753ed903983a1dc53a4312ae405dab5e10a6cd028006c90be8e7b79e47d1",
+      "source": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/public_trial_ledger.csv"
+    },
+    {
+      "bytes": 5349,
+      "path": "so101/analysis/aggregate_metrics.csv",
+      "sha256": "e5147f4c3cb33d6de24284bcb95eba90c5d9c9133dd4b773fac6d8c261fddeda",
+      "source": "outputs/hardware/so101_paper_final/20260810_tracking1deg_v1/analysis/aggregate_metrics.csv"
+    },
+    {
+      "bytes": 3588364,
+      "path": "so101/figures/so101.png",
+      "sha256": "c1bd2e7c40e32dc158876f4a89d69ee40861bd43b945b344947f635c7fb4f6d5",
+      "source": "Paper/robo2026/figures/so101.png"
+    },
+    {
+      "bytes": 3646358,
+      "path": "so101/figures/fig2_representative_tracking.pdf",
+      "sha256": "2020ede082daffeb24360dda27cc2c61ce6896dcaa7add1570360b3c0f7cebc2",
+      "source": "Paper/robo2026/figures/fig2_representative_tracking.pdf"
+    },
+    {
+      "bytes": 4938643,
+      "path": "so101/figures/fig2_representative_tracking.svg",
+      "sha256": "b9c9246fbe52d45a34a799782876ba75d505fbbacb6523fd1ffbec3664933ee3",
+      "source": "Paper/robo2026/figures/fig2_representative_tracking.svg"
+    },
+    {
+      "bytes": 1175921,
+      "path": "so101/figures/fig2_representative_tracking.png",
+      "sha256": "e6f8a48eceaf529f579b5557d7f6c79377e8afef3e23e1b0faf765534717a5e5",
+      "source": "Paper/robo2026/figures/fig2_representative_tracking.png"
+    },
+    {
+      "bytes": 2993,
+      "path": "so101/figures/fig2_representative_tracking.source_manifest.json",
+      "sha256": "08436ec7960f10b93d3bf5b6a99df6e8bd9d6dc932b13b94b64d919969780f91",
+      "source": "Paper/robo2026/figures/fig2_representative_tracking.source_manifest.json"
+    },
+    {
+      "bytes": 2887,
+      "path": "so101/protocol/so101_final_paper_20260810.yaml",
+      "sha256": "764ccb01bc07d2d81377c5f7cd8960d27e953dd13a2dcbd23f0308c96bcae114",
+      "source": "configs/experiments/so101_final_paper_20260810.yaml"
+    },
+    {
+      "bytes": 1338,
+      "path": "so101/delay_stress/so101_threaded_delay_stress_20260810_v2.yaml",
+      "sha256": "b9bb81e94298284698515b83df29ed6c9fcf2c043f042e47609eb8912d740406",
+      "source": "configs/experiments/so101_threaded_delay_stress_20260810_v2.yaml"
+    },
+    {
+      "bytes": 261,
+      "path": "so101/delay_stress/delay_calibration_33ms_d4.json",
+      "sha256": "d1c5498a665993487b72f98cf530a397a73bb3286020fff232e6d200177905b7",
+      "source": "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/delay_calibration_33ms_d4.json"
+    },
+    {
+      "bytes": 960,
+      "path": "so101/delay_stress/ood_envelope_33ms_d4.json",
+      "sha256": "64d352cab2494962dc375b9f90da9fc9936bb7702fbd1db04fd5ec570c5f949c",
+      "source": "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/ood_envelope_33ms_d4.json"
+    },
+    {
+      "bytes": 8643,
+      "path": "so101/delay_stress/delay_stress_summary.json",
+      "sha256": "eaf3ac4640960e2117a5c41078c0f451ba79444ae6a4849e23bf1dfd8b1c87ec",
+      "source": "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/active_d4/delay_stress_summary.json"
+    },
+    {
+      "bytes": 2318,
+      "path": "so101/delay_stress/delay_stress_summary.csv",
+      "sha256": "c4e8e821b7c8fadc68acede5135bb2832a851cbad0760befe2a1f2afe03bbfbe",
+      "source": "outputs/hardware/so101_delay_stress/20260810_threaded_asap_v2/active_d4/delay_stress_summary.csv"
+    },
+    {
+      "bytes": 12543,
+      "path": "so101/delay_stress/so101-threaded-delay-stress-results-20260810.md",
+      "sha256": "b96b2a4df940b2dbf2d20100377813736d465a406cace8245b42fb6143e1107b",
+      "source": "docs/hardware/so101-threaded-delay-stress-results-20260810.md"
+    },
+    {
+      "bytes": 15765,
       "path": "technical_supplement.tex",
-      "sha256": "2ac727ba7678c88a40d87b42a3f9cc8de81534b604544272dbe62d9f0401d827",
+      "sha256": "7dcb085503877a35186674cf49ff152434591ab3ba0f3be8b4867cec0f0dfeaf",
       "source": "repository-maintained technical supplement"
     },
     {
-      "bytes": 223873,
+      "bytes": 262909,
       "path": "technical_supplement.pdf",
-      "sha256": "51f2254b836c83e0e7331dfc4a3af82fba1f441a2eaa27bd039e735e1033547a",
+      "sha256": "bd3fbb09b1464606ae763f756a2a54e595b2bdc17800143c351fb8bfe3b8a182",
       "source": "repository-maintained technical supplement"
     }
   ],

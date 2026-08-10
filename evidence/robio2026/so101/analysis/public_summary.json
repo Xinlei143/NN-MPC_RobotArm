@@ -1,0 +1,2647 @@
+{
+  "aggregate_groups": {
+    "circle|circle|development|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 778.3333333333334,
+        "median": 786.0,
+        "n": 3,
+        "std": 24.419937209856485
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.8068575688712132,
+        "median": 0.8196145243439946,
+        "n": 3,
+        "std": 0.02512206967982456
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.05585213471437886,
+        "median": 0.05579263290484824,
+        "n": 3,
+        "std": 0.0006782005080282628
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "circle",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "circle",
+      "speed": "development",
+      "tracking_joint_p95_deg": {
+        "mean": 1.9611448881619638,
+        "median": 1.9517897345809656,
+        "n": 3,
+        "std": 0.04474901691541985
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.9893301575542844,
+        "median": 0.9967178839805403,
+        "n": 3,
+        "std": 0.029769368024715626
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 9.556569798741812,
+        "median": 9.605070434504466,
+        "n": 3,
+        "std": 1.0875247346612478
+      }
+    },
+    "circle|circle|development|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 1006.0,
+        "median": 1006.0,
+        "n": 3,
+        "std": 1.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.1871943997379315,
+        "median": 1.1924252417750147,
+        "n": 3,
+        "std": 0.029066288013104312
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.08509092212378616,
+        "median": 0.08480261984400368,
+        "n": 3,
+        "std": 0.001846947680861089
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.9125295226405175,
+        "median": 1.9167124443247194,
+        "n": 3,
+        "std": 0.023428831229985892
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.1886468573807447,
+        "median": 1.1713859803936493,
+        "n": 3,
+        "std": 0.032934939624794504
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.8113729037672144,
+        "median": 0.8042698655692968,
+        "n": 3,
+        "std": 0.01658337364703214
+      },
+      "family": "circle",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.46290351666666,
+        "median": 28.448321599999993,
+        "n": 3,
+        "std": 0.12775236090503672
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7586242270631472,
+        "median": 0.7589430602739565,
+        "n": 3,
+        "std": 0.016597281788109926
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.8187781877818777,
+        "median": 0.8167281672816729,
+        "n": 3,
+        "std": 0.013036583104210495
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "circle",
+      "speed": "development",
+      "tracking_joint_p95_deg": {
+        "mean": 0.774913957625407,
+        "median": 0.7618248178877477,
+        "n": 3,
+        "std": 0.052048491123865503
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.3605260949572339,
+        "median": 0.3621480375028477,
+        "n": 3,
+        "std": 0.027518485800909823
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.7652470612243945,
+        "median": 3.876158905931048,
+        "n": 3,
+        "std": 0.21130203452500515
+      }
+    },
+    "circle|circle|development|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 777.0,
+        "median": 775.0,
+        "n": 3,
+        "std": 27.055498516937366
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.8068575688712132,
+        "median": 0.8196145243439946,
+        "n": 3,
+        "std": 0.02512206967982456
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.05585213471437833,
+        "median": 0.05579263290484824,
+        "n": 3,
+        "std": 0.0006782005080274499
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "circle",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "circle",
+      "speed": "development",
+      "tracking_joint_p95_deg": {
+        "mean": 1.2012209723958638,
+        "median": 1.1662834875741905,
+        "n": 3,
+        "std": 0.07535258232150038
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.6300419966424038,
+        "median": 0.6511058478838693,
+        "n": 3,
+        "std": 0.055603271568979075
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.957503369046649,
+        "median": 6.608133998169378,
+        "n": 3,
+        "std": 0.7924262701229539
+      }
+    },
+    "heldout|back_and_forth|fast|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 630.3333333333334,
+        "median": 653.0,
+        "n": 3,
+        "std": 55.58177159225255
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.805408784439936,
+        "median": 0.8222971324395707,
+        "n": 3,
+        "std": 0.04264012719140765
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.04865989884271662,
+        "median": 0.04874465228823648,
+        "n": 3,
+        "std": 0.0002158612821851579
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.8393324379196319,
+        "median": 1.860100021182672,
+        "n": 3,
+        "std": 0.08223612606624703
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.9476312867779287,
+        "median": 0.9032461326897104,
+        "n": 3,
+        "std": 0.08811578864890983
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 9.39751337994952,
+        "median": 9.561622724029046,
+        "n": 3,
+        "std": 0.8912303532353397
+      }
+    },
+    "heldout|back_and_forth|fast|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 876.0,
+        "median": 875.0,
+        "n": 3,
+        "std": 2.6457513110645907
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.1842372093953202,
+        "median": 1.1811398202145258,
+        "n": 3,
+        "std": 0.010643361725366977
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.07865900472188402,
+        "median": 0.07793558646277571,
+        "n": 3,
+        "std": 0.002292454992633561
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.8287549757405879,
+        "median": 1.8421440675045169,
+        "n": 3,
+        "std": 0.09104535021544444
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.0963388855752132,
+        "median": 1.0748307977483524,
+        "n": 3,
+        "std": 0.057269097398031855
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.7961141482760894,
+        "median": 0.795005075763524,
+        "n": 3,
+        "std": 0.008851677972805623
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.367131016666665,
+        "median": 28.375237,
+        "n": 3,
+        "std": 0.13482939931233687
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7522154460711591,
+        "median": 0.7520314193708857,
+        "n": 3,
+        "std": 0.00032039002977333905
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.8185346918971373,
+        "median": 0.8093158660844251,
+        "n": 3,
+        "std": 0.03229779571206716
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 0.7943952566298483,
+        "median": 0.7765543075958633,
+        "n": 3,
+        "std": 0.08955518573542957
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.3734225902238711,
+        "median": 0.3904978642420974,
+        "n": 3,
+        "std": 0.0352353746167745
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.817141054621022,
+        "median": 3.8051192913828493,
+        "n": 3,
+        "std": 0.4452550621534526
+      }
+    },
+    "heldout|back_and_forth|fast|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 629.0,
+        "median": 653.0,
+        "n": 3,
+        "std": 57.86190456595773
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.805408784439936,
+        "median": 0.8222971324395707,
+        "n": 3,
+        "std": 0.04264012719140765
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.04865989884271662,
+        "median": 0.04874465228823649,
+        "n": 3,
+        "std": 0.00021586128218515924
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.2242361512459103,
+        "median": 1.1337566433148791,
+        "n": 3,
+        "std": 0.15867045085101242
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.6589363288908276,
+        "median": 0.6656489833915794,
+        "n": 3,
+        "std": 0.07731227747323194
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.949208291155145,
+        "median": 7.072788736285945,
+        "n": 3,
+        "std": 1.380846194212476
+      }
+    },
+    "heldout|back_and_forth|nominal|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 772.3333333333334,
+        "median": 800.0,
+        "n": 3,
+        "std": 50.54041287260457
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7655938276363367,
+        "median": 0.7762091839809118,
+        "n": 3,
+        "std": 0.025191225838425705
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.03791707255028234,
+        "median": 0.03797873014615772,
+        "n": 3,
+        "std": 0.00016281708126349455
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.681197603294149,
+        "median": 1.6674036774135723,
+        "n": 3,
+        "std": 0.05324361917212237
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.8760985351342961,
+        "median": 0.9013693694736122,
+        "n": 3,
+        "std": 0.0505406912268665
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 8.594417573835145,
+        "median": 8.977993894986287,
+        "n": 3,
+        "std": 0.6772420436712795
+      }
+    },
+    "heldout|back_and_forth|nominal|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 1097.6666666666667,
+        "median": 1098.0,
+        "n": 3,
+        "std": 4.509249752822894
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.193661732681434,
+        "median": 1.1963061755614568,
+        "n": 3,
+        "std": 0.006323357316266224
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.07725675199025785,
+        "median": 0.08020548662378973,
+        "n": 3,
+        "std": 0.0056910012417408905
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.8990627374747795,
+        "median": 1.9247667314600454,
+        "n": 3,
+        "std": 0.13687136485237486
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.2289637636188184,
+        "median": 1.2620064116691223,
+        "n": 3,
+        "std": 0.12047268950137298
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.7931342140790741,
+        "median": 0.8049435807369377,
+        "n": 3,
+        "std": 0.022283395506619667
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.438837333333336,
+        "median": 28.3899128,
+        "n": 3,
+        "std": 0.14226949540655787
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7293485743296992,
+        "median": 0.7271360651183066,
+        "n": 3,
+        "std": 0.007609428660430759
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.7656765676567656,
+        "median": 0.759075907590759,
+        "n": 3,
+        "std": 0.03241126482432613
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 0.6426709920994167,
+        "median": 0.6757032614638332,
+        "n": 3,
+        "std": 0.07020721592109927
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.32864817377874367,
+        "median": 0.33657769631397116,
+        "n": 3,
+        "std": 0.02918300521683452
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.411102188514382,
+        "median": 3.6341864969605555,
+        "n": 3,
+        "std": 0.3969169416930176
+      }
+    },
+    "heldout|back_and_forth|nominal|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 772.3333333333334,
+        "median": 800.0,
+        "n": 3,
+        "std": 50.54041287260457
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7655938276363364,
+        "median": 0.7762091839809117,
+        "n": 3,
+        "std": 0.025191225838425684
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.03791707255028234,
+        "median": 0.03797873014615773,
+        "n": 3,
+        "std": 0.00016281708126349585
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "back_and_forth",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.2027587645857618,
+        "median": 1.1599419984392938,
+        "n": 3,
+        "std": 0.10219543666618308
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.6434449718250255,
+        "median": 0.667828256537698,
+        "n": 3,
+        "std": 0.05146766316448417
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.85717683633055,
+        "median": 6.7313587278659215,
+        "n": 3,
+        "std": 1.243505208434695
+      }
+    },
+    "heldout|ellipse|fast|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 702.3333333333334,
+        "median": 714.0,
+        "n": 3,
+        "std": 21.96208854670551
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.8000689566214026,
+        "median": 0.8065808021807489,
+        "n": 3,
+        "std": 0.015890914720807635
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.04722375017365582,
+        "median": 0.04740172146257266,
+        "n": 3,
+        "std": 0.0003134955413262153
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.6511190479022826,
+        "median": 1.6137442065179,
+        "n": 3,
+        "std": 0.08802112354431163
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.8772063646072823,
+        "median": 0.879759916574138,
+        "n": 3,
+        "std": 0.022729328498114577
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 9.403333327246566,
+        "median": 9.309370577901825,
+        "n": 3,
+        "std": 0.49691259119314035
+      }
+    },
+    "heldout|ellipse|fast|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 932.3333333333334,
+        "median": 932.0,
+        "n": 3,
+        "std": 1.5275252316519468
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.2072907499439778,
+        "median": 1.2115716582312983,
+        "n": 3,
+        "std": 0.02462419483406546
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.08397884284075667,
+        "median": 0.08605403163732275,
+        "n": 3,
+        "std": 0.006120236689496779
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.8705237880971353,
+        "median": 1.8673822568179486,
+        "n": 3,
+        "std": 0.07726715032056523
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.2182796615539668,
+        "median": 1.2542686397688023,
+        "n": 3,
+        "std": 0.12848736941889502
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.8122802479758038,
+        "median": 0.8141499692518915,
+        "n": 3,
+        "std": 0.018435685572169833
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.26345541666667,
+        "median": 28.094468499999998,
+        "n": 3,
+        "std": 0.3860383606931373
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7452499571922792,
+        "median": 0.7508012054559164,
+        "n": 3,
+        "std": 0.017210743867122836
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.8034188034188033,
+        "median": 0.8083670715249662,
+        "n": 3,
+        "std": 0.027995245852454574
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 0.7363403753530054,
+        "median": 0.7544635494932546,
+        "n": 3,
+        "std": 0.03917447721744154
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.34566459674806876,
+        "median": 0.33481832408548473,
+        "n": 3,
+        "std": 0.019208894220192934
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.811696640616676,
+        "median": 3.839349402485209,
+        "n": 3,
+        "std": 0.09468210015516042
+      }
+    },
+    "heldout|ellipse|fast|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 702.3333333333334,
+        "median": 714.0,
+        "n": 3,
+        "std": 21.96208854670551
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.8002815785214662,
+        "median": 0.8072186678809391,
+        "n": 3,
+        "std": 0.016025307416969715
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.04722576080741649,
+        "median": 0.04740775336385468,
+        "n": 3,
+        "std": 0.00031522228287599735
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.20090174287214,
+        "median": 1.2073508537325384,
+        "n": 3,
+        "std": 0.0325170942409702
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.6334690910490891,
+        "median": 0.6407390915359517,
+        "n": 3,
+        "std": 0.03242594901548889
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.418910156912294,
+        "median": 6.185916002549419,
+        "n": 3,
+        "std": 0.48943382066288293
+      }
+    },
+    "heldout|ellipse|nominal|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 878.6666666666666,
+        "median": 889.0,
+        "n": 3,
+        "std": 18.77054430040145
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.8013433009707035,
+        "median": 0.8051585995811873,
+        "n": 3,
+        "std": 0.010649760724247653
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.03758143674786483,
+        "median": 0.037665493441765736,
+        "n": 3,
+        "std": 0.00023643794219699058
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.5233316584531196,
+        "median": 1.505510894495763,
+        "n": 3,
+        "std": 0.08261691588248123
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.8340155933023219,
+        "median": 0.827178546149069,
+        "n": 3,
+        "std": 0.018000051218302122
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 8.534446951922272,
+        "median": 8.50358318321119,
+        "n": 3,
+        "std": 0.12406799464722887
+      }
+    },
+    "heldout|ellipse|nominal|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 1158.3333333333333,
+        "median": 1159.0,
+        "n": 3,
+        "std": 1.1547005383792515
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.2053620291845306,
+        "median": 1.2112471458348582,
+        "n": 3,
+        "std": 0.020190546823708876
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.0786318460565922,
+        "median": 0.07934688211904563,
+        "n": 3,
+        "std": 0.006430094236775196
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.9755220806258216,
+        "median": 1.977536346100741,
+        "n": 3,
+        "std": 0.06768905852599365
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.2688719933141623,
+        "median": 1.2751431706319014,
+        "n": 3,
+        "std": 0.13306705615897194
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.8027045194167693,
+        "median": 0.811854432942645,
+        "n": 3,
+        "std": 0.01729378277956319
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.5613608,
+        "median": 28.416227,
+        "n": 3,
+        "std": 0.346294377048371
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7303139341973951,
+        "median": 0.7322689286963383,
+        "n": 3,
+        "std": 0.008594045264996804
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.7632850241545893,
+        "median": 0.7629399585921325,
+        "n": 3,
+        "std": 0.04606722186308233
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 0.6484875500694353,
+        "median": 0.6523894032438586,
+        "n": 3,
+        "std": 0.024933591186121817
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.31667574495719514,
+        "median": 0.31480840416432027,
+        "n": 3,
+        "std": 0.009292598028183
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.590541377593384,
+        "median": 3.5943131842172975,
+        "n": 3,
+        "std": 0.22331830314129578
+      }
+    },
+    "heldout|ellipse|nominal|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 878.6666666666666,
+        "median": 889.0,
+        "n": 3,
+        "std": 18.77054430040145
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.801505814274246,
+        "median": 0.8051585995811873,
+        "n": 3,
+        "std": 0.010839859134179196
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.03758337263601563,
+        "median": 0.037665493441765736,
+        "n": 3,
+        "std": 0.00023869752249449855
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "ellipse",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.191326998709327,
+        "median": 1.1925458424093254,
+        "n": 3,
+        "std": 0.04779099263189646
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.6297525409828617,
+        "median": 0.6308229996459596,
+        "n": 3,
+        "std": 0.007313537974164265
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.545311059993598,
+        "median": 6.639792658554827,
+        "n": 3,
+        "std": 0.29216960667277736
+      }
+    },
+    "heldout|rounded_square|fast|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 587.0,
+        "median": 587.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7329053170431905,
+        "median": 0.7329053170431905,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.05043037402298906,
+        "median": 0.05043037402298906,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.9986592775148042,
+        "median": 1.9440191857767586,
+        "n": 3,
+        "std": 0.09522785075086115
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 1.0048358202783154,
+        "median": 1.0158027489495265,
+        "n": 3,
+        "std": 0.036882644946046546
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 9.06000197131516,
+        "median": 9.200403938848357,
+        "n": 3,
+        "std": 0.34766725508310986
+      }
+    },
+    "heldout|rounded_square|fast|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 858.0,
+        "median": 858.0,
+        "n": 3,
+        "std": 1.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.2087011740461682,
+        "median": 1.2362907051228802,
+        "n": 3,
+        "std": 0.05184200424166601
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.08756444238257453,
+        "median": 0.09066497295725756,
+        "n": 3,
+        "std": 0.008104802013397994
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.889388557141299,
+        "median": 1.9100162976171682,
+        "n": 3,
+        "std": 0.04379551390479348
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.1867540661087366,
+        "median": 1.2284512717580949,
+        "n": 3,
+        "std": 0.09624458396180437
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.8209539720787337,
+        "median": 0.8214339917289974,
+        "n": 3,
+        "std": 0.015464985013240212
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 27.981789000000003,
+        "median": 28.001314,
+        "n": 3,
+        "std": 0.04961809269560803
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7664770543170656,
+        "median": 0.7689596000306992,
+        "n": 3,
+        "std": 0.012385695433319795
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.8348348348348349,
+        "median": 0.8048048048048048,
+        "n": 3,
+        "std": 0.07521008880701616
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 0.9352339189544284,
+        "median": 0.9256059193264085,
+        "n": 3,
+        "std": 0.021542555036643707
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.4167923923440582,
+        "median": 0.41808883301882843,
+        "n": 3,
+        "std": 0.020582602184857097
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.934944484755165,
+        "median": 3.899871637403056,
+        "n": 3,
+        "std": 0.18133264495631804
+      }
+    },
+    "heldout|rounded_square|fast|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 587.0,
+        "median": 587.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7332958871872419,
+        "median": 0.7332958871872419,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.050436682143279045,
+        "median": 0.050436682143279045,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "fast",
+      "tracking_joint_p95_deg": {
+        "mean": 1.4318060278987685,
+        "median": 1.425576699719256,
+        "n": 3,
+        "std": 0.08038335002082347
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.7730555686288088,
+        "median": 0.7688572871136171,
+        "n": 3,
+        "std": 0.016882466344814814
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.028402678524014,
+        "median": 5.996779718928106,
+        "n": 3,
+        "std": 0.10968048899059474
+      }
+    },
+    "heldout|rounded_square|nominal|direct": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 743.3333333333334,
+        "median": 739.0,
+        "n": 3,
+        "std": 7.505553499465136
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7143281782305942,
+        "median": 0.7143281782305942,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.039369014298402956,
+        "median": 0.039369014298402956,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "direct",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.7848797330440087,
+        "median": 1.7603266188191096,
+        "n": 3,
+        "std": 0.054582308779416396
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.9182481188937861,
+        "median": 0.9091834220133332,
+        "n": 3,
+        "std": 0.016918584875066593
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 8.484590247374449,
+        "median": 8.503413514026121,
+        "n": 3,
+        "std": 0.62338391887942
+      }
+    },
+    "heldout|rounded_square|nominal|nn_mpc": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 1064.0,
+        "median": 1064.0,
+        "n": 3,
+        "std": 2.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 1.1916307101589727,
+        "median": 1.1836567712750272,
+        "n": 3,
+        "std": 0.014293563460508318
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.07819296304333222,
+        "median": 0.07877501101003868,
+        "n": 3,
+        "std": 0.0034007784045750537
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "nn_mpc",
+      "executed_residual_max_deg": {
+        "mean": 1.897051033320799,
+        "median": 1.8921801123733262,
+        "n": 3,
+        "std": 0.14973598308430133
+      },
+      "executed_residual_p95_deg": {
+        "mean": 1.1877759371137648,
+        "median": 1.1790879151451674,
+        "n": 3,
+        "std": 0.032340737490663074
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.8091710517996984,
+        "median": 0.8103914717433668,
+        "n": 3,
+        "std": 0.01498602144609209
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": 28.38485961666667,
+        "median": 28.3157033,
+        "n": 3,
+        "std": 0.2964529715152225
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.9999999922536332,
+        "median": 0.9999999922536332,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.7472051168453216,
+        "median": 0.752051814006267,
+        "n": 3,
+        "std": 0.008666625307430583
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.8247422680412372,
+        "median": 0.8029782359679267,
+        "n": 3,
+        "std": 0.03869265923036548
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 0.7401940925913837,
+        "median": 0.7641146067904828,
+        "n": 3,
+        "std": 0.1259166992767181
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.3375949137687882,
+        "median": 0.345864439501514,
+        "n": 3,
+        "std": 0.039267424135822286
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 3.724740900334293,
+        "median": 3.6110744391298124,
+        "n": 3,
+        "std": 0.5082694765994537
+      }
+    },
+    "heldout|rounded_square|nominal|preview6": {
+      "command_acceleration_quantization_exceedance_count": {
+        "mean": 739.0,
+        "median": 739.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_acceleration_rms_rad_s2": {
+        "mean": 0.7146339038928314,
+        "median": 0.7146339038928315,
+        "n": 3,
+        "std": 1.3597399555105182e-16
+      },
+      "command_acceleration_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_rms_rad_s": {
+        "mean": 0.03937517869768621,
+        "median": 0.03937517869768621,
+        "n": 3,
+        "std": 0.0
+      },
+      "command_velocity_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "control_deadline_miss_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "controller": "preview6",
+      "executed_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "executed_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "family": "heldout",
+      "n": 3,
+      "planner_latency_p95_ms": {
+        "mean": null,
+        "median": null,
+        "n": 0,
+        "std": null
+      },
+      "requested_residual_max_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_p95_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_rms_deg": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "requested_residual_saturation_rate": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "safety_violation_count": {
+        "mean": 0.0,
+        "median": 0.0,
+        "n": 3,
+        "std": 0.0
+      },
+      "shape": "rounded_square",
+      "speed": "nominal",
+      "tracking_joint_p95_deg": {
+        "mean": 1.3842929410728768,
+        "median": 1.362882318622516,
+        "n": 3,
+        "std": 0.051163608700233176
+      },
+      "tracking_joint_rmse_deg": {
+        "mean": 0.7092609196544956,
+        "median": 0.7025874242823824,
+        "n": 3,
+        "std": 0.012914781853085006
+      },
+      "tracking_tcp_rmse_mm": {
+        "mean": 6.428897983722487,
+        "median": 6.5759596487840355,
+        "n": 3,
+        "std": 0.34905153812053547
+      }
+    }
+  },
+  "experiment_matrix": {
+    "complete_trials": 63,
+    "controllers": [
+      "direct",
+      "preview6",
+      "nn_mpc"
+    ],
+    "development_trials": 9,
+    "heldout_shapes": [
+      "ellipse",
+      "back_and_forth",
+      "rounded_square"
+    ],
+    "heldout_trials": 54,
+    "repeats": 3,
+    "speeds": [
+      "nominal",
+      "fast"
+    ],
+    "total_trials": 63
+  },
+  "hardware_instantiation": {
+    "cem_iterations": 2,
+    "cem_samples": 128,
+    "control_rate_hz": 30.0,
+    "controlled_arm_joints": 5,
+    "hard_safeguards": [
+      "executable projector",
+      "joint/velocity/acceleration limits",
+      "braking",
+      "encoder quantization",
+      "startup/homing"
+    ],
+    "history_len": 16,
+    "horizon": 6,
+    "input_semantics": "[q, dq, q_ref-q]",
+    "objective": "J=C_q",
+    "platform": "SO101 follower",
+    "residual_authority_deg": 1.0,
+    "target_semantics": "delta_state"
+  },
+  "heldout_aggregate": {
+    "direct": {
+      "command_acceleration_rms_rad_s2": 0.7699413941570272,
+      "command_velocity_rms_rad_s": 0.043530257772651945,
+      "executed_deviation_max_deg": 0.0,
+      "executed_deviation_p95_deg": 0.0,
+      "fk_tcp_rmse_mm": 8.912383908607186,
+      "joint_rmse_deg": 0.9096726198323216,
+      "n": 18,
+      "requested_residual_max_deg": 0.0,
+      "requested_residual_p95_deg": 0.0
+    },
+    "nn_mpc": {
+      "command_acceleration_rms_rad_s2": 1.198480600901734,
+      "command_velocity_rms_rad_s": 0.08071397517256626,
+      "executed_deviation_max_deg": 1.893383862066737,
+      "executed_deviation_p95_deg": 1.1978307178807768,
+      "fk_tcp_rmse_mm": 3.7150277744058204,
+      "joint_rmse_deg": 0.35313306863678756,
+      "n": 18,
+      "requested_residual_max_deg": 0.9999999922536333,
+      "requested_residual_p95_deg": 0.9999999922536333
+    },
+    "preview6": {
+      "command_acceleration_rms_rad_s2": 0.7701199659920097,
+      "command_velocity_rms_rad_s": 0.043532994279566056,
+      "executed_deviation_max_deg": 0.0,
+      "executed_deviation_p95_deg": 0.0,
+      "fk_tcp_rmse_mm": 6.537984501106348,
+      "joint_rmse_deg": 0.6746532368385181,
+      "n": 18,
+      "requested_residual_max_deg": 0.0,
+      "requested_residual_p95_deg": 0.0
+    }
+  },
+  "interpretation_boundaries": [
+    "FK-derived TCP uses encoder joint angles and the calibrated MuJoCo model; no external Cartesian tracker was used.",
+    "SO101 is a hardware-specific instantiation of the residual MPC principle, not zero-shot transfer of the simulation hyperparameters.",
+    "No hard-real-time guarantee or hardware-independent generalization claim is made."
+  ],
+  "paired_heldout": {
+    "nn_mpc_minus_direct:tracking_joint_rmse_deg": {
+      "ci95": [
+        -0.585027563376371,
+        -0.5280515390146975
+      ],
+      "mean": -0.5565395511955342,
+      "n": 18,
+      "std": 0.05728670157661514,
+      "values": [
+        -0.511977180921452,
+        -0.5123701419847488,
+        -0.5276722221291796,
+        -0.5637327566032098,
+        -0.5454277913369063,
+        -0.485464755637524,
+        -0.5724419817549549,
+        -0.5215866747092679,
+        -0.5483224276024348,
+        -0.7162107869528469,
+        -0.493667034261713,
+        -0.512748268447613,
+        -0.614332101789645,
+        -0.5619289678464985,
+        -0.56569854573885,
+        -0.5270174226967391,
+        -0.6393989451753347,
+        -0.5977139159306981
+      ],
+      "wins": 18
+    },
+    "nn_mpc_minus_direct:tracking_tcp_rmse_mm": {
+      "ci95": [
+        -5.561411840645732,
+        -4.8333004277569955
+      ],
+      "mean": -5.197356134201364,
+      "n": 18,
+      "std": 0.7320816377062415,
+      "values": [
+        -4.909269998993892,
+        -5.305672378681995,
+        -4.616774345310775,
+        -5.470021175416616,
+        -6.234252322241565,
+        -5.070636562231485,
+        -5.331709038830797,
+        -4.859617371310026,
+        -5.358619745821466,
+        -6.817265441494584,
+        -4.167348101844714,
+        -5.756503432646197,
+        -5.81542120436618,
+        -4.892339074896309,
+        -3.571787761857978,
+        -5.184260924077258,
+        -5.426693692609836,
+        -4.7642178429928865
+      ],
+      "wins": 18
+    },
+    "nn_mpc_minus_preview6:tracking_joint_rmse_deg": {
+      "ci95": [
+        -0.3496676509584798,
+        -0.29337268544498135
+      ],
+      "mean": -0.32152016820173057,
+      "n": 18,
+      "std": 0.056601929070484266,
+      "values": [
+        -0.3223643851800001,
+        -0.32166345270964375,
+        -0.2952025501873558,
+        -0.3268246096611832,
+        -0.30640696629872005,
+        -0.23018190694315765,
+        -0.34161188696324407,
+        -0.28799719250908096,
+        -0.31478131466652043,
+        -0.3997706052431827,
+        -0.18161949160820512,
+        -0.275151119149482,
+        -0.4061968910711638,
+        -0.3567229847808684,
+        -0.3520781418050899,
+        -0.32197226787445976,
+        -0.39604880688500343,
+        -0.3507684540947887
+      ],
+      "wins": 18
+    },
+    "nn_mpc_minus_preview6:tracking_tcp_rmse_mm": {
+      "ci95": [
+        -3.259210825379612,
+        -2.3867026280214434
+      ],
+      "mean": -2.8229567267005278,
+      "n": 18,
+      "std": 0.8772657847785946,
+      "values": [
+        -2.6232789138638855,
+        -3.4131873614968145,
+        -2.8278427718399453,
+        -3.1419622584010956,
+        -2.4796492016476335,
+        -2.2000290888381233,
+        -3.0850738717104313,
+        -2.728528531691695,
+        -4.524621540046377,
+        -3.694770126454632,
+        -1.24244035035861,
+        -4.458991232789126,
+        -3.3974261165008266,
+        -2.964885209654223,
+        -1.750159924009533,
+        -1.865528148304188,
+        -2.164297504626021,
+        -2.2505489283763365
+      ],
+      "wins": 18
+    }
+  },
+  "planner_events_nn_mpc": {
+    "event_count": 20956,
+    "failure_count": 0,
+    "late_drop_count": 3,
+    "latency_ms": {
+      "max": 68.092715,
+      "mean": 22.73305863933957,
+      "p95": 28.355128999999998,
+      "p99": 29.928118750000007
+    }
+  },
+  "protocol_id": "so101_final_paper_20260810_tracking1deg_v1",
+  "reference_manifest_sha256": "785e2f924e55077287300b3313105df732fe27c92cd3d0e256e8908db652b1dc",
+  "safety_totals": {
+    "command_acceleration_violation_count": 0,
+    "command_velocity_violation_count": 0,
+    "control_deadline_miss_count": 0,
+    "planner_failure_count": 0,
+    "safety_violation_count": 0,
+    "tx_failure_count": 0
+  },
+  "schema_version": 1,
+  "status_counts": {
+    "complete": 63
+  }
+}

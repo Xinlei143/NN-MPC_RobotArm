@@ -1,0 +1,11 @@
+{
+  "samples": 2327,
+  "method": "p99.5",
+  "latency_s": 0.10060100386999984,
+  "control_dt_s": 0.03333333333333333,
+  "guard_ms": 5.0,
+  "anticipation_delay_steps": 4,
+  "late_drop_rate": 0.0,
+  "packet_expiry_rate": 0.0,
+  "injected_planner_delay_ms": 33.0
+}
